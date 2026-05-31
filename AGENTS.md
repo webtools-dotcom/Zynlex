@@ -1,5 +1,5 @@
 # AGENTS.md — Universal AI Coding Behavior File
-# Works with: Claude Code, opencode, Cursor, Cline, RooCode, Copilot Agents, and any agentic tool that reads context files.
+# Works with: Claude Code, opencode, Cursor, Copilot Agents, Codex and any agentic tool that reads context files.
 # Place at: project root. For domain-specific overrides, add a second AGENTS.md inside that subfolder.
 # Last updated: 2026. Keep this file under 200 lines. Split into subdirectories if it grows beyond that.
 
