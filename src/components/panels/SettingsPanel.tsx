@@ -1,0 +1,252 @@
+/**
+ * SettingsPanel — right-side slide-in settings panel.
+ *
+ * Mounted by RootLayout when useUIStore.settingsPanelOpen is true.
+ * All edits persist via the Zustand settings store.
+ */
+import { useEffect } from "react";
+import { X } from "lucide-react";
+import { useSettingsStore } from "@/stores/settings";
+import { useUIStore } from "@/stores/ui";
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[10px] uppercase tracking-wider text-[var(--xevo-text-faint)] mt-4 mb-2">
+      {children}
+    </div>
+  );
+}
+
+function ThemeButton({
+  label,
+  value,
+  current,
+  onSelect,
+}: {
+  label: string;
+  value: "dark" | "light" | "system";
+  current: "dark" | "light" | "system";
+  onSelect: (v: "dark" | "light" | "system") => void;
+}) {
+  const active = current === value;
+  return (
+    <button
+      onClick={() => onSelect(value)}
+      className={
+        "px-3 py-1 text-xs rounded border " +
+        (active
+          ? "text-[var(--xevo-text)] border-[var(--xevo-text-muted)]"
+          : "text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] border-transparent")
+      }
+      style={active ? { background: "var(--xevo-tab-active)" } : undefined}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SearchEngineButton({
+  label,
+  value,
+  current,
+  onSelect,
+}: {
+  label: string;
+  value: "google" | "duckduckgo" | "bing" | "custom";
+  current: "google" | "duckduckgo" | "bing" | "custom";
+  onSelect: (v: "google" | "duckduckgo" | "bing" | "custom") => void;
+}) {
+  const active = current === value;
+  return (
+    <button
+      onClick={() => onSelect(value)}
+      className={
+        active
+          ? "border border-[color:var(--xevo-accent)]/50 bg-[color:var(--xevo-accent)]/10 text-[var(--xevo-text)] rounded px-2 py-1.5 text-xs text-center"
+          : "border border-[var(--xevo-border)] text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] rounded px-2 py-1.5 text-xs text-center"
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
+function CompactToggle({
+  value,
+  onToggle,
+}: {
+  value: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      role="switch"
+      aria-checked={value}
+      className={
+        "w-9 h-5 rounded-full relative transition-colors " +
+        (value ? "bg-[var(--xevo-accent)]" : "bg-[var(--xevo-border)]")
+      }
+    >
+      <span
+        className="absolute top-0.5 w-4 h-4 rounded-full bg-[var(--xevo-text)] transition-transform"
+        style={{ transform: value ? "translateX(18px)" : "translateX(2px)" }}
+      />
+    </button>
+  );
+}
+
+export function SettingsPanel() {
+  const settings = useSettingsStore((s) => s.settings);
+  const setTheme = useSettingsStore((s) => s.setTheme);
+  const setSearchEngine = useSettingsStore((s) => s.setSearchEngine);
+  const setCustomSearchUrl = useSettingsStore((s) => s.setCustomSearchUrl);
+  const setPortScanInterval = useSettingsStore((s) => s.setPortScanInterval);
+  const setCompactMode = useSettingsStore((s) => s.setCompactMode);
+  const toggleSettingsPanel = useUIStore((s) => s.toggleSettingsPanel);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSettingsPanel();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleSettingsPanel]);
+
+  return (
+    <div
+      className="absolute top-0 right-0 w-[300px] h-full border-l z-50 overflow-y-auto p-4"
+      style={{
+        background: "var(--xevo-modal-bg)",
+        borderColor: "var(--xevo-modal-border)",
+      }}
+    >
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
+        <span className="text-sm font-semibold text-[var(--xevo-text)]">Settings</span>
+        <button
+          onClick={toggleSettingsPanel}
+          className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)]"
+          title="Close (Esc)"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* ── Appearance ──────────────────────────────────────────────── */}
+      <SectionHeader>Appearance</SectionHeader>
+
+      <div className="flex gap-1">
+        <ThemeButton
+          label="Dark"
+          value="dark"
+          current={settings.theme}
+          onSelect={setTheme}
+        />
+        <ThemeButton
+          label="Light"
+          value="light"
+          current={settings.theme}
+          onSelect={setTheme}
+        />
+        <ThemeButton
+          label="System"
+          value="system"
+          current={settings.theme}
+          onSelect={setTheme}
+        />
+      </div>
+
+      <div className="flex justify-between items-center mt-3">
+        <div>
+          <span className="text-sm text-[var(--xevo-text-muted)] block">Compact Mode</span>
+          <span className="text-xs text-[var(--xevo-text-faint)] block">Reduce UI chrome size</span>
+        </div>
+        <CompactToggle
+          value={settings.compactMode}
+          onToggle={() => setCompactMode(!settings.compactMode)}
+        />
+      </div>
+
+      {/* ── Search Engine ───────────────────────────────────────────── */}
+      <SectionHeader>Search Engine</SectionHeader>
+
+      <div className="grid grid-cols-2 gap-1">
+        <SearchEngineButton
+          label="Google"
+          value="google"
+          current={settings.searchEngine}
+          onSelect={setSearchEngine}
+        />
+        <SearchEngineButton
+          label="DuckDuckGo"
+          value="duckduckgo"
+          current={settings.searchEngine}
+          onSelect={setSearchEngine}
+        />
+        <SearchEngineButton
+          label="Bing"
+          value="bing"
+          current={settings.searchEngine}
+          onSelect={setSearchEngine}
+        />
+        <SearchEngineButton
+          label="Custom"
+          value="custom"
+          current={settings.searchEngine}
+          onSelect={setSearchEngine}
+        />
+      </div>
+
+      {settings.searchEngine === "custom" && (
+        <input
+          type="text"
+          placeholder="https://search.example.com?q=%s"
+          value={settings.customSearchUrl}
+          onChange={(e) => setCustomSearchUrl(e.target.value)}
+          className="w-full mt-1 px-2 py-1 text-xs border rounded text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)] outline-none focus:border-[var(--xevo-accent)]"
+          style={{
+            background: "var(--xevo-badge-bg)",
+            borderColor: "var(--xevo-modal-border)",
+          }}
+        />
+      )}
+
+      {/* ── Port Scanner ────────────────────────────────────────────── */}
+      <SectionHeader>Port Scanner</SectionHeader>
+
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-sm text-[var(--xevo-text-muted)]">Scan Interval</span>
+        <span className="text-xs text-[var(--xevo-text-faint)]">
+          {settings.portScanInterval}s
+        </span>
+      </div>
+
+      <input
+        type="range"
+        min={5}
+        max={60}
+        step={5}
+        value={settings.portScanInterval}
+        onChange={(e) => setPortScanInterval(Number(e.target.value))}
+        className="w-full accent-blue-500"
+      />
+
+      <span className="text-xs text-[var(--xevo-text-faint)] block mt-1">
+        How often to scan for running dev servers
+      </span>
+
+      {/* ── About ───────────────────────────────────────────────────── */}
+      <div className="text-xs text-[var(--xevo-text-faint)] mt-6 space-y-1">
+        <div>XEVO Browser v0.9.6</div>
+        <div>Open source · Zero telemetry · Zero accounts</div>
+      </div>
+    </div>
+  );
+}
+
+export default SettingsPanel;

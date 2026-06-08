@@ -35,7 +35,7 @@ It contains:
 - what is broken or blocked
 - latest decisions and known caveats
 
-**You must update this after every completed task.** Since you just did the work, you know exactly what changed. Write it down. The next session — whether it's another agent or a new chat — depends on this being accurate. If you skip this update, you are creating a lie that will cause future failures.
+**You must update this after every completed task.** Since you just did the work, you know exactly what changed. Write it down. The next session — whether it's another agent or a new chat — depends on this being accurate. If you skip this update, you are creating a lie that will cause future failures. also in the proejct state file, in the end update that file with the exact whole repo structure worktree. 
 
 ---
 

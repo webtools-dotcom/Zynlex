@@ -1,0 +1,142 @@
+/**
+ * ApiTesterPanel — sidebar launcher card for the API Tester.
+ *
+ * The full API Tester UI is too cramped inside the 210px sidebar.
+ * This panel shows a button to open the full-page modal plus a small
+ * "Recent Requests" card (shared with the full tester via the
+ * useApiHistoryStore).
+ */
+import { ArrowRight, Code2, Clock, Trash2 } from "lucide-react";
+import { useUIStore } from "@/stores/ui";
+import { useApiHistoryStore } from "@/stores/apiHistory";
+
+const METHOD_COLORS: Record<string, string> = {
+  GET: "#22c55e",
+  POST: "#f59e0b",
+  PUT: "#3b82f6",
+  DELETE: "#ef4444",
+  PATCH: "#a855f7",
+  HEAD: "#71717a",
+  OPTIONS: "#06b6d4",
+};
+
+export function ApiTesterPanel() {
+  const openApiTester = useUIStore((s) => s.openApiTester);
+  const history = useApiHistoryStore((s) => s.history);
+  const clearHistory = useApiHistoryStore((s) => s.clearHistory);
+
+  return (
+    <div className="p-2 flex flex-col gap-2">
+      {/* Header */}
+      <div className="flex items-center justify-between px-1">
+        <p className="text-[10px] font-semibold tracking-widest text-[var(--xevo-text-faint)] uppercase">
+          API Tester
+        </p>
+      </div>
+
+      {/* Open button card */}
+      <button
+        onClick={openApiTester}
+        className="flex items-center gap-2 p-3 rounded-md text-left border border-[var(--xevo-border)] bg-[var(--xevo-modal-bg)] hover:border-[var(--xevo-accent)] hover:bg-[var(--xevo-hover)] transition-colors"
+      >
+        <Code2 size={16} className="text-[var(--xevo-accent)] flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-[12px] text-[var(--xevo-text)] font-medium">
+            Open API Tester
+          </div>
+          <div className="text-[10px] text-[var(--xevo-text-faint)]">
+            Full editor in a centered window
+          </div>
+        </div>
+        <ArrowRight size={13} className="text-[var(--xevo-text-faint)] flex-shrink-0" />
+      </button>
+
+      {/* Method reference cheat sheet */}
+      <div className="rounded-md border border-[var(--xevo-border)] bg-[var(--xevo-modal-bg)] p-2">
+        <div className="text-[9px] font-semibold tracking-widest text-[var(--xevo-text-faint)] uppercase mb-1.5">
+          Methods
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          {Object.entries(METHOD_COLORS).map(([m, c]) => (
+            <div
+              key={m}
+              className="flex items-center gap-1.5 text-[10px] font-mono"
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ background: c }}
+              />
+              <span style={{ color: c }}>{m}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Recent requests */}
+      <div className="rounded-md border border-[var(--xevo-border)] bg-[var(--xevo-modal-bg)] overflow-hidden">
+        <div className="flex items-center justify-between px-2 py-1.5 border-b border-[var(--xevo-border)]">
+          <div className="flex items-center gap-1.5">
+            <Clock size={10} className="text-[var(--xevo-text-faint)]" />
+            <span className="text-[9px] font-semibold tracking-widest text-[var(--xevo-text-faint)] uppercase">
+              Recent ({history.length})
+            </span>
+          </div>
+          {history.length > 0 && (
+            <button
+              onClick={clearHistory}
+              title="Clear history"
+              className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-danger)]"
+            >
+              <Trash2 size={10} />
+            </button>
+          )}
+        </div>
+        {history.length === 0 ? (
+          <div className="px-2 py-3 text-center">
+            <p className="text-[10px] text-[var(--xevo-text-faint)]">
+              No requests yet
+            </p>
+            <p className="text-[9px] text-[var(--xevo-text-faint)] mt-0.5">
+              Open the tester and send one
+            </p>
+          </div>
+        ) : (
+          <div className="max-h-32 overflow-y-auto">
+            {history.slice(0, 5).map((h) => (
+              <button
+                key={h.id}
+                onClick={openApiTester}
+                className="w-full flex items-center gap-1.5 px-2 py-1 text-left hover:bg-[var(--xevo-hover)] transition-colors"
+              >
+                <span
+                  className="text-[9px] font-bold flex-shrink-0"
+                  style={{ color: METHOD_COLORS[h.method] ?? "#999" }}
+                >
+                  {h.method}
+                </span>
+                <span className="text-[10px] text-[var(--xevo-text-muted)] font-mono flex-1 min-w-0 truncate">
+                  {h.url}
+                </span>
+                <span
+                  className="text-[9px] font-mono flex-shrink-0"
+                  style={{
+                    color:
+                      h.status >= 200 && h.status < 300
+                        ? "var(--xevo-success)"
+                        : h.status >= 400
+                          ? "var(--xevo-danger)"
+                          : "var(--xevo-warning)",
+                  }}
+                >
+                  {h.status}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default ApiTesterPanel;
