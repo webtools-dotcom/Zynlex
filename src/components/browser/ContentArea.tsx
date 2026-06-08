@@ -28,7 +28,7 @@ export function ContentArea({ onBridgeReady }: ContentAreaProps) {
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 overflow-hidden"
+      className="absolute inset-0 overflow-hidden flex flex-col"
       style={{
         background: "var(--xevo-content-bg)",
       }}

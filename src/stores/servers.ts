@@ -28,7 +28,7 @@ export const useServersStore = create<ServersStore>()(
           const now = Date.now();
           const scannedMap = new Map(scanned.map((r) => [r.port, r]));
 
-          s.servers.forEach((server) => {
+          s.servers.forEach((server: LocalServer) => {
             const found = scannedMap.get(server.port);
             if (!found) return;
 
@@ -73,21 +73,21 @@ export const useServersStore = create<ServersStore>()(
 
       setLabel: (port, label) => {
         set((s) => {
-          const server = s.servers.find((sv) => sv.port === port);
+          const server = s.servers.find((sv: LocalServer) => sv.port === port);
           if (server) server.label = label;
         });
       },
 
       togglePinned: (port) => {
         set((s) => {
-          const server = s.servers.find((sv) => sv.port === port);
+          const server = s.servers.find((sv: LocalServer) => sv.port === port);
           if (server) server.isPinned = !server.isPinned;
         });
       },
 
       removeServer: (port) => {
         set((s) => {
-          s.servers = s.servers.filter((sv) => sv.port !== port);
+          s.servers = s.servers.filter((sv: LocalServer) => sv.port !== port);
         });
       },
     })),

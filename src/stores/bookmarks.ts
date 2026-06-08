@@ -58,21 +58,21 @@ export const useBookmarksStore = create<BookmarksStore>()(
 
       removeBookmark: (id) => {
         set((s) => {
-          s.bookmarks = s.bookmarks.filter((b) => b.id !== id);
+          s.bookmarks = s.bookmarks.filter((b: Bookmark) => b.id !== id);
         });
       },
 
       removeBookmarkByUrl: (workspaceId, url) => {
         set((s) => {
           s.bookmarks = s.bookmarks.filter(
-            (b) => !(b.workspaceId === workspaceId && b.url === url)
+            (b: Bookmark) => !(b.workspaceId === workspaceId && b.url === url)
           );
         });
       },
 
       renameBookmark: (id, title) => {
         set((s) => {
-          const bm = s.bookmarks.find((b) => b.id === id);
+          const bm = s.bookmarks.find((b: Bookmark) => b.id === id);
           if (bm) bm.title = title.trim() || bm.url;
         });
       },
@@ -80,7 +80,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
       clearForWorkspace: (workspaceId) => {
         set((s) => {
           s.bookmarks = s.bookmarks.filter(
-            (b) => b.workspaceId !== workspaceId
+            (b: Bookmark) => b.workspaceId !== workspaceId
           );
         });
       },

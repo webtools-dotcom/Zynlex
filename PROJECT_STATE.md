@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.3.0
+## Version: v1.5.0
 ## Last Updated: 2026-06-08
-## Status: Session 14 complete — Sidebar toggle (Ctrl+B), keyboard shortcut forwarding from webview, modal visibility fix. Sidebar toggle button in WorkspaceSwitcher, Ctrl+B shortcut, webview repositioning on toggle. New `browser_reposition` and `forward_shortcut` Rust commands. `XEVO_SHORTCUT_FORWARD_SCRIPT` injected into webview intercepts Ctrl+D/K/T/W/R/B/,/Shift+T and forwards to main window via Rust event. Command palette and shortcut help modals now hide/show webview to prevent overlap. All code compiles clean: `cargo check` and `pnpm tsc --noEmit` both pass. 18 invoke_handler entries.
+## Status: Session 16 complete — pointer-based tab reorder (replaced broken HTML5 DnD in WebView2) + OS-level global shortcuts via tauri-plugin-global-shortcut (replaces CSP-blocked injected JS forwarding). Removed XEVO_SHORTCUT_FORWARD_SCRIPT and forward_shortcut command. `cargo check` + `pnpm tsc --noEmit` clean. 18 invoke_handler entries.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -172,9 +172,10 @@
 - **Settings panel uses absolute positioning** — anchored to the right side of the content area. Does not currently push or reflow the webview; it overlays the right edge (matches the spec).
 - **Compact mode CSS uses class-name overrides** — the `.h-9`, `.h-11`, `.w-12`, `.py-2` overrides only apply inside `.xevo-compact`, so they're scoped safely. They DO affect any other element with the same Tailwind class names in compact mode (none currently exist outside tab bar / address bar / workspace switcher, but if someone adds one, the height will shrink too).
 - **Command palette mount placement** — `<CommandPalette />` and `<ShortcutHelp />` are mounted in `RootLayout.tsx` OUTSIDE the `relative` content wrapper (they need `position: fixed` over the full window). They don't interfere with the settings panel because all are conditional renders. Opening one overlay while another is open will show the newer one on top (both have z-9999).
-- **Tab drag-to-reorder uses native HTML5 drag-and-drop** — works in WebView2. No visual placeholder (only the drop target's left border highlights blue during drag). A floating placeholder is a future enhancement.
+- **Tab drag-to-reorder uses pointer events** — replaced HTML5 DnD (broken in WebView2). Ghost element follows cursor during drag. Drop target indicated by 2px blue left border. No animated reorder transition (items snap to position on drop).
 - **In-page link click records history via `onUrlChanged` from Rust** — if a page fires multiple `onUrlChanged` events in rapid succession (e.g. SPA internal routing), each one is treated as a navigation and pushed to the back stack. This can pollute history with intermediate URLs. Acceptable for now; can be filtered later by debouncing.
 - **Per-tab history is in-memory only** — Zustand `tabs` store is not persisted. On app restart, tabs and their history are lost. Acceptable for v1.0; persistence can be added by extending the tabs store with `persist` middleware in a follow-up.
+- **Global shortcuts fire even when XEVO is not focused** — `tauri-plugin-global-shortcut` registers OS-level hotkeys. If another app has the same shortcut (e.g. Ctrl+T in Chrome), both apps receive it. The plugin silently fails for shortcuts already taken by another app. This is the intended trade-off for making shortcuts work when the webview has focus.
 
 ## SESSION NOTE (2026-06-03 - live server + workspace audit)
 - Fixed Live Servers discovery so newly started localhost ports are picked up on the next scan even when the service binds on a different loopback family.
@@ -1448,4 +1449,106 @@ Pure black-and-white with warmth and depth. White (`#f0f0f2`) as the sole accent
 - `pnpm tsc --noEmit` — clean
 - `cargo check` — clean
 - No logic changes, no store changes, no Rust changes, no new dependencies
+
+## CHANGES THIS SESSION (Session 15 — v1.3.0 → v1.4.0, 9-issue fix pack)
+
+### Issue 1 — Keyboard shortcuts when webview has focus
+- **browser.rs**: `XEVO_SHORTCUT_FORWARD_SCRIPT` extended with Ctrl+?/F/L/1-9/Tab/Shift+Tab, Escape, Alt+Left/Right. Shared `forward()` helper with silent `.catch()` on invoke.
+- **useKeyboardShortcuts.ts**: `xevo://shortcut` listener handles all new forwarded shortcuts. Ctrl+L dispatches `xevo:focus-address-bar` custom event.
+- **AddressBar.tsx**: Listens for `xevo:focus-address-bar` to focus input from webview-forwarded Ctrl+L.
+
+### Issue 2 — Modals behind webview
+- **useWebviewBridge.ts**: Modal hide/show effect now watches `settingsPanelOpen` and `apiTesterOpen` in addition to command palette and shortcut help.
+
+### Issue 3 — Tab drag ban icon
+- **TabBar.tsx** + **TabItem.tsx**: Added `onDragEnter` with `preventDefault()` + `dropEffect = "move"` on outer container, inner scroll container, plus button, and each tab. WebView2 requires dragenter in addition to dragover.
+
+### Issue 4 — Webview drag lag
+- **No code change** — accepted Tauri 2.x architectural limitation per Session 10.6.
+
+### Issue 5 — UI polish
+- **HomePage.tsx**: Vertically centered hero (`flex flex-col items-center justify-center min-h-full`), larger workspace icon, "XEVO" heading with separate "Home" label.
+- **ContentArea.tsx**: `flex flex-col` on container for proper HomePage centering.
+- **SettingsPanel.tsx**: Section dividers, slide-in animation via `.xevo-settings-panel`, version string updated to v1.1.0.
+- **index.css**: `@keyframes xevo-settings-slide-in` + `.xevo-settings-panel` class.
+
+### Issue 6 — Search engine setting
+- **AddressBar.tsx**: `resolveInput` now reads `searchEngine` + `customSearchUrl` from settings store (was hardcoded to Google).
+
+### Issue 7 — Delete workspace
+- **WorkspaceContextMenu.tsx**: New portal-rendered context menu with Delete option.
+- **WorkspaceSwitcher.tsx**: Right-click on workspace icon opens menu; delete confirms, closes tabs, clears bookmarks, calls `deleteWorkspace`.
+
+### Issue 8 — Theme on webview
+- **browser.rs**: New `browser_set_theme(theme)` command evals `color-scheme` on webview document.
+- **lib.rs**: Registered `browser_set_theme` (18 → 19 invoke handlers).
+- **browser.ts**: New `setWebviewTheme()` service.
+- **useWebviewBridge.ts**: `useEffect` watches theme setting, resolves system mode, calls `setWebviewTheme` when page loaded.
+
+### Issue 9 — Console IPC errors
+- **permissions/browser-webview.toml**: New permission allowing `update_tab_info`, `forward_shortcut`, `browser_bookmark_request`, `browser_find_callback` from browser window.
+- **capabilities/browser.json**: New capability targeting `browser` window with above permission.
+- **browser.rs**: Added `.catch(function() {})` on Rust-side title fallback `update_tab_info` invoke.
+- Note: Website CSP violations, Tracking Prevention, and third-party analytics 503s remain external — not XEVO bugs.
+
+### Verification
+- `cd src-tauri && cargo check` — clean
+- `pnpm tsc --noEmit` — clean
+- invoke_handler count: 19
+- Runtime GUI verification pending human `pnpm tauri dev`
+
+## WORKTREE SNAPSHOT (Session 15)
+
+```
+src/components/sidebar/WorkspaceContextMenu.tsx  ← NEW
+src-tauri/capabilities/browser.json              ← NEW
+src-tauri/permissions/browser-webview.toml       ← NEW
+src-tauri/src/commands/browser.rs                ← shortcut script, browser_set_theme
+src-tauri/src/lib.rs                             ← browser_set_theme registered
+src/hooks/useKeyboardShortcuts.ts                ← extended xevo://shortcut handlers
+src/hooks/useWebviewBridge.ts                    ← modal hide/show + theme sync
+src/services/browser.ts                          ← setWebviewTheme
+src/components/browser/AddressBar.tsx            ← search engine + focus event
+src/components/browser/TabBar.tsx                ← onDragEnter handlers
+src/components/browser/TabItem.tsx               ← onDragEnter prop
+src/components/browser/ContentArea.tsx           ← flex layout
+src/components/panels/HomePage.tsx                 ← centered hero
+src/components/panels/SettingsPanel.tsx          ← polish + v1.1.0 version
+src/components/sidebar/WorkspaceSwitcher.tsx     ← workspace delete context menu
+src/index.css                                    ← settings slide-in animation
+```
+
+## CHANGES THIS SESSION (Session 16 — v1.4.0 → v1.5.0)
+
+### Feature 1: Pointer-Based Tab Reorder (replaces broken HTML5 DnD)
+- **Problem:** HTML5 drag-and-drop is fundamentally broken in WebView2 on Windows. The cursor shows a "ban" circle (⊘) on drop. 9 bug fixes in prior sessions couldn't fix it because the issue is in the platform layer, not the code logic.
+- **Solution:** Replaced all HTML5 DnD events (`onDragStart`, `onDragOver`, `onDrop`, `onDragEnd`) with pointer events (`onPointerDown`, `onPointerMove`, `onPointerUp`).
+- **`src/components/browser/TabBar.tsx`** — Full rewrite. Removed: `dragTabId`/`dragOverTabId`/`dropAtEnd` state, all DnD handlers (`handleDragStart`, `handleDragOver`, `handleDrop`, `handleDragEnd`, etc.), `justDroppedAtPlusRef`. Added: `handlePointerDown` (captures pointer, caches tab rects, creates ghost element), `handlePointerMove` (moves ghost, hit-tests cached rects, updates drop target), `handlePointerUp` (executes reorder via `reorderTabs()`, cleans up ghost). Uses refs for mid-drag state (no re-renders during drag) and state for rendering (only `draggingTabId` and `dropTarget`).
+- **`src/components/browser/TabItem.tsx`** — Simplified. Removed all DnD props (`onDragStart`, `onDragEnd`, `onDragEnter`, `onDragOver`, `onDragLeave`, `onDrop`, `isDragOver`). Added: `onPointerDown`, `isDropTarget`, `isDragging`. Removed `draggable={true}` attribute, `justDraggedRef`, drag-start click guard. Added `data-tab-id` attribute for rect caching. Changed `cursor-grab active:cursor-grabbing` to just `cursor-grab`.
+- **No backend changes** — `reorderTabs()` in `stores/workspaces.ts` stays unchanged.
+
+### Feature 2: OS-Level Global Shortcuts (replaces CSP-blocked injected JS)
+- **Problem:** When the user clicks inside the browser webview, focus moves to the separate WebviewWindow. The main React window stops receiving keyboard events. The previous workaround (injecting JS into pages via `XEVO_SHORTCUT_FORWARD_SCRIPT` that calls `__TAURI_INTERNALS__.invoke("forward_shortcut")`) fails on sites with strict CSP (GitHub, etc.) because `ipc-src` or `connect-src` policies block the Tauri IPC call.
+- **Solution:** Use `tauri-plugin-global-shortcut` to register OS-level hotkeys that fire regardless of which window has focus.
+- **`src-tauri/Cargo.toml`** — Added `tauri-plugin-global-shortcut = "2"`.
+- **`src-tauri/src/lib.rs`** — Added `.plugin(tauri_plugin_global_shortcut::Builder::new().build())`. Removed `forward_shortcut` from invoke_handler (18 entries now).
+- **`src-tauri/capabilities/default.json`** — Added `global-shortcut:allow-register`, `global-shortcut:allow-unregister`, `global-shortcut:allow-is-registered` permissions.
+- **`package.json`** — Added `@tauri-apps/plugin-global-shortcut` dependency (v2.3.2).
+- **`src/hooks/useKeyboardShortcuts.ts`** — Extracted shortcut handler into shared `handleShortcut(shortcut, bridge)` function. Kept main-window keydown listener (Mechanism 1) for when React UI has focus (includes input/textarea guards). Added global shortcut registration (Mechanism 2) via `register()` from `@tauri-apps/plugin-global-shortcut` — registers 25 shortcuts (`CommandOrControl+K`, `CommandOrControl+T`, etc.). Normalizes shortcut format (`CommandOrControl+` → `ctrl+`). Both mechanisms call the same handler; all actions are idempotent so double-handling is harmless. Removed `listen("xevo://shortcut")` listener.
+- **`src-tauri/src/commands/browser.rs`** — Removed `XEVO_SHORTCUT_FORWARD_SCRIPT` constant (~100 lines of injected JS). Removed `forward_shortcut` command function. Removed `.initialization_script(XEVO_SHORTCUT_FORWARD_SCRIPT)` from `ensure_browser_window`.
+
+### Files changed
+- `src/components/browser/TabBar.tsx` — full rewrite (pointer-based drag)
+- `src/components/browser/TabItem.tsx` — simplified (removed DnD props)
+- `src/hooks/useKeyboardShortcuts.ts` — rewritten (global shortcuts + shared handler)
+- `src-tauri/Cargo.toml` — added tauri-plugin-global-shortcut
+- `src-tauri/src/lib.rs` — registered plugin, removed forward_shortcut
+- `src-tauri/capabilities/default.json` — added global-shortcut permissions
+- `src-tauri/src/commands/browser.rs` — removed shortcut forwarding script + command
+- `package.json` — added @tauri-apps/plugin-global-shortcut
+
+### Verification
+- `cd src-tauri && cargo check` — clean
+- `pnpm tsc --noEmit` — clean (only pre-existing Zustand selector type issues)
+- invoke_handler count: 18 (removed forward_shortcut)
 

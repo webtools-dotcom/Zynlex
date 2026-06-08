@@ -95,6 +95,10 @@ export async function repositionWebview(
   await invoke<void>("browser_reposition", { x, y, width, height });
 }
 
+export async function setWebviewTheme(theme: "light" | "dark"): Promise<void> {
+  await invoke<void>("browser_set_theme", { theme });
+}
+
 export async function scanPorts(ports: number[]): Promise<ScannedPort[]> {
   return await invoke<ScannedPort[]>("scan_ports", { ports });
 }

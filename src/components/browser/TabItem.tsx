@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { X, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Tab } from "@/types";
@@ -9,21 +9,16 @@ interface TabItemProps {
   onActivate: () => void;
   onClose: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragEnd: (e: React.DragEvent) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent) => void;
-  isDragOver: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;
+  isDropTarget: boolean;
   isDragging: boolean;
 }
 
 export function TabItem({
   tab, isActive, onActivate, onClose, onContextMenu,
-  onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, isDragOver, isDragging,
+  onPointerDown, isDropTarget, isDragging,
 }: TabItemProps) {
   const [faviconError, setFaviconError] = useState<boolean>(false);
-  const justDraggedRef = useRef<boolean>(false);
 
   useEffect(() => {
     setFaviconError(false);
@@ -38,16 +33,7 @@ export function TabItem({
     if (e.button === 1) { e.preventDefault(); onClose(); }
   }
 
-  function handleDragStart(e: React.DragEvent) {
-    justDraggedRef.current = true;
-    onDragStart(e);
-  }
-
   function handleClick() {
-    if (justDraggedRef.current) {
-      justDraggedRef.current = false;
-      return;
-    }
     onActivate();
   }
 
@@ -55,19 +41,15 @@ export function TabItem({
     <div
       role="tab"
       aria-selected={isActive}
-      draggable={true}
+      data-tab-id={tab.id}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
       onContextMenu={onContextMenu}
-      onDragStart={handleDragStart}
-      onDragEnd={onDragEnd}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
+      onPointerDown={onPointerDown}
       className={cn(
         "group relative flex items-center gap-1.5",
         "min-w-[80px] max-w-[180px] h-9 px-2.5",
-        "cursor-grab active:cursor-grabbing select-none flex-shrink-0",
+        "cursor-grab select-none flex-shrink-0",
         "border-r transition-all duration-100",
         isDragging && "opacity-40",
         isActive
@@ -77,7 +59,7 @@ export function TabItem({
       style={{
         background: isActive ? "var(--xevo-tab-active)" : "transparent",
         borderColor: "var(--xevo-border)",
-        borderLeft: isDragOver ? "2px solid var(--xevo-accent)" : undefined,
+        borderLeft: isDropTarget ? "2px solid var(--xevo-accent)" : undefined,
       }}
     >
       {/* Active top line */}
@@ -119,7 +101,6 @@ export function TabItem({
       ) : (
         <button
           onClick={handleCloseClick}
-          draggable={false}
           data-tab-close="true"
           className={cn(
             "flex-shrink-0 w-3.5 h-3.5 rounded-[3px] flex items-center justify-center",

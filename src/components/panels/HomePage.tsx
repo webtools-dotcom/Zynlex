@@ -129,20 +129,23 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
   }
 
   return (
-    <div className="w-full h-full overflow-y-auto pointer-events-auto">
-      <div className="max-w-3xl mx-auto px-6 py-10">
+    <div className="w-full h-full overflow-y-auto pointer-events-auto flex flex-col items-center justify-center min-h-full">
+      <div className="w-full max-w-3xl mx-auto px-6 py-8">
         {/* ── Hero ──────────────────────────────────────────────── */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 mb-4">
+          <div className="flex flex-col items-center gap-3 mb-5">
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-base font-bold"
+              className="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold shadow-sm"
               style={{ background: wsColor, color: "#fff" }}
             >
               {ws?.icon || "🌐"}
             </div>
-            <h1 className="text-2xl font-semibold text-[var(--xevo-text)]">
-              XEVO Home
+            <h1 className="text-3xl font-semibold tracking-tight text-[var(--xevo-text)]">
+              XEVO
             </h1>
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--xevo-text-faint)]">
+              Home
+            </p>
           </div>
           <p className="text-[13px] text-[var(--xevo-text-muted)] mb-6" style={{ letterSpacing: "0.04em" }}>
             <span style={{ color: wsColor }}>{wsName}</span> workspace

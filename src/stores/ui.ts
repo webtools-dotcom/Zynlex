@@ -108,7 +108,7 @@ export const useUIStore = create<UIStore>()(
       }, 2500);
     },
     dismissToast: (id) => set((s) => {
-      s.toasts = s.toasts.filter((t) => t.id !== id);
+      s.toasts = s.toasts.filter((t: Toast) => t.id !== id);
     }),
   }))
 );

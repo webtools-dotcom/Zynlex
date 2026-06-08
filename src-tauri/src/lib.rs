@@ -4,6 +4,7 @@ mod commands;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::browser::browser_navigate,
             commands::browser::browser_set_bounds,
@@ -21,7 +22,7 @@ pub fn run() {
             commands::browser::browser_find_callback,
             commands::browser::browser_stop_loading,
             commands::browser::browser_reposition,
-            commands::browser::forward_shortcut,
+            commands::browser::browser_set_theme,
             commands::ports::scan_ports,
         ])
         .run(tauri::generate_context!())

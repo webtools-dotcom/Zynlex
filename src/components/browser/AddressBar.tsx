@@ -7,9 +7,14 @@ import {
 import { cn } from "@/lib/utils";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
+import { useSettingsStore } from "@/stores/settings";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 
-function resolveInput(raw: string): string {
+function resolveInput(
+  raw: string,
+  searchEngine: string,
+  customSearchUrl: string
+): string {
   const s = raw.trim();
   if (!s) return "";
   if (/^https?:\/\//i.test(s)) return s;
@@ -17,7 +22,13 @@ function resolveInput(raw: string): string {
     return `http://${s}`;
   if (/^[\w-]+\.[\w.-]+(\/.*)?$/.test(s) && !s.includes(" "))
     return `https://${s}`;
-  return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
+  if (searchEngine === "custom" && customSearchUrl) {
+    return customSearchUrl.replace("%s", encodeURIComponent(s));
+  }
+  const engine = searchEngine === "duckduckgo" ? "duckduckgo.com"
+    : searchEngine === "bing" ? "bing.com"
+    : "google.com";
+  return `https://${engine}/search?q=${encodeURIComponent(s)}`;
 }
 
 interface AddressBarProps {
@@ -35,6 +46,7 @@ export function AddressBar({
 }: AddressBarProps) {
   const { workspaces, activeWorkspaceId } = useWorkspacesStore();
   const { tabs } = useTabsStore();
+  const { searchEngine, customSearchUrl } = useSettingsStore((s) => s.settings);
 
   const ws = workspaces[activeWorkspaceId];
   const activeTab = getLiveWorkspaceActiveTab(ws, tabs);
@@ -50,14 +62,14 @@ export function AddressBar({
 
   const handleNavigate = useCallback(
     async (raw: string) => {
-      const url = resolveInput(raw);
+      const url = resolveInput(raw, searchEngine, customSearchUrl);
       if (!url) return;
       setDraft(url);
       if (onNavigate) {
         await onNavigate(url);
       }
     },
-    [onNavigate],
+    [onNavigate, searchEngine, customSearchUrl],
   );
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -69,15 +81,25 @@ export function AddressBar({
   }
 
   useEffect(() => {
+    function focusInput() {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
     function handler(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === "l") {
         e.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
+        focusInput();
       }
     }
+    function onForwarded() {
+      focusInput();
+    }
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("xevo:focus-address-bar", onForwarded);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      window.removeEventListener("xevo:focus-address-bar", onForwarded);
+    };
   }, []);
 
   const isHttps = activeTab?.url?.startsWith("https://") ?? false;
