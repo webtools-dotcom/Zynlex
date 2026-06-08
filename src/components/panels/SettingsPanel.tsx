@@ -11,7 +11,7 @@ import { useUIStore } from "@/stores/ui";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] uppercase tracking-wider text-[var(--xevo-text-faint)] mt-4 mb-2">
+    <div className="text-[10px] uppercase tracking-wider text-[var(--xevo-text-faint)] mt-5 mb-2 pt-4 border-t border-[var(--xevo-border-subtle)] first:mt-0 first:pt-0 first:border-t-0">
       {children}
     </div>
   );
@@ -119,7 +119,7 @@ export function SettingsPanel() {
 
   return (
     <div
-      className="absolute top-0 right-0 w-[300px] h-full border-l z-50 overflow-y-auto p-4"
+      className="absolute top-0 right-0 w-[300px] h-full border-l z-50 overflow-y-auto p-4 shadow-2xl xevo-settings-panel"
       style={{
         background: "var(--xevo-modal-bg)",
         borderColor: "var(--xevo-modal-border)",
@@ -242,7 +242,7 @@ export function SettingsPanel() {
 
       {/* ── About ───────────────────────────────────────────────────── */}
       <div className="text-xs text-[var(--xevo-text-faint)] mt-6 space-y-1">
-        <div>XEVO Browser v0.9.6</div>
+        <div>XEVO Browser v1.1.0</div>
         <div>Open source · Zero telemetry · Zero accounts</div>
       </div>
     </div>

@@ -33,24 +33,24 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
   const activeTabId = getLiveWorkspaceActiveTabId(ws, tabs);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [dragTabId, setDragTabId] = useState<string | null>(null);
-  const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
-  const [dropAtEnd, setDropAtEnd] = useState<boolean>(false);
-  const justDroppedAtPlusRef = useRef<boolean>(false);
+
+  // Pointer-drag state
+  const isDragging = useRef(false);
+  const dragTabIdRef = useRef<string | null>(null);
+  const dragOffsetX = useRef(0);
+  const dragGhostRef = useRef<HTMLDivElement | null>(null);
+  const tabRectsRef = useRef<Map<string, DOMRect>>(new Map());
+  const dropTargetRef = useRef<string | null>(null);
+
+  // State for rendering (only what JSX needs)
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   const openNewTab = useCallback(() => {
     const id = addTab(activeWorkspaceId, { url: "", title: "New Tab" });
     addTabToWorkspace(activeWorkspaceId, id);
     setActiveTab(activeWorkspaceId, id);
   }, [activeWorkspaceId, addTab, addTabToWorkspace, setActiveTab]);
-
-  function openNewTabSafe() {
-    if (justDroppedAtPlusRef.current) {
-      justDroppedAtPlusRef.current = false;
-      return;
-    }
-    openNewTab();
-  }
 
   const handleCloseTab = useCallback((tabId: string) => {
     removeTabFromWorkspace(activeWorkspaceId, tabId);
@@ -62,127 +62,147 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
     setContextMenu({ tabId, x: e.clientX, y: e.clientY });
   }, []);
 
-  const handleDragStart = useCallback((tabId: string, e: React.DragEvent) => {
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", tabId);
-    setDragTabId(tabId);
+  // ── Pointer-based drag handlers ────────────────────────────────────────
 
-    const source = e.currentTarget as HTMLElement;
-    const rect = source.getBoundingClientRect();
-    const ghost = source.cloneNode(true) as HTMLElement;
-    ghost.style.position = "absolute";
-    ghost.style.top = "-9999px";
-    ghost.style.left = "-9999px";
+  const handlePointerDown = useCallback((tabId: string, e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("[data-tab-close]")) return;
+
+    const tabEl = e.currentTarget as HTMLElement;
+    const rect = tabEl.getBoundingClientRect();
+
+    isDragging.current = true;
+    dragTabIdRef.current = tabId;
+    dragOffsetX.current = e.clientX - rect.left;
+
+    // Cache all tab rects for hit testing during move
+    const rects = new Map<string, DOMRect>();
+    const tabBar = tabEl.closest("[data-tab-bar]");
+    if (tabBar) {
+      tabBar.querySelectorAll<HTMLElement>("[role='tab']").forEach((el) => {
+        const id = el.getAttribute("data-tab-id");
+        if (id) rects.set(id, el.getBoundingClientRect());
+      });
+    }
+    tabRectsRef.current = rects;
+
+    // Capture pointer so mousemove fires even outside the tab
+    tabEl.setPointerCapture(e.pointerId);
+
+    // Create ghost element
+    const ghost = tabEl.cloneNode(true) as HTMLDivElement;
+    ghost.style.position = "fixed";
+    ghost.style.top = `${rect.top}px`;
+    ghost.style.left = `${rect.left}px`;
     ghost.style.width = `${rect.width}px`;
-    ghost.style.opacity = "0.85";
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.zIndex = "99999";
+    ghost.style.pointerEvents = "none";
+    ghost.style.opacity = "0.9";
+    ghost.style.transition = "none";
+    ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
+    ghost.style.background = "var(--xevo-tab-active)";
     document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, rect.width / 2, rect.height / 2);
-    requestAnimationFrame(() => {
-      if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
-    });
+    dragGhostRef.current = ghost;
+
+    setDraggingTabId(tabId);
+    setDropTarget(null);
+    dropTargetRef.current = null;
   }, []);
 
-  const handleDragOver = useCallback((tabId: string, e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverTabId(tabId);
-    setDropAtEnd(false);
-  }, []);
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current || !dragGhostRef.current) return;
 
-  const handleContainerDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (e.target === e.currentTarget) {
-      setDropAtEnd(true);
-      setDragOverTabId(null);
+    // Move ghost element
+    const ghostX = e.clientX - dragOffsetX.current;
+    dragGhostRef.current.style.left = `${ghostX}px`;
+
+    // Find which tab we're hovering over using cached rects
+    const rects = tabRectsRef.current;
+    let newTarget: string | null = null;
+
+    for (const [tabId, rect] of rects) {
+      if (tabId === dragTabIdRef.current) continue;
+      if (e.clientX >= rect.left && e.clientX <= rect.right) {
+        newTarget = tabId;
+        break;
+      }
+    }
+
+    // Check if hovering past the last tab (drop at end)
+    if (!newTarget) {
+      const allIds = [...rects.keys()];
+      if (allIds.length > 0) {
+        const lastRect = rects.get(allIds[allIds.length - 1]);
+        if (lastRect && e.clientX > lastRect.right) {
+          newTarget = "__end__";
+        }
+      }
+    }
+
+    // Only update state if target changed
+    if (newTarget !== dropTargetRef.current) {
+      dropTargetRef.current = newTarget;
+      setDropTarget(newTarget);
     }
   }, []);
 
-  const handlePlusDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDropAtEnd(true);
-    setDragOverTabId(null);
-  }, []);
+  const handlePointerUp = useCallback((_e: React.PointerEvent) => {
+    if (!isDragging.current) return;
 
-  const handleContainerDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (dragTabId === null) {
-      setDragTabId(null);
-      setDragOverTabId(null);
-      setDropAtEnd(false);
-      return;
+    // Remove ghost
+    if (dragGhostRef.current) {
+      dragGhostRef.current.remove();
+      dragGhostRef.current = null;
     }
+
+    const sourceId = dragTabIdRef.current;
+    const targetId = dropTargetRef.current;
+
+    // Clean up state
+    isDragging.current = false;
+    dragTabIdRef.current = null;
+    dropTargetRef.current = null;
+    setDraggingTabId(null);
+    setDropTarget(null);
+
+    // If dropped on itself or no target, do nothing
+    if (!sourceId || !targetId || sourceId === targetId) return;
+
+    // Execute reorder using live store reads (avoids stale closures)
     const liveWsId = useWorkspacesStore.getState().activeWorkspaceId;
     const current = useWorkspacesStore.getState().workspaces[liveWsId];
-    if (!current) {
-      setDragTabId(null);
-      setDragOverTabId(null);
-      setDropAtEnd(false);
-      return;
-    }
-    const tabsState = useTabsStore.getState().tabs;
-    const live = getLiveWorkspaceTabIds(current, tabsState);
-    const next = live.filter((id) => id !== dragTabId);
-    next.push(dragTabId);
-    const pinned = next.filter((id) => tabsState[id]?.isPinned);
-    const unpinned = next.filter((id) => !tabsState[id]?.isPinned);
-    reorderTabs(liveWsId, [...pinned, ...unpinned]);
-    justDroppedAtPlusRef.current = true;
-    setDragTabId(null);
-    setDragOverTabId(null);
-    setDropAtEnd(false);
-  }, [dragTabId, reorderTabs]);
+    if (!current) return;
 
-  const handleDrop = useCallback((targetTabId: string, e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (dragTabId === null || dragTabId === targetTabId) {
-      setDragTabId(null);
-      setDragOverTabId(null);
-      setDropAtEnd(false);
-      return;
-    }
-    const liveWsId = useWorkspacesStore.getState().activeWorkspaceId;
-    const current = useWorkspacesStore.getState().workspaces[liveWsId];
-    if (!current) {
-      setDragTabId(null);
-      setDragOverTabId(null);
-      setDropAtEnd(false);
-      return;
-    }
     const tabsState = useTabsStore.getState().tabs;
     const live = getLiveWorkspaceTabIds(current, tabsState);
-    const next = live.filter((id) => id !== dragTabId);
-    const insertAt = next.indexOf(targetTabId);
-    if (insertAt === -1) {
-      next.push(dragTabId);
+    const next = live.filter((id) => id !== sourceId);
+
+    if (targetId === "__end__") {
+      next.push(sourceId);
     } else {
-      next.splice(insertAt, 0, dragTabId);
+      const insertAt = next.indexOf(targetId);
+      if (insertAt === -1) {
+        next.push(sourceId);
+      } else {
+        next.splice(insertAt, 0, sourceId);
+      }
     }
+
+    // Normalize pinned tabs to front
     const pinned = next.filter((id) => tabsState[id]?.isPinned);
     const unpinned = next.filter((id) => !tabsState[id]?.isPinned);
     reorderTabs(liveWsId, [...pinned, ...unpinned]);
-    setDragTabId(null);
-    setDragOverTabId(null);
-    setDropAtEnd(false);
-  }, [dragTabId, reorderTabs]);
+  }, [reorderTabs]);
 
-  const handleDragEnd = useCallback((_e?: React.DragEvent) => {
-    setDragTabId(null);
-    setDragOverTabId(null);
-    setDropAtEnd(false);
-    justDroppedAtPlusRef.current = false;
-  }, []);
-
-  const handleTabDragLeave = useCallback((_tabId: string, e: React.DragEvent) => {
-    const related = e.relatedTarget as HTMLElement | null;
-    if (!related || !related.closest("[data-tab-bar]")) {
-      setDragOverTabId(null);
-      setDropAtEnd(false);
+  const handlePlusPointerOver = useCallback(() => {
+    if (isDragging.current) {
+      dropTargetRef.current = "__end__";
+      setDropTarget("__end__");
     }
   }, []);
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -201,16 +221,14 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
   return (
     <div
       className="h-9 flex items-stretch flex-shrink-0 overflow-hidden"
-      onDragOver={handleContainerDragOver}
-      onDrop={handleContainerDrop}
       data-tab-bar="true"
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
       style={{ background: "var(--xevo-tab-bar)", borderBottom: "1px solid var(--xevo-border-subtle)" }}
     >
       <div
         className="flex items-stretch flex-1 overflow-x-auto"
         style={{ scrollbarWidth: "none" }}
-        onDragOver={handleContainerDragOver}
-        onDrop={handleContainerDrop}
       >
         {tabIds.map((tabId) => {
           const tab = tabs[tabId];
@@ -223,30 +241,22 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
               onActivate={() => setActiveTab(activeWorkspaceId, tabId)}
               onClose={() => handleCloseTab(tabId)}
               onContextMenu={(e) => handleContextMenu(tabId, e)}
-              onDragStart={(e) => handleDragStart(tabId, e)}
-              onDragEnd={() => handleDragEnd()}
-              onDragOver={(e) => handleDragOver(tabId, e)}
-              onDragLeave={(e) => handleTabDragLeave(tabId, e)}
-              onDrop={(e) => {
-                if ((e.target as HTMLElement).closest("[data-tab-close]")) return;
-                handleDrop(tabId, e);
-              }}
-              isDragOver={dragOverTabId === tabId && dragTabId !== tabId}
-              isDragging={dragTabId === tabId}
+              onPointerDown={(e) => handlePointerDown(tabId, e)}
+              isDropTarget={dropTarget === tabId && draggingTabId !== tabId}
+              isDragging={draggingTabId === tabId}
             />
           );
         })}
       </div>
 
       <button
-        onClick={openNewTabSafe}
+        onClick={openNewTab}
         title="New tab (Ctrl+T)"
-        onDragOver={handlePlusDragOver}
-        onDrop={handleContainerDrop}
+        onPointerOver={handlePlusPointerOver}
         className="flex-shrink-0 w-9 flex items-center justify-center text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)] transition-colors border-l"
         style={{
-          borderColor: dropAtEnd ? "var(--xevo-accent)" : "var(--xevo-border)",
-          borderLeftWidth: dropAtEnd ? 2 : 1,
+          borderColor: dropTarget === "__end__" ? "var(--xevo-accent)" : "var(--xevo-border)",
+          borderLeftWidth: dropTarget === "__end__" ? 2 : 1,
         }}
       >
         <Plus size={13} />

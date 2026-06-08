@@ -109,7 +109,7 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
         if (get().workspaceOrder.length <= 1) return;
         set((s) => {
           delete s.workspaces[id];
-          s.workspaceOrder = s.workspaceOrder.filter((i) => i !== id);
+          s.workspaceOrder = s.workspaceOrder.filter((i: string) => i !== id);
           if (s.activeWorkspaceId === id) {
             s.activeWorkspaceId = s.workspaceOrder[0];
           }
@@ -138,7 +138,7 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
         set((s) => {
           const ws = s.workspaces[wsId];
           if (!ws) return;
-          ws.tabIds = ws.tabIds.filter((id) => id !== tabId);
+          ws.tabIds = ws.tabIds.filter((id: string) => id !== tabId);
           if (ws.activeTabId === tabId) {
             ws.activeTabId = ws.tabIds[ws.tabIds.length - 1] ?? null;
           }

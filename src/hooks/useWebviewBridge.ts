@@ -20,12 +20,14 @@ import {
   webviewReload,
   stopLoading,
   repositionWebview,
+  setWebviewTheme,
   onUrlChanged,
   onLoadingChanged,
   onTabInfoChanged,
   onBookmarkRequest,
   type BrowserBounds,
 } from "@/services/browser";
+import { useSettingsStore } from "@/stores/settings";
 import {
   getLiveWorkspaceActiveTab,
   getLiveWorkspaceActiveTabId,
@@ -36,6 +38,18 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 // True only when running inside the Tauri desktop app, not in browser dev mode
 const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** Any React chrome overlay that must sit above the OS-level browser webview. */
+function isChromeOverlayOpen(): boolean {
+  const ui = useUIStore.getState();
+  return (
+    ui.commandPaletteOpen ||
+    ui.shortcutHelpOpen ||
+    ui.settingsPanelOpen ||
+    ui.apiTesterOpen ||
+    ui.findOpen
+  );
+}
 
 export function useWebviewBridge(
   contentAreaRef: React.RefObject<HTMLDivElement | null>
@@ -115,6 +129,26 @@ export function useWebviewBridge(
     }
   }, [getBounds]);
 
+  // Show the browser webview with fresh bounds. Retries when layout
+  // has not settled yet (getBounds returns null briefly after mount).
+  const ensureWebviewVisible = useCallback(
+    (attempt = 0) => {
+      // Never re-show the webview while a chrome overlay is open — that
+      // would paint the OS webview on top of Ctrl+K / Ctrl+F / etc.
+      if (isChromeOverlayOpen()) return;
+
+      const bounds = getBounds();
+      if (bounds) {
+        showWebview(bounds).catch(() => {});
+        return;
+      }
+      if (attempt < 8) {
+        setTimeout(() => ensureWebviewVisible(attempt + 1), 50);
+      }
+    },
+    [getBounds]
+  );
+
   // Navigate action (called by AddressBar on Enter).
   // Re-read bounds first so the browser window stays aligned with the
   // content area when the active tab changes.
@@ -150,13 +184,14 @@ export function useWebviewBridge(
           });
         }
         await navigateWebview(url, bounds);
+        ensureWebviewVisible();
       } catch {
         if (activeTabId) {
           updateTab(activeTabId, { isLoading: false });
         }
       }
     },
-    [activeTabId, updateTab, getBounds]
+    [activeTabId, updateTab, getBounds, ensureWebviewVisible]
   );
 
   const goBack = useCallback(async () => {
@@ -329,11 +364,13 @@ export function useWebviewBridge(
         isSwitchingTabRef.current = false;
         return;
       }
-      navigateWebview(tabUrl, bounds).finally(() => {
-        setTimeout(() => {
-          isSwitchingTabRef.current = false;
-        }, 500);
-      });
+      navigateWebview(tabUrl, bounds)
+        .then(() => ensureWebviewVisible())
+        .finally(() => {
+          setTimeout(() => {
+            isSwitchingTabRef.current = false;
+          }, 500);
+        });
     }, 100);
 
     return () => clearTimeout(showTimer);
@@ -396,30 +433,63 @@ export function useWebviewBridge(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidebarOpen]);
 
-  // Hide/show webview when command palette or shortcut help modal opens/closes
+  // Hide/show webview when chrome overlays open. The browser WebviewWindow is
+  // a separate OS surface above the React content area — the only way to keep
+  // Ctrl+K / Ctrl+F / settings / etc. visible is to hide the webview first.
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
+  const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
+  const apiTesterOpen = useUIStore((s) => s.apiTesterOpen);
+  const findOpen = useUIStore((s) => s.findOpen);
   useEffect(() => {
     if (!IS_TAURI) return;
-    const anyModalOpen = commandPaletteOpen || shortcutHelpOpen;
+    const overlayOpen =
+      commandPaletteOpen ||
+      shortcutHelpOpen ||
+      settingsPanelOpen ||
+      apiTesterOpen ||
+      findOpen;
     const wsState = useWorkspacesStore.getState();
     const ws = wsState.workspaces[wsState.activeWorkspaceId];
     const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
     const hasUrl = !!tab?.url;
-    if (!hasUrl) return;
 
-    if (anyModalOpen) {
+    if (overlayOpen && hasUrl) {
       hideWebview().catch(() => {});
-    } else {
-      const timer = setTimeout(() => {
-        const bounds = getBounds();
-        if (bounds) {
-          showWebview(bounds).catch(() => {});
-        }
-      }, 50);
+      return;
+    }
+
+    if (!overlayOpen && hasUrl) {
+      const timer = setTimeout(() => ensureWebviewVisible(), 50);
       return () => clearTimeout(timer);
     }
-  }, [commandPaletteOpen, shortcutHelpOpen, activeTab?.url, getBounds]);
+  }, [
+    commandPaletteOpen,
+    shortcutHelpOpen,
+    settingsPanelOpen,
+    apiTesterOpen,
+    findOpen,
+    activeTabId,
+    ensureWebviewVisible,
+  ]);
+
+  // Sync color-scheme to the browser webview when theme changes
+  const theme = useSettingsStore((s) => s.settings.theme);
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const wsState = useWorkspacesStore.getState();
+    const ws = wsState.workspaces[wsState.activeWorkspaceId];
+    const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
+    if (!tab?.url) return;
+
+    let resolved: "light" | "dark" = theme === "light" ? "light" : "dark";
+    if (theme === "system") {
+      resolved = window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    }
+    setWebviewTheme(resolved).catch(() => {});
+  }, [theme, activeTab?.url]);
 
   return useMemo(
     () => ({ navigate, goBack, goForward, reload, syncBounds, stopLoading }),

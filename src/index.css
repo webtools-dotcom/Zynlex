@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 /* ── XEVO Global Resets ───────────────────────────────────── */
 *, *::before, *::after {
@@ -114,6 +113,15 @@ input:focus, textarea:focus, select:focus {
 @keyframes xevo-progress-done {
   0%   { width: 90%;  opacity: 1; }
   100% { width: 100%; opacity: 0; }
+}
+
+/* ── Settings panel slide-in ──────────────────────────────── */
+@keyframes xevo-settings-slide-in {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.xevo-settings-panel {
+  animation: xevo-settings-slide-in 0.2s ease-out;
 }
 
 /* ── Compact mode (toggled via App.tsx xevo-compact class) ── */

@@ -251,66 +251,6 @@ const XEVO_BOOKMARK_SCRIPT: &str = r##"
 })();
 "##;
 
-const XEVO_SHORTCUT_FORWARD_SCRIPT: &str = r##"
-(function() {
-  var SHORTCUTS = {
-    "d": "ctrl+d",
-    "k": "ctrl+k",
-    "t": "ctrl+t",
-    "w": "ctrl+w",
-    "r": "ctrl+r",
-    "b": "ctrl+b",
-    ",": "ctrl+,"
-  };
-
-  function isEditableTarget(t) {
-    if (!t) return false;
-    var tag = (t.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "select") return true;
-    if (t.isContentEditable) return true;
-    return false;
-  }
-
-  function onKeyDown(e) {
-    var mod = e.ctrlKey || e.metaKey;
-    if (!mod) return;
-    if (isEditableTarget(e.target)) return;
-
-    // Ctrl+Shift+T (reopen last closed tab)
-    if (e.shiftKey && !e.altKey && (e.key === "T" || e.key === "t")) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-      try {
-        if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-          window.__TAURI_INTERNALS__.invoke("forward_shortcut", { shortcut: "ctrl+shift+t" });
-        }
-      } catch (err) {}
-      return;
-    }
-
-    // Ctrl+<key> shortcuts (no shift, no alt)
-    if (e.shiftKey || e.altKey) return;
-    var mapping = SHORTCUTS[e.key];
-    if (mapping) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-      try {
-        if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-          window.__TAURI_INTERNALS__.invoke("forward_shortcut", { shortcut: mapping });
-        }
-      } catch (err) {}
-    }
-  }
-
-  document.addEventListener("keydown", onKeyDown, true);
-  document.addEventListener("DOMContentLoaded", function() {
-    document.addEventListener("keydown", onKeyDown, true);
-  });
-})();
-"##;
-
 const BROWSER_LABEL: &str = "browser";
 
 const BROWSER_INIT_SCRIPT: &str = r#"
@@ -552,7 +492,6 @@ fn ensure_browser_window(
             .initialization_script(BROWSER_INIT_SCRIPT)
             .initialization_script(XEVO_FIND_SCRIPT)
             .initialization_script(XEVO_BOOKMARK_SCRIPT)
-            .initialization_script(XEVO_SHORTCUT_FORWARD_SCRIPT)
             .on_navigation(move |nav_url| {
                 let url_str = nav_url.to_string();
                 let _ = app_for_nav.emit("browser://url-changed", url_str);
@@ -590,7 +529,7 @@ fn ensure_browser_window(
     if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
       window.__TAURI_INTERNALS__.invoke("update_tab_info", {
         title: title, url: url, favicon: favicon
-      });
+      }).catch(function() {});
     }
   } catch (e) {}
 })();
@@ -888,8 +827,25 @@ pub async fn browser_reposition(
 }
 
 #[tauri::command]
-pub fn forward_shortcut(app: AppHandle, shortcut: String) -> Result<(), String> {
-    app.emit("xevo://shortcut", shortcut)
-        .map_err(|e| e.to_string())?;
+pub async fn browser_set_theme(app: AppHandle, theme: String) -> Result<(), String> {
+    let scheme = if theme == "light" { "light" } else { "dark" };
+    let script = format!(
+        r#"(function() {{
+  try {{
+    var t = "{scheme}";
+    document.documentElement.style.colorScheme = t;
+    var meta = document.querySelector('meta[name="color-scheme"]');
+    if (!meta) {{
+      meta = document.createElement("meta");
+      meta.name = "color-scheme";
+      if (document.head) document.head.appendChild(meta);
+    }}
+    meta.content = t;
+  }} catch (e) {{}}
+}})();"#
+    );
+    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
+        let _ = wv.eval(&script);
+    }
     Ok(())
 }
