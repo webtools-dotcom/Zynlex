@@ -28,6 +28,7 @@ import {
   type BrowserBounds,
 } from "@/services/browser";
 import { useSettingsStore } from "@/stores/settings";
+import { useHistoryStore } from "@/stores/history";
 import {
   getLiveWorkspaceActiveTab,
   getLiveWorkspaceActiveTabId,
@@ -46,7 +47,6 @@ function isChromeOverlayOpen(): boolean {
     ui.commandPaletteOpen ||
     ui.shortcutHelpOpen ||
     ui.settingsPanelOpen ||
-    ui.apiTesterOpen ||
     ui.findOpen
   );
 }
@@ -87,20 +87,16 @@ export function useWebviewBridge(
     if (!el) return null;
     const rect = el.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return null;
+    const ui = useUIStore.getState();
+    const overlayH = ui.overlayPanel !== "none"
+      ? ui.overlayHeight * rect.height
+      : 0;
     const bounds = {
       x: Math.round(rect.left + window.screenX),
-      y: Math.round(rect.top + window.screenY),
+      y: Math.round(rect.top + window.screenY + overlayH),
       width: Math.round(rect.width),
-      height: Math.round(rect.height),
+      height: Math.round(rect.height - overlayH),
     };
-    console.log("[XEVO-BOUNDS]", {
-      rect: {
-        left: rect.left, top: rect.top,
-        width: rect.width, height: rect.height,
-      },
-      screenX: window.screenX, screenY: window.screenY,
-      computed: bounds,
-    });
     return bounds;
   }, [contentAreaRef]);
 
@@ -163,6 +159,9 @@ export function useWebviewBridge(
       }
       const bounds = getBounds();
       if (!bounds) return;
+      const displayTitle = url
+        .replace(/^https?:\/\/(www\.)?/, "")
+        .split("/")[0];
       try {
         if (activeTabId) {
           // Save the current URL to the tab's back stack before navigating
@@ -174,9 +173,6 @@ export function useWebviewBridge(
           // Show the URL domain (e.g. "google.com") as the tab title
           // immediately. document.title from the page can take 1-2s to
           // arrive via Rust, and "New Tab" is a poor placeholder.
-          const displayTitle = url
-            .replace(/^https?:\/\/(www\.)?/, "")
-            .split("/")[0];
           updateTab(activeTabId, {
             url,
             isLoading: true,
@@ -184,6 +180,15 @@ export function useWebviewBridge(
           });
         }
         await navigateWebview(url, bounds);
+        // Record to global history
+        const wsState = useWorkspacesStore.getState();
+        useHistoryStore.getState().addEntry({
+          url,
+          title: displayTitle,
+          favicon: null,
+          timestamp: Date.now(),
+          workspaceId: wsState.activeWorkspaceId,
+        });
         ensureWebviewVisible();
       } catch {
         if (activeTabId) {
@@ -265,6 +270,14 @@ export function useWebviewBridge(
         const currentTab = useTabsStore.getState().tabs[tabId];
         if (currentTab && currentTab.url && currentTab.url !== url) {
           useTabsStore.getState().recordNavigation(tabId, currentTab.url);
+          // Record to global history on in-page navigation too
+          useHistoryStore.getState().addEntry({
+            url,
+            title: url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0],
+            favicon: null,
+            timestamp: Date.now(),
+            workspaceId: state.activeWorkspaceId,
+          });
         }
         useTabsStore.getState().updateTab(tabId, { url, title: url });
       }
@@ -436,11 +449,14 @@ export function useWebviewBridge(
   // Hide/show webview when chrome overlays open. The browser WebviewWindow is
   // a separate OS surface above the React content area — the only way to keep
   // Ctrl+K / Ctrl+F / settings / etc. visible is to hide the webview first.
+  // Split-view overlays (api-tester, notes-notepad) do NOT hide the webview —
+  // they resize it to share the content area.
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
   const apiTesterOpen = useUIStore((s) => s.apiTesterOpen);
   const findOpen = useUIStore((s) => s.findOpen);
+  const overlayPanel = useUIStore((s) => s.overlayPanel);
   useEffect(() => {
     if (!IS_TAURI) return;
     const overlayOpen =
@@ -472,6 +488,37 @@ export function useWebviewBridge(
     activeTabId,
     ensureWebviewVisible,
   ]);
+
+  // Sync webview bounds when overlay panel opens/closes/resizes.
+  // The overlay resizes the content area allocation, so the webview
+  // must reposition to the reduced bounds.
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const wsState = useWorkspacesStore.getState();
+    const ws = wsState.workspaces[wsState.activeWorkspaceId];
+    const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
+    if (!tab?.url) return;
+    const timer = setTimeout(() => {
+      syncBounds();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [overlayPanel, syncBounds]);
+
+  // Sync webview bounds when overlay is drag-resized.
+  // The overlayPanel effect above handles open/close, but overlayHeight
+  // changes during dragging need their own sync trigger.
+  const overlayHeight = useUIStore((s) => s.overlayHeight);
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const ui = useUIStore.getState();
+    if (ui.overlayPanel === "none") return;
+    const wsState = useWorkspacesStore.getState();
+    const ws = wsState.workspaces[wsState.activeWorkspaceId];
+    const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
+    if (!tab?.url) return;
+    const timer = setTimeout(() => syncBounds(), 30);
+    return () => clearTimeout(timer);
+  }, [overlayHeight, syncBounds]);
 
   // Sync color-scheme to the browser webview when theme changes
   const theme = useSettingsStore((s) => s.settings.theme);

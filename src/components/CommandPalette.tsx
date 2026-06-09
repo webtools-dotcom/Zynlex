@@ -114,10 +114,10 @@ export function CommandPalette() {
         id: "cmd-api-tester",
         type: "command",
         label: "Open API Tester",
-        sublabel: "Test HTTP endpoints in a full window",
+        sublabel: "Test HTTP endpoints in a split panel",
         icon: <Code2 size={14} className="text-[var(--xevo-text-muted)]" />,
         action: () => {
-          useUIStore.getState().openApiTester();
+          useUIStore.getState().openOverlay("api-tester");
           useUIStore.getState().closeCommandPalette();
         },
       },

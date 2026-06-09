@@ -21,7 +21,7 @@ const METHOD_COLORS: Record<string, string> = {
 };
 
 export function ApiTesterPanel() {
-  const openApiTester = useUIStore((s) => s.openApiTester);
+  const openOverlay = useUIStore((s) => s.openOverlay);
   const history = useApiHistoryStore((s) => s.history);
   const clearHistory = useApiHistoryStore((s) => s.clearHistory);
 
@@ -36,7 +36,7 @@ export function ApiTesterPanel() {
 
       {/* Open button card */}
       <button
-        onClick={openApiTester}
+        onClick={() => openOverlay("api-tester")}
         className="flex items-center gap-2 p-3 rounded-md text-left border border-[var(--xevo-border)] bg-[var(--xevo-modal-bg)] hover:border-[var(--xevo-accent)] hover:bg-[var(--xevo-hover)] transition-colors"
       >
         <Code2 size={16} className="text-[var(--xevo-accent)] flex-shrink-0" />
@@ -105,7 +105,7 @@ export function ApiTesterPanel() {
             {history.slice(0, 5).map((h) => (
               <button
                 key={h.id}
-                onClick={openApiTester}
+                onClick={() => openOverlay("api-tester")}
                 className="w-full flex items-center gap-1.5 px-2 py-1 text-left hover:bg-[var(--xevo-hover)] transition-colors"
               >
                 <span

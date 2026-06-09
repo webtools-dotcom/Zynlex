@@ -8,6 +8,8 @@ import { useServersStore } from "@/stores/servers";
 import { useTabsStore } from "@/stores/tabs";
 import { BookmarksPanel } from "@/components/sidebar/BookmarksPanel";
 import { ApiTesterPanel } from "@/components/sidebar/ApiTesterPanel";
+import { HistoryPanel } from "@/components/sidebar/HistoryPanel";
+import { NotesSidebarPanel } from "@/components/sidebar/NotesSidebarPanel";
 import { JwtDecoder } from "@/components/panels/JwtDecoder";
 import { Base64Tool } from "@/components/panels/Base64Tool";
 import type { PanelId } from "@/types";
@@ -191,12 +193,16 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto">
         {activePanel === "servers" && <LiveServersPanel />}
         {activePanel === "bookmarks" && <BookmarksPanel />}
+        {activePanel === "history" && <HistoryPanel />}
         {activePanel === "api" && <ApiTesterPanel />}
+        {activePanel === "notes" && <NotesSidebarPanel />}
         {activePanel === "jwt" && <JwtDecoder />}
         {activePanel === "base64" && <Base64Tool />}
         {activePanel !== "servers" &&
           activePanel !== "bookmarks" &&
+          activePanel !== "history" &&
           activePanel !== "api" &&
+          activePanel !== "notes" &&
           activePanel !== "jwt" &&
           activePanel !== "base64" &&
           activePanel !== null && (

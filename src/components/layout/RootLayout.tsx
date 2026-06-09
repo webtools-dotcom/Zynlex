@@ -7,7 +7,6 @@ import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutHelp } from "@/components/ShortcutHelp";
 import { Toast } from "@/components/Toast";
-import { ApiTester } from "@/components/panels/ApiTester";
 import { useUIStore } from "@/stores/ui";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
@@ -23,8 +22,6 @@ export function RootLayout() {
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
-  const apiTesterOpen = useUIStore((s) => s.apiTesterOpen);
-  const closeApiTester = useUIStore((s) => s.closeApiTester);
 
   const workspaces = useWorkspacesStore((s) => s.workspaces);
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
@@ -53,7 +50,6 @@ export function RootLayout() {
       <StatusBar isLoading={isLoading} loadTime={loadTime} url={url} hoveredUrl={null} />
       {commandPaletteOpen && <CommandPalette />}
       {shortcutHelpOpen && <ShortcutHelp />}
-      {apiTesterOpen && <ApiTester embedded={false} onClose={closeApiTester} />}
       <Toast />
     </div>
   );

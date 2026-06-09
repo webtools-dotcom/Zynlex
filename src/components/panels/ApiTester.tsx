@@ -409,7 +409,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
 
   if (embedded) {
     return (
-      <div className="flex flex-col h-full bg-[var(--xevo-content-bg)]">
+      <div className="flex flex-col h-full overflow-hidden">
         <EmbeddedBody {...sharedProps} />
       </div>
     );
