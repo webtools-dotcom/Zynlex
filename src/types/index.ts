@@ -131,3 +131,29 @@ export interface ApiHistoryEntry {
   durationMs: number;
   createdAt: number;
 }
+
+// ─── Overlay Panel ────────────────────────────────────────────────
+
+export type OverlayPanelId = "none" | "api-tester" | "notes-notepad";
+
+// ─── History ──────────────────────────────────────────────────────
+
+export interface HistoryEntry {
+  id: string;
+  url: string;
+  title: string;
+  favicon: string | null;
+  timestamp: number;
+  workspaceId: string;
+}
+
+// ─── Notes ────────────────────────────────────────────────────────
+
+export interface Note {
+  id: string;
+  workspaceId: string;
+  title: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+}

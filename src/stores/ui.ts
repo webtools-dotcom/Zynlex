@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { PanelId } from "@/types";
+import type { PanelId, OverlayPanelId } from "@/types";
 
 export type ToastKind = "success" | "info" | "danger";
 
@@ -23,6 +23,8 @@ interface UIStore {
   findActiveMatch: number;
   findTotalMatches: number;
   apiTesterOpen: boolean;
+  overlayPanel: OverlayPanelId;
+  overlayHeight: number;
   toasts: Toast[];
 
   setSidebarOpen: (v: boolean) => void;
@@ -44,6 +46,9 @@ interface UIStore {
   setFindResult: (active: number, total: number) => void;
   openApiTester: () => void;
   closeApiTester: () => void;
+  openOverlay: (panel: OverlayPanelId, height?: number) => void;
+  closeOverlay: () => void;
+  setOverlayHeight: (h: number) => void;
   pushToast: (message: string, kind?: ToastKind) => void;
   dismissToast: (id: string) => void;
 }
@@ -66,6 +71,8 @@ export const useUIStore = create<UIStore>()(
     findActiveMatch: 0,
     findTotalMatches: 0,
     apiTesterOpen: false,
+    overlayPanel: "none",
+    overlayHeight: 0.4,
     toasts: [],
 
     setSidebarOpen: (v) => set((s) => { s.sidebarOpen = v; }),
@@ -98,6 +105,12 @@ export const useUIStore = create<UIStore>()(
     }),
     openApiTester: () => set((s) => { s.apiTesterOpen = true; }),
     closeApiTester: () => set((s) => { s.apiTesterOpen = false; }),
+    openOverlay: (panel, height) => set((s) => {
+      s.overlayPanel = panel;
+      if (height !== undefined) s.overlayHeight = height;
+    }),
+    closeOverlay: () => set((s) => { s.overlayPanel = "none"; }),
+    setOverlayHeight: (h) => set((s) => { s.overlayHeight = Math.max(0.2, Math.min(0.8, h)); }),
     pushToast: (message, kind = "info") => {
       const id = genToastId();
       set((s) => {

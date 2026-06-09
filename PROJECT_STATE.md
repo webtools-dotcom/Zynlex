@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.5.0
-## Last Updated: 2026-06-08
-## Status: Session 16 complete — pointer-based tab reorder (replaced broken HTML5 DnD in WebView2) + OS-level global shortcuts via tauri-plugin-global-shortcut (replaces CSP-blocked injected JS forwarding). Removed XEVO_SHORTCUT_FORWARD_SCRIPT and forward_shortcut command. `cargo check` + `pnpm tsc --noEmit` clean. 18 invoke_handler entries.
+## Version: v1.6.0
+## Last Updated: 2026-06-09
+## Status: Session 17 complete — overlay panel system (split-view: API tester + notepad appear above webview without hiding it), History panel (sidebar, last 100 navigations, delete/clear), Notes system (quick notes in sidebar + full notepad overlay). `cargo check` + `pnpm tsc --noEmit` clean. 18 invoke_handler entries.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -151,9 +151,7 @@
 - Port scanner: HTTP title shown in sidebar tooltip
 - Port scanner: manual "add custom port" UI
 - Tab-per-WebviewWindow (true browser-window-per-tab architecture for memory isolation and per-tab native history)
-- History panel (sidebar — `activePanel === "history"`) — last 100 navigations
 - Network log panel (sidebar — `activePanel === "network"`)
-- Notes panel (sidebar — `activePanel === "notes"`) — per-workspace scratch pad
 - API tester: persist request history to localStorage
 - API tester: response body type detection (HTML preview, image preview, JSON tree)
 - API tester: saved collections / environments / duplicate
@@ -1551,4 +1549,156 @@ src/index.css                                    ← settings slide-in animation
 - `cd src-tauri && cargo check` — clean
 - `pnpm tsc --noEmit` — clean (only pre-existing Zustand selector type issues)
 - invoke_handler count: 18 (removed forward_shortcut)
+
+## CHANGES THIS SESSION (Session 17 — v1.5.0 → v1.6.0)
+
+### Overlay Panel System (split-view architecture)
+**Problem:** The browser webview is a separate OS-level `WebviewWindow` that sits ABOVE the main Tauri window in z-order. React's `position: fixed; z-index: 9999` overlays cannot appear above it. The previous workaround was to HIDE the webview when any overlay opened (command palette, settings, API tester, etc.), causing a "black screen" when the full API tester was opened.
+
+**Solution:** Split-view overlay pattern. When an overlay panel opens (API tester or Notes notepad), the webview is RESIZED (not hidden) to occupy the bottom portion of the content area. The overlay panel renders in the freed-up top portion. Both are visible simultaneously.
+
+**How it works:**
+1. `ui.ts` store gains `overlayPanel: "none" | "api-tester" | "notes-notepad"` and `overlayHeight: number` (0.0-1.0, default 0.4)
+2. `getBounds()` in `useWebviewBridge.ts` reduces the webview height by `overlayHeight * contentArea.height` when an overlay is active
+3. `OverlayPanel.tsx` renders as `position: absolute; top: 0; height: overlayHeight%` inside the content area's relative container
+4. The overlay has a drag handle at the bottom for resizing
+5. Esc key closes the overlay panel
+6. `isChromeOverlayOpen()` no longer includes `apiTesterOpen` — overlay panels don't hide the webview
+
+### History Panel
+- **New store:** `src/stores/history.ts` — Zustand + persist (localStorage key: `xevo-history`). `HistoryEntry = { id, url, title, favicon, timestamp, workspaceId }`. Max 100 entries (FIFO). Actions: `addEntry`, `removeEntry`, `clearForWorkspace`, `clearAll`.
+- **New component:** `src/components/sidebar/HistoryPanel.tsx` — Groups entries by date (Today, Yesterday, Earlier). Each row: favicon, title, domain, relative time. Hover reveals: open, delete icons. Header with "Clear all" (window.confirm). Empty state with clock icon.
+- **Navigation hook:** `useWebviewBridge.ts` now calls `historyStore.addEntry()` on both explicit navigation (address bar Enter) and in-page navigation (onUrlChanged events).
+
+### Notes System (Quick Notes + Full Notepad)
+- **New store:** `src/stores/notes.ts` — Zustand + persist (localStorage key: `xevo-notes`). `Note = { id, workspaceId, title, content, createdAt, updatedAt }`. Actions: `createNote`, `updateNote`, `deleteNote`, `getNotesByWorkspace`.
+- **New component:** `src/components/sidebar/NotesSidebarPanel.tsx` — "Open Notes" button (opens full notepad overlay). Quick notes section: vertical list of note cards with expand/collapse, inline rename, delete. Add note button (+).
+- **New component:** `src/components/panels/NotesNotepad.tsx` — Full notepad for overlay. Split layout: note list sidebar (search, new note button) + editor (title input, textarea with auto-save, word/char count). Per-workspace filtering.
+
+### API Tester Integration
+- **Modified:** `ApiTesterPanel.tsx` — "Open API Tester" button now calls `openOverlay("api-tester")` instead of `openApiTester()`.
+- **Modified:** `ApiTester.tsx` — `embedded` mode now renders `<EmbeddedBody />` directly without `bg-[var(--xevo-content-bg)]` (overlay provides the background).
+- **Modified:** `CommandPalette.tsx` — "Open API Tester" command now calls `openOverlay("api-tester")`.
+- **Modified:** `RootLayout.tsx` — Removed `ApiTester` import and the `{apiTesterOpen && <ApiTester />}` modal rendering (now handled by overlay in BrowserChrome).
+- **Modified:** `BrowserChrome.tsx` — Mounts `<OverlayPanel>` with `apiTesterContent` and `notesContent` props.
+
+### Files changed
+- `src/types/index.ts` — Added `OverlayPanelId`, `HistoryEntry`, `Note` types
+- `src/stores/ui.ts` — Added `overlayPanel`, `overlayHeight` state + `openOverlay`, `closeOverlay`, `setOverlayHeight` actions
+- `src/stores/history.ts` — NEW: history store with persist
+- `src/stores/notes.ts` — NEW: notes store with persist
+- `src/components/overlay/OverlayPanel.tsx` — NEW: overlay panel with drag-to-resize
+- `src/components/sidebar/HistoryPanel.tsx` — NEW: sidebar history panel
+- `src/components/sidebar/NotesSidebarPanel.tsx` — NEW: sidebar notes panel (quick notes)
+- `src/components/panels/NotesNotepad.tsx` — NEW: full notepad for overlay
+- `src/components/panels/ApiTester.tsx` — Updated embedded mode styling
+- `src/components/sidebar/ApiTesterPanel.tsx` — Uses openOverlay instead of openApiTester
+- `src/components/sidebar/Sidebar.tsx` — Renders HistoryPanel and NotesSidebarPanel
+- `src/components/browser/BrowserChrome.tsx` — Mounts OverlayPanel with content
+- `src/components/layout/RootLayout.tsx` — Removed old ApiTester modal
+- `src/components/CommandPalette.tsx` — Updated API tester command
+- `src/hooks/useWebviewBridge.ts` — getBounds accounts for overlay height, history recording, isChromeOverlayOpen excludes overlayPanel, overlay bounds sync effect
+
+### Verification
+- `cd src-tauri && cargo check` — clean
+- `pnpm tsc --noEmit` — clean
+- invoke_handler count: 18 (unchanged — no Rust changes)
+
+## WORKTREE SNAPSHOT (2026-06-09)
+```text
+.gitignore
+.vscode\extensions.json
+AGENTS.md
+ARCHITECTURE.md
+README.md
+TASKS.md
+PROJECT_STATE.md
+components.json
+index.html
+package.json
+pnpm-workspace.yaml
+tsconfig.json
+tsconfig.node.json
+vite.config.ts
+
+public\tauri.svg
+public\vite.svg
+
+src\App.tsx
+src\main.tsx
+src\index.css
+src\vite-env.d.ts
+src\types\index.ts                 ← + OverlayPanelId, HistoryEntry, Note types
+src\lib\utils.ts
+src\lib\workspaceTabs.ts
+src\lib\bookmarkAction.ts
+
+src\stores\tabs.ts
+src\stores\workspaces.ts
+src\stores\settings.ts
+src\stores\ui.ts                  ← + overlayPanel, overlayHeight, openOverlay/closeOverlay
+src\stores\servers.ts
+src\stores\bookmarks.ts
+src\stores\apiHistory.ts
+src\stores\history.ts             ← NEW: history store (persist)
+src\stores\notes.ts               ← NEW: notes store (persist)
+
+src\services\browser.ts
+
+src\hooks\useWebviewBridge.ts     ← + overlay bounds, history recording
+src\hooks\useKeyboardShortcuts.ts
+src\hooks\usePortScanner.ts
+
+src\components\CommandPalette.tsx  ← openOverlay for API tester
+src\components\ShortcutHelp.tsx
+src\components\Toast.tsx
+
+src\components\layout\RootLayout.tsx      ← removed ApiTester modal
+src\components\overlay\OverlayPanel.tsx   ← NEW: overlay panel with drag-resize
+
+src\components\sidebar\Sidebar.tsx          ← renders HistoryPanel + NotesSidebarPanel
+src\components\sidebar\WorkspaceSwitcher.tsx
+src\components\sidebar\BookmarksPanel.tsx
+src\components\sidebar\ApiTesterPanel.tsx   ← uses openOverlay
+src\components\sidebar\HistoryPanel.tsx     ← NEW: history sidebar panel
+src\components\sidebar\NotesSidebarPanel.tsx ← NEW: notes sidebar panel
+src\components\sidebar\WorkspaceContextMenu.tsx
+
+src\components\browser\TabBar.tsx
+src\components\browser\TabItem.tsx
+src\components\browser\TabContextMenu.tsx
+src\components\browser\AddressBar.tsx
+src\components\browser\BrowserChrome.tsx   ← mounts OverlayPanel
+src\components\browser\LoadingBar.tsx
+src\components\browser\FindBar.tsx
+src\components\browser\StatusBar.tsx
+src\components\browser\ContentArea.tsx
+
+src\components\panels\ApiTester.tsx         ← updated embedded mode
+src\components\panels\NotesNotepad.tsx     ← NEW: full notepad overlay
+src\components\panels\HomePage.tsx
+src\components\panels\SettingsPanel.tsx
+src\components\panels\JwtDecoder.tsx
+src\components\panels\Base64Tool.tsx
+
+src\components\ui\badge.tsx
+src\components\ui\button.tsx
+src\components\ui\input.tsx
+src\components\ui\separator.tsx
+src\components\ui\tooltip.tsx
+
+src-tauri\.gitignore
+src-tauri\Cargo.toml
+src-tauri\Cargo.lock
+src-tauri\tauri.conf.json
+src-tauri\build.rs
+src-tauri\capabilities\default.json
+src-tauri\icons\ (18 icon files)
+
+src-tauri\src\main.rs
+src-tauri\src\lib.rs                ← 18 invoke handlers (unchanged)
+src-tauri\src\commands\mod.rs
+src-tauri\src\commands\browser.rs
+src-tauri\src\commands\ports.rs
+```
 

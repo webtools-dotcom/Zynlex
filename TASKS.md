@@ -357,4 +357,39 @@
 - [x] Task 66: Final integration test — pending human-run `pnpm tauri dev`
 - [x] Task 67: Updated PROJECT_STATE.md to v1.1.0 with new worktree, completed features, and CHANGES THIS SESSION
 
+## Session 17 (v1.6.0 — overlay panels + history + notes) — DONE
+
+- [x] Task 68: Overlay panel system (split-view architecture)
+  - [x] 68.1 — Added `OverlayPanelId` type, `HistoryEntry` type, `Note` type to `src/types/index.ts`
+  - [x] 68.2 — Added `overlayPanel`, `overlayHeight`, `openOverlay`, `closeOverlay`, `setOverlayHeight` to `src/stores/ui.ts`
+  - [x] 68.3 — Created `src/components/overlay/OverlayPanel.tsx` (absolute-positioned, drag-to-resize handle, Esc to close)
+  - [x] 68.4 — Updated `src/hooks/useWebviewBridge.ts`: `getBounds()` reduces height by `overlayHeight * contentArea.height` when overlay active; `isChromeOverlayOpen()` no longer includes `apiTesterOpen`; new useEffect syncs bounds when overlay opens/closes
+  - [x] 68.5 — Mounted `OverlayPanel` in `src/components/browser/BrowserChrome.tsx` with apiTesterContent and notesContent props
+  - [x] 68.6 — Updated `src/components/panels/ApiTester.tsx` embedded mode styling
+  - [x] 68.7 — Updated `src/components/sidebar/ApiTesterPanel.tsx` to use `openOverlay("api-tester")`
+  - [x] 68.8 — Updated `src/components/CommandPalette.tsx` to use `openOverlay("api-tester")`
+  - [x] 68.9 — Removed `ApiTester` modal from `src/components/layout/RootLayout.tsx`
+
+- [x] Task 69: History panel
+  - [x] 69.1 — Created `src/stores/history.ts` (Zustand + persist, max 100 entries, FIFO)
+  - [x] 69.2 — Created `src/components/sidebar/HistoryPanel.tsx` (grouped by date, delete/clear, open in new tab)
+  - [x] 69.3 — Hooked `historyStore.addEntry()` into `useWebviewBridge.ts` navigate() and onUrlChanged
+
+- [x] Task 70: Notes system
+  - [x] 70.1 — Created `src/stores/notes.ts` (Zustand + persist, per-workspace)
+  - [x] 70.2 — Created `src/components/sidebar/NotesSidebarPanel.tsx` (quick notes, expand/collapse, inline rename, "Open Notes" button)
+  - [x] 70.3 — Created `src/components/panels/NotesNotepad.tsx` (full notepad: note list sidebar + editor, auto-save, word count)
+
+- [x] Task 71: Sidebar wiring
+  - [x] 71.1 — Updated `src/components/sidebar/Sidebar.tsx` to render `HistoryPanel` and `NotesSidebarPanel`
+  - [x] 71.2 — Updated condition checks for "Coming soon" placeholder
+
+- [x] Task 72: Verification
+  - [x] 72.1 — `cd src-tauri && cargo check` — clean
+  - [x] 72.2 — `pnpm tsc --noEmit` — clean
+  - [x] 72.3 — Updated PROJECT_STATE.md to v1.6.0
+  - [x] 72.4 — Updated TASKS.md
+  - [ ] 72.5 — Runtime GUI verification: pending human-run `pnpm tauri dev`
+
+
 
