@@ -36,7 +36,7 @@ It contains:
 - latest decisions and known caveats
 
 **You must update this after every completed task.** Since you just did the work, you know exactly what changed. Write it down. The next session — whether it's another agent or a new chat — depends on this being accurate. If you skip this update, you are creating a lie that will cause future failures. also in the proejct state file, in the end update that file with the exact whole repo structure worktree. 
-
+REMEMBER THIS CAREFULLY TO UPDATE THIS PROJECT_STATE.md FILE AFTER EVERY TASK DONE AND DONT JUST WRITE THE WHOLE PARAGRAPH FOR SOME SMALL BUG FIX, INSTEAD TRY TO JUST SUMMARIZE THE WHOLE TASK AND WRITE ONLY IMPORTANT THING IN THIS FILE SO THAT ANY NEXT AI CAN EASILY UNDERSTAND WHAT EXACTLY HAPPENED IN THIS TASK AND THE PROJECT_STATE.md FILE ALSO NOT GET TOO BIG
 ---
 
 ### `TASKS.md` — READ + UPDATE STATUS ONLY

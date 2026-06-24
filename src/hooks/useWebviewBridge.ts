@@ -1,11 +1,15 @@
 /**
- * useWebviewBridge - manages the browser WebviewWindow bridge.
+ * useWebviewBridge - manages per-tab browser WebviewWindow bridge.
+ *
+ * Architecture: each tab gets its own WebviewWindow (label "browser-{tabId}").
+ * Tab switching = hide old webview + show new (no reload, state preserved).
  *
  * Responsibilities:
- * - Subscribes to URL/loading/tab-info events from Rust and updates Zustand
- * - Navigates the browser window when the active tab changes
- * - Hides the browser window when switching to an empty (no-URL) tab
- * - Keeps browser bounds in sync with the content area element
+ * - Creates webviews lazily on first navigation
+ * - Activates (hide/show) on tab switch
+ * - Closes webviews on tab close
+ * - Keeps active tab's webview bounds in sync with the content area
+ * - Subscribes to per-tab events from Rust and updates Zustand
  * - Exposes navigate / goBack / goForward / reload actions
  */
 import { useEffect, useRef, useCallback, useMemo } from "react";
@@ -13,13 +17,17 @@ import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useUIStore } from "@/stores/ui";
 import {
-  navigateWebview,
+  createTab,
+  activateTab,
+  navigateTab,
   setWebviewBounds,
-  hideWebview,
-  showWebview,
+  repositionWebview,
+  hideTabWebview,
+  showTabWebview,
+  webviewGoBack,
+  webviewGoForward,
   webviewReload,
   stopLoading,
-  repositionWebview,
   setWebviewTheme,
   onUrlChanged,
   onLoadingChanged,
@@ -36,9 +44,14 @@ import {
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-// True only when running inside the Tauri desktop app, not in browser dev mode
 const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_WINDOWS =
+  typeof navigator !== "undefined" &&
+  /Windows|Win32|Win64|WOW64/i.test(
+    `${navigator.userAgent} ${navigator.platform}`
+  );
+const BROWSER_EDGE_INSET = 4;
 
 /** Any React chrome overlay that must sit above the OS-level browser webview. */
 function isChromeOverlayOpen(): boolean {
@@ -63,50 +76,44 @@ export function useWebviewBridge(
   const activeTab = getLiveWorkspaceActiveTab(ws, tabs);
   const activeTabId = activeTab?.id ?? null;
 
-  // Prevent re-entrant tab-switch navigation
-  const isSwitchingTabRef = useRef(false);
   // Track last bounds to avoid redundant Rust calls
   const lastBoundsRef = useRef<BrowserBounds | null>(null);
-  // Track the previously active tab id so we can save its URL to history
-  // before switching away.
-  const prevActiveTabIdRef = useRef<string | null>(null);
   // Track when loading started so we can report load time on completion.
   const loadStartRef = useRef<number | null>(null);
+  // Track maximize state to detect maximize/restore transitions.
+  const wasMaximizedRef = useRef(false);
+  // Throttle onMoved to avoid spamming Rust during drag (~60 events/sec).
+  const lastMoveRef = useRef(0);
+  // Track minimize state — suppress syncBounds while minimized.
+  const isMinimizedRef = useRef(false);
+  // Track which tabs have been created (have a WebviewWindow).
+  const createdTabsRef = useRef<Set<string>>(new Set());
 
-  // Compute bounds from the content area DOM element.
-  // Returns screen-relative LOGICAL (CSS) pixels. Tauri 2's
-  // WebviewWindowBuilder + WebviewWindow::set_position(Logical) APIs
-  // expect logical pixels; the OS scales to physical via DPI. The
-  // browser window is a top-level window (parent: main) so it needs
-  // absolute screen coordinates. window.screenX/Y give the viewport's
-  // top-left in CSS pixels (Tauri 2 WebView2, not the OS window's
-  // frame top-left like a normal browser), so adding rect.left/top
-  // directly yields the correct content-area screen position.
-  const getBounds = useCallback((): BrowserBounds | null => {
-    const el = contentAreaRef.current;
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 10) return null;
-    const ui = useUIStore.getState();
-    const overlayH = ui.overlayPanel !== "none"
-      ? ui.overlayHeight * rect.height
-      : 0;
-    const bounds = {
-      x: Math.round(rect.left + window.screenX),
-      y: Math.round(rect.top + window.screenY + overlayH),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height - overlayH),
-    };
-    return bounds;
-  }, [contentAreaRef]);
-
-  // Sync bounds with Rust (called on resize).
-  // 5px threshold filters tiny relayout jitter so we do not spam Rust with
-  // redundant bounds updates.
-  const syncBounds = useCallback(async () => {
+  // ── Ref-based syncBounds ──────────────────────────────────────────
+  const syncBoundsRef = useRef<() => void>(() => {});
+  syncBoundsRef.current = () => {
     if (!IS_TAURI) return;
-    const bounds = getBounds();
-    if (!bounds) return;
+    if (isMinimizedRef.current) return;
+    const tabId = useWorkspacesStore.getState().workspaces[
+      useWorkspacesStore.getState().activeWorkspaceId
+    ]?.activeTabId;
+    if (!tabId) return;
+    const el = contentAreaRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return;
+    const ui = useUIStore.getState();
+    const overlayH =
+      ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
+    const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
+    const width = Math.max(1, rect.width - edgeInset * 2);
+    const height = Math.max(1, rect.height - overlayH - edgeInset * 2);
+    const bounds: BrowserBounds = {
+      x: Math.round(rect.left + window.screenX + edgeInset),
+      y: Math.round(rect.top + window.screenY + overlayH + edgeInset),
+      width: Math.round(width),
+      height: Math.round(height),
+    };
     const last = lastBoundsRef.current;
     if (
       last &&
@@ -115,88 +122,103 @@ export function useWebviewBridge(
       Math.abs(last.width - bounds.width) < 5 &&
       Math.abs(last.height - bounds.height) < 5
     ) {
-      return; // No meaningful change (filters 2px browser-window relayout shift)
+      return;
     }
     lastBoundsRef.current = bounds;
-    try {
-      await setWebviewBounds(bounds);
-    } catch {
-      // Bounds sync failed - not critical
-    }
-  }, [getBounds]);
+    setWebviewBounds(tabId, bounds).catch(() => {});
+  };
 
-  // Show the browser webview with fresh bounds. Retries when layout
-  // has not settled yet (getBounds returns null briefly after mount).
+  const syncBounds = useCallback(() => syncBoundsRef.current(), []);
+
+  // Show the active tab's webview with fresh bounds.
   const ensureWebviewVisible = useCallback(
     (attempt = 0) => {
-      // Never re-show the webview while a chrome overlay is open — that
-      // would paint the OS webview on top of Ctrl+K / Ctrl+F / etc.
       if (isChromeOverlayOpen()) return;
-
-      const bounds = getBounds();
-      if (bounds) {
-        showWebview(bounds).catch(() => {});
+      const tabId = useWorkspacesStore.getState().workspaces[
+        useWorkspacesStore.getState().activeWorkspaceId
+      ]?.activeTabId;
+      if (!tabId) return;
+      const el = contentAreaRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) {
+        if (attempt < 8) {
+          setTimeout(() => ensureWebviewVisible(attempt + 1), 50);
+        }
         return;
       }
-      if (attempt < 8) {
-        setTimeout(() => ensureWebviewVisible(attempt + 1), 50);
-      }
+      const ui = useUIStore.getState();
+      const overlayH =
+        ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
+      const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
+      const bounds: BrowserBounds = {
+        x: Math.round(rect.left + window.screenX + edgeInset),
+        y: Math.round(rect.top + window.screenY + overlayH + edgeInset),
+        width: Math.round(Math.max(1, rect.width - edgeInset * 2)),
+        height: Math.round(Math.max(1, rect.height - overlayH - edgeInset * 2)),
+      };
+      showTabWebview(tabId, bounds).catch(() => {});
     },
-    [getBounds]
+    [contentAreaRef]
   );
 
   // Navigate action (called by AddressBar on Enter).
-  // Re-read bounds first so the browser window stays aligned with the
-  // content area when the active tab changes.
   const navigate = useCallback(
     async (url: string) => {
       if (!IS_TAURI) {
-        // In browser dev mode: just update tab state visually
         if (activeTabId) {
           updateTab(activeTabId, { url, title: url, isLoading: false });
         }
         return;
       }
-      const bounds = getBounds();
-      if (!bounds) return;
+      const el = contentAreaRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return;
+      const ui = useUIStore.getState();
+      const overlayH =
+        ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
+      const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
+      const bounds: BrowserBounds = {
+        x: Math.round(rect.left + window.screenX + edgeInset),
+        y: Math.round(rect.top + window.screenY + overlayH + edgeInset),
+        width: Math.round(Math.max(1, rect.width - edgeInset * 2)),
+        height: Math.round(Math.max(1, rect.height - overlayH - edgeInset * 2)),
+      };
       const displayTitle = url
         .replace(/^https?:\/\/(www\.)?/, "")
         .split("/")[0];
       try {
         if (activeTabId) {
-          // Save the current URL to the tab's back stack before navigating
-          // away. This makes the previous page reachable via goBack().
-          const currentTab = useTabsStore.getState().tabs[activeTabId];
-          if (currentTab && currentTab.url) {
-            useTabsStore.getState().recordNavigation(activeTabId, currentTab.url);
-          }
-          // Show the URL domain (e.g. "google.com") as the tab title
-          // immediately. document.title from the page can take 1-2s to
-          // arrive via Rust, and "New Tab" is a poor placeholder.
           updateTab(activeTabId, {
             url,
             isLoading: true,
             title: displayTitle,
           });
+
+          if (createdTabsRef.current.has(activeTabId)) {
+            // Webview already exists — just navigate it
+            await navigateTab(activeTabId, url);
+          } else {
+            // First navigation — create the webview
+            await createTab(activeTabId, url, bounds);
+            createdTabsRef.current.add(activeTabId);
+          }
         }
-        await navigateWebview(url, bounds);
-        // Record to global history
-        const wsState = useWorkspacesStore.getState();
         useHistoryStore.getState().addEntry({
           url,
           title: displayTitle,
           favicon: null,
           timestamp: Date.now(),
-          workspaceId: wsState.activeWorkspaceId,
+          workspaceId: useWorkspacesStore.getState().activeWorkspaceId,
         });
-        ensureWebviewVisible();
       } catch {
         if (activeTabId) {
           updateTab(activeTabId, { isLoading: false });
         }
       }
     },
-    [activeTabId, updateTab, getBounds, ensureWebviewVisible]
+    [activeTabId, updateTab, contentAreaRef]
   );
 
   const goBack = useCallback(async () => {
@@ -206,17 +228,8 @@ export function useWebviewBridge(
       useTabsStore.getState().tabs
     );
     if (!tabId) return;
-    const prevUrl = useTabsStore.getState().popBack(tabId);
-    if (!prevUrl) return;
-    const bounds = getBounds();
-    if (!bounds) return;
-    isSwitchingTabRef.current = true;
-    try {
-      await navigateWebview(prevUrl, bounds);
-    } finally {
-      setTimeout(() => { isSwitchingTabRef.current = false; }, 500);
-    }
-  }, [activeTabId, getBounds]);
+    await webviewGoBack(tabId);
+  }, [activeTabId]);
 
   const goForward = useCallback(async () => {
     if (!IS_TAURI) return;
@@ -225,23 +238,30 @@ export function useWebviewBridge(
       useTabsStore.getState().tabs
     );
     if (!tabId) return;
-    const nextUrl = useTabsStore.getState().popForward(tabId);
-    if (!nextUrl) return;
-    const bounds = getBounds();
-    if (!bounds) return;
-    isSwitchingTabRef.current = true;
-    try {
-      await navigateWebview(nextUrl, bounds);
-    } finally {
-      setTimeout(() => { isSwitchingTabRef.current = false; }, 500);
-    }
-  }, [activeTabId, getBounds]);
+    await webviewGoForward(tabId);
+  }, [activeTabId]);
 
   const reload = useCallback(async () => {
-    if (IS_TAURI) await webviewReload().catch(console.error);
-  }, []);
+    if (!IS_TAURI) return;
+    const tabId = activeTabId ?? getLiveWorkspaceActiveTabId(
+      useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
+      useTabsStore.getState().tabs
+    );
+    if (!tabId) return;
+    await webviewReload(tabId);
+  }, [activeTabId]);
 
-  // Subscribe to Rust events.
+  const stopLoadingAction = useCallback(async () => {
+    if (!IS_TAURI) return;
+    const tabId = activeTabId ?? getLiveWorkspaceActiveTabId(
+      useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
+      useTabsStore.getState().tabs
+    );
+    if (!tabId) return;
+    await stopLoading(tabId);
+  }, [activeTabId]);
+
+  // ── Subscribe to Rust events (per-tab) ──────────────────────────
   useEffect(() => {
     if (!IS_TAURI) return;
     let unUrl: (() => void) | null = null;
@@ -249,82 +269,51 @@ export function useWebviewBridge(
     let unTabInfo: (() => void) | null = null;
     let unBookmark: (() => void) | null = null;
 
-    // The webview's Ctrl+D handler (XEVO_BOOKMARK_SCRIPT) invokes
-    // `browser_bookmark_request`, Rust emits `browser://bookmark-request`,
-    // and we route it to the shared toggleBookmarkForActiveTab().
     onBookmarkRequest(() => {
       toggleBookmarkForActiveTab();
     }).then((fn) => {
       unBookmark = fn;
     });
 
-    onUrlChanged((url) => {
-      // Skip URL updates that we ourselves triggered via tab switching
-      if (isSwitchingTabRef.current) return;
-      const state = useWorkspacesStore.getState();
-      const tabId = getLiveWorkspaceActiveTabId(
-        state.workspaces[state.activeWorkspaceId],
-        useTabsStore.getState().tabs
-      );
-      if (tabId) {
-        const currentTab = useTabsStore.getState().tabs[tabId];
-        if (currentTab && currentTab.url && currentTab.url !== url) {
-          useTabsStore.getState().recordNavigation(tabId, currentTab.url);
-          // Record to global history on in-page navigation too
-          useHistoryStore.getState().addEntry({
-            url,
-            title: url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0],
-            favicon: null,
-            timestamp: Date.now(),
-            workspaceId: state.activeWorkspaceId,
-          });
-        }
-        useTabsStore.getState().updateTab(tabId, { url, title: url });
-      }
+    onUrlChanged((tabId, url) => {
+      useTabsStore.getState().updateTab(tabId, { url });
+      // Record to global history
+      const wsState = useWorkspacesStore.getState();
+      useHistoryStore.getState().addEntry({
+        url,
+        title: url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0],
+        favicon: null,
+        timestamp: Date.now(),
+        workspaceId: wsState.activeWorkspaceId,
+      });
     }).then((fn) => {
       unUrl = fn;
     });
 
-    onLoadingChanged((loading) => {
-      const state = useWorkspacesStore.getState();
-      const tabId = getLiveWorkspaceActiveTabId(
-        state.workspaces[state.activeWorkspaceId],
-        useTabsStore.getState().tabs
-      );
-      if (tabId) {
-        if (loading) {
-          loadStartRef.current = Date.now();
-          useTabsStore.getState().updateTab(tabId, { isLoading: true });
-        } else {
-          const elapsed = loadStartRef.current !== null
-            ? Date.now() - loadStartRef.current
-            : null;
-          loadStartRef.current = null;
-          useTabsStore.getState().updateTab(tabId, {
-            isLoading: false,
-            loadTime: elapsed,
-          });
-        }
+    onLoadingChanged((tabId, loading) => {
+      if (loading) {
+        loadStartRef.current = Date.now();
+        useTabsStore.getState().updateTab(tabId, { isLoading: true });
+      } else {
+        const elapsed = loadStartRef.current !== null
+          ? Date.now() - loadStartRef.current
+          : null;
+        loadStartRef.current = null;
+        useTabsStore.getState().updateTab(tabId, {
+          isLoading: false,
+          loadTime: elapsed,
+        });
       }
     }).then((fn) => {
       unLoading = fn;
     });
 
-    onTabInfoChanged((info) => {
-      const state = useWorkspacesStore.getState();
-      const tabId = getLiveWorkspaceActiveTabId(
-        state.workspaces[state.activeWorkspaceId],
-        useTabsStore.getState().tabs
-      );
-      if (!tabId) return;
+    onTabInfoChanged((tabId, info) => {
       useTabsStore
         .getState()
         .updateTab(tabId, { title: info.title, favicon: info.favicon ?? null });
-      if (!isSwitchingTabRef.current) {
-        const currentTab = useTabsStore.getState().tabs[tabId];
-        if (currentTab && currentTab.url !== info.url) {
-          useTabsStore.getState().updateTab(tabId, { url: info.url });
-        }
+      if (info.url) {
+        useTabsStore.getState().updateTab(tabId, { url: info.url });
       }
     }).then((fn) => {
       unTabInfo = fn;
@@ -338,59 +327,51 @@ export function useWebviewBridge(
     };
   }, []);
 
-  // TAB SWITCHING: navigate the browser window when the active tab changes.
-  // The WebviewWindow is a single persistent instance built once per
-  // session via WebviewWindowBuilder. On tab switch we just call
-  // navigateWebview(url, bounds).
+  // ── TAB SWITCHING: activate the target tab's webview ─────────────
+  // No navigation! Just hide old + show new. State is preserved.
   useEffect(() => {
     if (!IS_TAURI) return;
+    if (!activeTabId) return;
 
     const tabUrl = activeTab?.url ?? "";
 
-    // Before switching away from the previous tab, save its current URL
-    // to that tab's back stack so Back can return to it.
-    const prevTabId = prevActiveTabIdRef.current;
-    if (prevTabId && prevTabId !== activeTabId) {
-      const prevTab = useTabsStore.getState().tabs[prevTabId];
-      if (prevTab && prevTab.url) {
-        useTabsStore.getState().recordNavigation(prevTabId, prevTab.url);
-      }
-    }
-    prevActiveTabIdRef.current = activeTabId;
-
     if (!tabUrl) {
-      // Empty tab -> hide the browser window so the placeholder shows
-      hideWebview().catch(() => {
-        // Webview might not exist yet (first launch) - that's fine
-      });
+      // Empty tab -> hide the currently active webview so the HomePage shows.
+      // Find which tab was previously active by checking all created tabs.
+      // We hide all browser webviews except we can't know which was visible.
+      // Simplest: hide all created webviews.
+      for (const tid of createdTabsRef.current) {
+        hideTabWebview(tid).catch(() => {});
+      }
       return;
     }
 
-    // Tab has a URL -> navigate browser window to it. Guard prevents the
-    // navigation's on_navigation echo from overwriting the tab URL with a
-    // redirect destination for ~500ms after the navigate fires.
-    isSwitchingTabRef.current = true;
+    // Tab has a URL -> activate its webview (create if needed)
+    const el = contentAreaRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return;
+    const ui = useUIStore.getState();
+    const overlayH =
+      ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
+    const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
+    const bounds: BrowserBounds = {
+      x: Math.round(rect.left + window.screenX + edgeInset),
+      y: Math.round(rect.top + window.screenY + overlayH + edgeInset),
+      width: Math.round(Math.max(1, rect.width - edgeInset * 2)),
+      height: Math.round(Math.max(1, rect.height - overlayH - edgeInset * 2)),
+    };
 
-    const showTimer = setTimeout(() => {
-      const bounds = getBounds();
-      if (!bounds) {
-        isSwitchingTabRef.current = false;
-        return;
-      }
-      navigateWebview(tabUrl, bounds)
-        .then(() => ensureWebviewVisible())
-        .finally(() => {
-          setTimeout(() => {
-            isSwitchingTabRef.current = false;
-          }, 500);
-        });
-    }, 100);
+    activateTab(activeTabId, tabUrl, bounds)
+      .then(() => {
+        createdTabsRef.current.add(activeTabId);
+      })
+      .catch(() => {});
 
-    return () => clearTimeout(showTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTabId]); // Only fire when the ACTIVE TAB ID changes
+  }, [activeTabId]);
 
-  // ResizeObserver: sync bounds when the content area or window resizes.
+  // ── ResizeObserver: sync bounds when content area or window resizes ──
   useEffect(() => {
     if (!IS_TAURI) return;
     const el = contentAreaRef.current;
@@ -399,58 +380,100 @@ export function useWebviewBridge(
       syncBounds();
     });
     observer.observe(el);
-    // Also observe documentElement so window resizes propagate too.
-    // The browser window is positioned independently from the React tree,
-    // so the root element can change its target bounds even when the content
-    // area element itself does not.
     observer.observe(document.documentElement);
-    syncBounds(); // Initial sync
+    syncBounds();
     return () => observer.disconnect();
   }, [contentAreaRef, syncBounds]);
 
-  // Listen for main window moves. ResizeObserver only fires on size
-  // changes, not position changes, so dragging the OS window leaves the
-  // browser out of sync until the next resize. The onMoved event gives
-  // us the new viewport origin in CSS pixels; syncBounds re-derives
-  // absolute bounds from the current rect.
+  // ── Window move + resize listeners ────────────────────────────────
   useEffect(() => {
     if (!IS_TAURI) return;
-    let unlisten: (() => void) | null = null;
+    let unmove: (() => void) | null = null;
+    let unresize: (() => void) | null = null;
+
     getCurrentWindow()
       .onMoved(() => {
-        syncBounds();
+        const now = performance.now();
+        if (now - lastMoveRef.current < 16) return;
+        lastMoveRef.current = now;
+        requestAnimationFrame(() => syncBoundsRef.current());
       })
       .then((fn) => {
-        unlisten = fn;
+        unmove = fn;
       });
-    return () => {
-      unlisten?.();
-    };
-  }, [syncBounds]);
 
-  // Reposition webview when sidebar toggles (content area changes size)
+    getCurrentWindow()
+      .onResized(() => {
+        setTimeout(() => syncBoundsRef.current(), 50);
+      })
+      .then((fn) => {
+        unresize = fn;
+      });
+
+    return () => {
+      unmove?.();
+      unresize?.();
+    };
+  }, []);
+
+  // ── Minimize state listener ──────────────────────────────────────
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const unlisten = getCurrentWindow().listen<boolean>("xevo://minimize-state", (event) => {
+      isMinimizedRef.current = event.payload;
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
+  // ── Detect maximize/restore transitions ──────────────────────────
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    let disposed = false;
+    const unlisten = getCurrentWindow().onResized(async () => {
+      if (disposed) return;
+      const isMax = await getCurrentWindow().isMaximized();
+      if (wasMaximizedRef.current !== isMax) {
+        wasMaximizedRef.current = isMax;
+        lastBoundsRef.current = null;
+        setTimeout(() => syncBoundsRef.current(), 60);
+      }
+    });
+    return () => {
+      disposed = true;
+      unlisten.then((fn) => fn?.());
+    };
+  }, []);
+
+  // ── Reposition on sidebar toggle ────────────────────────────────
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   useEffect(() => {
     if (!IS_TAURI) return;
     const timer = setTimeout(() => {
-      const bounds = getBounds();
-      if (!bounds) return;
       const wsState = useWorkspacesStore.getState();
       const ws = wsState.workspaces[wsState.activeWorkspaceId];
       const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
-      if (tab?.url) {
-        repositionWebview(bounds.x, bounds.y, bounds.width, bounds.height).catch(() => {});
-      }
+      if (!tab?.url) return;
+      const el = contentAreaRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return;
+      const ui = useUIStore.getState();
+      const overlayH =
+        ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
+      const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
+      repositionWebview(
+        tab.id,
+        Math.round(rect.left + window.screenX + edgeInset),
+        Math.round(rect.top + window.screenY + overlayH + edgeInset),
+        Math.round(Math.max(1, rect.width - edgeInset * 2)),
+        Math.round(Math.max(1, rect.height - overlayH - edgeInset * 2))
+      ).catch(() => {});
     }, 80);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidebarOpen]);
 
-  // Hide/show webview when chrome overlays open. The browser WebviewWindow is
-  // a separate OS surface above the React content area — the only way to keep
-  // Ctrl+K / Ctrl+F / settings / etc. visible is to hide the webview first.
-  // Split-view overlays (api-tester, notes-notepad) do NOT hide the webview —
-  // they resize it to share the content area.
+  // ── Hide/show webview when chrome overlays open ──────────────────
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
@@ -471,7 +494,7 @@ export function useWebviewBridge(
     const hasUrl = !!tab?.url;
 
     if (overlayOpen && hasUrl) {
-      hideWebview().catch(() => {});
+      hideTabWebview(tab!.id).catch(() => {});
       return;
     }
 
@@ -489,9 +512,7 @@ export function useWebviewBridge(
     ensureWebviewVisible,
   ]);
 
-  // Sync webview bounds when overlay panel opens/closes/resizes.
-  // The overlay resizes the content area allocation, so the webview
-  // must reposition to the reduced bounds.
+  // ── Sync bounds when overlay panel opens/closes/resizes ──────────
   useEffect(() => {
     if (!IS_TAURI) return;
     const wsState = useWorkspacesStore.getState();
@@ -504,9 +525,7 @@ export function useWebviewBridge(
     return () => clearTimeout(timer);
   }, [overlayPanel, syncBounds]);
 
-  // Sync webview bounds when overlay is drag-resized.
-  // The overlayPanel effect above handles open/close, but overlayHeight
-  // changes during dragging need their own sync trigger.
+  // ── Sync bounds when overlay is drag-resized ─────────────────────
   const overlayHeight = useUIStore((s) => s.overlayHeight);
   useEffect(() => {
     if (!IS_TAURI) return;
@@ -520,15 +539,10 @@ export function useWebviewBridge(
     return () => clearTimeout(timer);
   }, [overlayHeight, syncBounds]);
 
-  // Sync color-scheme to the browser webview when theme changes
+  // ── Sync theme to all browser webviews ───────────────────────────
   const theme = useSettingsStore((s) => s.settings.theme);
   useEffect(() => {
     if (!IS_TAURI) return;
-    const wsState = useWorkspacesStore.getState();
-    const ws = wsState.workspaces[wsState.activeWorkspaceId];
-    const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
-    if (!tab?.url) return;
-
     let resolved: "light" | "dark" = theme === "light" ? "light" : "dark";
     if (theme === "system") {
       resolved = window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -536,10 +550,17 @@ export function useWebviewBridge(
         : "light";
     }
     setWebviewTheme(resolved).catch(() => {});
-  }, [theme, activeTab?.url]);
+  }, [theme]);
 
   return useMemo(
-    () => ({ navigate, goBack, goForward, reload, syncBounds, stopLoading }),
-    [navigate, goBack, goForward, reload, syncBounds]
+    () => ({
+      navigate,
+      goBack,
+      goForward,
+      reload,
+      syncBounds,
+      stopLoading: stopLoadingAction,
+    }),
+    [navigate, goBack, goForward, reload, syncBounds, stopLoadingAction]
   );
 }

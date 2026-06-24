@@ -5,9 +5,9 @@
  *   1. Main-window keydown listener — works when the user is focused on
  *      the React UI (address bar, sidebar, etc.). Handles input/textarea
  *      guards so shortcuts don't fire while typing.
- *   2. OS-level global shortcuts via tauri-plugin-global-shortcut — works
- *      when the user is focused on the browser webview (e.g. browsing
- *      GitHub). Fires regardless of which window has focus.
+  *   2. Browser-focus shortcut bridge via xevo://shortcut � the browser
+ *      webview injects a keydown listener that forwards shortcuts to Rust,
+ *      which re-emits them back to this hook.
  *
  * Both mechanisms call the same shared handleShortcut() function.
  * All actions are idempotent, so double-handling (when both fire
@@ -33,7 +33,7 @@
  *   Ctrl/Cmd+1..9          → switch to tab N
  */
 import { useEffect, useRef } from "react";
-import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useUIStore } from "@/stores/ui";
 import { useTabsStore } from "@/stores/tabs";
@@ -42,6 +42,7 @@ import {
   getLiveWorkspaceTabIds,
 } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
+import { closeTabWebview } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
@@ -90,6 +91,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     if (tabId) {
       useWorkspacesStore.getState().removeTabFromWorkspace(wsId, tabId);
       useTabsStore.getState().closeTab(tabId);
+      closeTabWebview(tabId).catch(() => {});
     }
     return;
   }
@@ -109,7 +111,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     return;
   }
 
-  if (shortcut === "ctrl+?") {
+  if (shortcut === "ctrl+?" || shortcut === "ctrl+shift+/") {
     useUIStore.getState().openShortcutHelp();
     return;
   }
@@ -418,53 +420,28 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
     return () => window.removeEventListener("keydown", onKey);
   }, [bridge]);
 
-  // ── Mechanism 2: OS-level global shortcuts ──────────────────────────
-  // Works when the browser webview has focus. Bypasses CSP entirely.
+  // ── Mechanism 2: Browser-focus shortcut bridge ───────────────────────
+  // Works when the browser webview has focus. The webview injects a
+  // keydown listener that forwards shortcuts to Rust, which re-emits
+  // them here as xevo://shortcut events.
   useEffect(() => {
-    const shortcuts = [
-      "CommandOrControl+K",
-      "CommandOrControl+Shift+?",
-      "CommandOrControl+F",
-      "CommandOrControl+D",
-      "CommandOrControl+B",
-      "CommandOrControl+,",
-      "CommandOrControl+R",
-      "CommandOrControl+T",
-      "CommandOrControl+W",
-      "CommandOrControl+Shift+T",
-      "CommandOrControl+L",
-      "Alt+ArrowLeft",
-      "Alt+ArrowRight",
-      "Escape",
-      "CommandOrControl+Tab",
-      "CommandOrControl+Shift+Tab",
-      "CommandOrControl+1",
-      "CommandOrControl+2",
-      "CommandOrControl+3",
-      "CommandOrControl+4",
-      "CommandOrControl+5",
-      "CommandOrControl+6",
-      "CommandOrControl+7",
-      "CommandOrControl+8",
-      "CommandOrControl+9",
-    ];
+    let cancelled = false;
+    let unlisten: UnlistenFn | null = null;
 
-    register(shortcuts, (event) => {
-      if (event.state !== "Pressed") return;
-
-      const raw = event.shortcut
-        .replace("CommandOrControl+", "ctrl+")
-        .replace("Meta+", "ctrl+")
-        .toLowerCase();
-
-      // Normalize modifier order: "ctrl+shift+?" stays as-is
-      handleShortcut(raw, bridgeRef.current);
-    }).catch((err) => {
-      console.warn("[xevo] global shortcut registration failed:", err);
+    void listen<string>("xevo://shortcut", (e) => {
+      handleShortcut(e.payload.toLowerCase(), bridgeRef.current);
+    }).then((fn) => {
+      if (cancelled) {
+        fn();
+        return;
+      }
+      unlisten = fn;
     });
 
     return () => {
-      unregisterAll().catch(() => {});
+      cancelled = true;
+      unlisten?.();
     };
   }, []);
 }
+

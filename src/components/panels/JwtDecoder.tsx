@@ -103,8 +103,8 @@ export function JwtDecoder() {
       <div className="flex justify-end">
         <button
           onClick={handlePaste}
-          className="text-[10px] px-2 py-0.5 rounded border text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)] transition-colors"
-          style={{ borderColor: "var(--xevo-border)" }}
+          className="text-[10px] px-2 py-0.5 rounded border text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
+          style={{ borderColor: "var(--color-border)" }}
         >
           Paste
         </button>
@@ -117,14 +117,14 @@ export function JwtDecoder() {
         placeholder="Paste JWT token here or press Paste ↑"
         className="w-full resize-none font-mono text-[11px] p-2 rounded border outline-none"
         style={{
-          background: "var(--xevo-content-bg)",
-          borderColor: "var(--xevo-border)",
-          color: "var(--xevo-text)",
+          background: "var(--color-base)",
+          borderColor: "var(--color-border)",
+          color: "var(--color-text-primary)",
         }}
       />
 
       {error !== null && (
-        <p className="text-[11px] px-1" style={{ color: "var(--xevo-danger)" }}>
+        <p className="text-[11px] px-1" style={{ color: "var(--color-dead)" }}>
           {error}
         </p>
       )}
@@ -134,9 +134,9 @@ export function JwtDecoder() {
           <span
             className="inline-block self-start px-2 py-0.5 rounded font-mono text-[10px]"
             style={{
-              background: "var(--xevo-modal-bg)",
-              border: "1px solid var(--xevo-border)",
-              color: "var(--xevo-text-muted)",
+              background: "var(--color-elevated)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text-muted)",
             }}
           >
             ALG: {parsed.algorithm}
@@ -147,7 +147,7 @@ export function JwtDecoder() {
             <button
               onClick={() => setHeaderOpen(!headerOpen)}
               className="text-[10px] font-semibold tracking-widest uppercase w-full text-left py-1"
-              style={{ color: "var(--xevo-text-muted)" }}
+              style={{ color: "var(--color-text-muted)" }}
             >
               {headerOpen ? "▾ HEADER" : "▸ HEADER"}
             </button>
@@ -157,17 +157,17 @@ export function JwtDecoder() {
                   <div
                     key={key}
                     className="flex gap-1.5 py-0.5 border-b"
-                    style={{ borderColor: "var(--xevo-border)" }}
+                    style={{ borderColor: "var(--color-border)" }}
                   >
                     <span
                       className="text-[11px] font-mono min-w-[60px] flex-shrink-0"
-                      style={{ color: "var(--xevo-accent)" }}
+                      style={{ color: "var(--color-accent)" }}
                     >
                       {key}
                     </span>
                     <span
                       className="text-[11px] font-mono break-all"
-                      style={{ color: "var(--xevo-text-muted)" }}
+                      style={{ color: "var(--color-text-muted)" }}
                     >
                       {typeof val === "object" ? JSON.stringify(val) : String(val)}
                     </span>
@@ -182,7 +182,7 @@ export function JwtDecoder() {
             <button
               onClick={() => setPayloadOpen(!payloadOpen)}
               className="text-[10px] font-semibold tracking-widest uppercase w-full text-left py-1"
-              style={{ color: "var(--xevo-text-muted)" }}
+              style={{ color: "var(--color-text-muted)" }}
             >
               {payloadOpen ? "▾ PAYLOAD" : "▸ PAYLOAD"}
             </button>
@@ -192,19 +192,19 @@ export function JwtDecoder() {
                   <div
                     className="w-full rounded p-2 mb-2"
                     style={{
-                      border: `1px solid ${expiry.expired ? "var(--xevo-danger)" : "var(--xevo-success)"}40`,
-                      background: `${expiry.expired ? "var(--xevo-danger)" : "var(--xevo-success)"}08`,
+                      border: `1px solid ${expiry.expired ? "var(--color-dead)" : "var(--color-live)"}40`,
+                      background: `${expiry.expired ? "var(--color-dead)" : "var(--color-live)"}08`,
                     }}
                   >
                     <p
                       className="text-[11px]"
                       style={{
-                        color: expiry.expired ? "var(--xevo-danger)" : "var(--xevo-success)",
+                        color: expiry.expired ? "var(--color-dead)" : "var(--color-live)",
                       }}
                     >
                       {expiry.expired ? "✕ " : "✓ "}{expiry.label}
                     </p>
-                    <p className="text-[10px] mt-0.5" style={{ color: "var(--xevo-text-muted)" }}>
+                    <p className="text-[10px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
                       {expiry.date}
                     </p>
                   </div>
@@ -213,17 +213,17 @@ export function JwtDecoder() {
                   <div
                     key={key}
                     className="flex gap-1.5 py-0.5 border-b"
-                    style={{ borderColor: "var(--xevo-border)" }}
+                    style={{ borderColor: "var(--color-border)" }}
                   >
                     <span
                       className="text-[11px] font-mono min-w-[60px] flex-shrink-0"
-                      style={{ color: "var(--xevo-accent)" }}
+                      style={{ color: "var(--color-accent)" }}
                     >
                       {key}
                     </span>
                     <span
                       className="text-[11px] font-mono break-all"
-                      style={{ color: "var(--xevo-text-muted)" }}
+                      style={{ color: "var(--color-text-muted)" }}
                     >
                       {typeof val === "object" ? JSON.stringify(val) : String(val)}
                     </span>
@@ -234,7 +234,7 @@ export function JwtDecoder() {
           </div>
 
           {/* Signature note */}
-          <p className="text-[10px] px-1 mt-1" style={{ color: "var(--xevo-text-faint)" }}>
+          <p className="text-[10px] px-1 mt-1" style={{ color: "var(--color-text-disabled)" }}>
             Signature not verified — XEVO does not validate JWT signatures.
           </p>
         </>

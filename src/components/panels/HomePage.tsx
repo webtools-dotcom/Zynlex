@@ -1,19 +1,3 @@
-/**
- * HomePage — the "XEVO Home" landing page that fills the content area
- * when no tab has a URL. Replaces the previous bare "Type a URL or
- * search" placeholder.
- *
- * Sections (top-to-bottom):
- *   1. Hero: "XEVO Home" heading + a centered search input that submits
- *      to the active tab (or opens a new one if no active tab).
- *   2. Live Servers: cards for each running localhost dev server, click
- *      to open in a new tab.
- *   3. Pinned Bookmarks: workspace-scoped bookmarks (most recent first),
- *      click to open in a new tab. Shows the active workspace name.
- *
- * Live servers come from useServersStore (populated by the port
- * scanner hook). Pinned bookmarks come from useBookmarksStore.
- */
 import { useMemo } from "react";
 import { useState, useRef, useEffect } from "react";
 import { Search, Server, Bookmark, ArrowRight } from "lucide-react";
@@ -67,7 +51,6 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
     inputRef.current?.focus();
   }, []);
 
-  // Live servers — sorted: pinned first, then alive, then by port
   const liveServers = useMemo(
     () =>
       [...servers]
@@ -81,7 +64,6 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
     [servers]
   );
 
-  // Pinned bookmarks for the active workspace
   const wsBookmarks = useMemo(
     () =>
       bookmarks
@@ -90,9 +72,6 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
         .slice(0, 8),
     [bookmarks, activeWorkspaceId]
   );
-
-  const wsName = ws?.name ?? "Workspace";
-  const wsColor = ws?.color ?? "#3b82f6";
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -105,7 +84,6 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
     if (onNavigate) {
       onNavigate(url);
     } else if (activeTabId) {
-      // No bridge — open a new tab via the store
       addTab(activeWorkspaceId, { url });
     } else {
       const id = addTab(activeWorkspaceId, { url });
@@ -129,40 +107,29 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
   }
 
   return (
-    <div className="w-full h-full overflow-y-auto pointer-events-auto flex flex-col items-center justify-center min-h-full">
-      <div className="w-full max-w-3xl mx-auto px-6 py-8">
+    <div className="w-full h-full overflow-y-auto pointer-events-auto flex flex-col items-center min-h-full"
+      style={{ paddingTop: "40vh" }}
+    >
+      <div className="w-full max-w-[720px] mx-auto px-6 -translate-y-1/2">
         {/* ── Hero ──────────────────────────────────────────────── */}
         <div className="text-center mb-10">
-          <div className="flex flex-col items-center gap-3 mb-5">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold shadow-sm"
-              style={{ background: wsColor, color: "#fff" }}
-            >
-              {ws?.icon || "🌐"}
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-[var(--xevo-text)]">
-              XEVO
-            </h1>
-            <p className="text-xs uppercase tracking-[0.2em] text-[var(--xevo-text-faint)]">
-              Home
-            </p>
-          </div>
-          <p className="text-[13px] text-[var(--xevo-text-muted)] mb-6" style={{ letterSpacing: "0.04em" }}>
-            <span style={{ color: wsColor }}>{wsName}</span> workspace
-            {" · "}
-            Search the web, jump to a dev server, or open a bookmark
-          </p>
+          <h1
+            className="text-[24px] font-semibold tracking-tight text-[var(--color-text-primary)] mb-6"
+            style={{ fontFamily: "var(--font-ui)" }}
+          >
+            Your stack, at a glance.
+          </h1>
 
           <form
             onSubmit={submitSearch}
             className={cn(
               "flex items-center gap-2 h-11 px-3 mx-auto max-w-xl",
-              "rounded-[10px] border transition-all duration-150",
-              "border-[var(--xevo-border)] bg-[var(--xevo-modal-bg)]",
-              "focus-within:border-[var(--xevo-accent-border)] focus-within:shadow-[0_0_0_2px_rgba(255,255,255,0.04)]"
+              "rounded-[4px] border transition-all duration-[120ms]",
+              "border-[var(--color-border)] bg-[var(--color-elevated)]",
+              "focus-within:border-[rgba(59,130,246,0.25)]"
             )}
           >
-            <Search size={14} className="text-[var(--xevo-text-faint)] flex-shrink-0" />
+            <Search size={14} className="text-[var(--color-text-disabled)] flex-shrink-0" />
             <input
               ref={inputRef}
               type="text"
@@ -172,71 +139,100 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
-              className="flex-1 bg-transparent outline-none text-[13px] text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)]"
+              className="flex-1 bg-transparent outline-none text-[13px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
             />
             {query && (
               <button
                 type="submit"
-                className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)]"
+                className="text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)]"
                 title="Go"
+                aria-label="Go"
               >
                 <ArrowRight size={14} />
               </button>
             )}
           </form>
-          <p className="text-[10px] text-[var(--xevo-text-faint)] mt-2">
-            <kbd className="px-1 py-0.5 bg-[var(--xevo-badge-bg)] text-[var(--xevo-text-muted)] rounded text-[9px] font-mono">Ctrl+L</kbd>{" "}
-            focuses the address bar from anywhere
+          <p className="text-[10px] text-[var(--color-text-disabled)] mt-2">
+            <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded text-[9px] font-mono">Ctrl+L</kbd>{" "}
+            focuses the address bar
           </p>
         </div>
 
         {/* ── Live Servers ──────────────────────────────────────── */}
-        <section className="mb-8">
+        <section className="mb-8 relative">
+          {/* Ambient gradient pulse — the one permitted gradient */}
+          {liveServers.length > 0 && (
+            <div
+              className="absolute inset-0 -z-10 pointer-events-none"
+              style={{
+                background: "radial-gradient(ellipse at center, var(--color-live-glow) 0%, transparent 70%)",
+                opacity: 0.15,
+                animation: "ambientPulse 3s ease-in-out infinite",
+              }}
+            />
+          )}
+
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-1.5">
-              <Server size={12} className="text-[var(--xevo-text-faint)]" />
-              <h2 className="text-[11px] font-semibold tracking-[0.08em] text-[var(--xevo-accent)] uppercase">
+              <Server size={12} className="text-[var(--color-text-disabled)]" />
+              <h2 className="text-[10px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
                 Live Servers
               </h2>
             </div>
-            <button
-              onClick={() => setActivePanel("servers")}
-              className="text-[10px] text-[var(--xevo-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
-            >
-              View all
-            </button>
+            {liveServers.length > 0 && (
+              <button
+                onClick={() => setActivePanel("servers")}
+                className="text-[10px] text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
+              >
+                View all
+              </button>
+            )}
           </div>
 
           {liveServers.length === 0 ? (
-            <div className="p-4 text-center">
-              <p className="text-[12px] text-[var(--xevo-text-muted)]">
-                No dev servers running · Start one and it'll appear here
+            <div className="py-4 text-center">
+              <p className="text-[13px] text-[var(--color-text-muted)] italic">
+                No servers detected. Start your dev server and XEVO will find it.
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            <div className="space-y-1">
               {liveServers.map((server) => (
                 <button
                   key={server.port}
                   onClick={() => openServer(server.port, server.protocol)}
                   className={cn(
-                    "flex items-center gap-2 p-3 rounded-[8px] text-left",
-                    "border border-[var(--xevo-border)] bg-[var(--xevo-modal-bg)]",
-                    "hover:border-[var(--xevo-accent-border)] hover:bg-[var(--xevo-hover)]",
-                    "transition-all duration-150"
+                    "w-full flex items-center gap-3 h-16 px-4 text-left",
+                    "rounded-[4px] border border-[var(--color-border)] bg-[var(--color-elevated)]",
+                    "hover:bg-[var(--color-hover)] transition-colors duration-0"
                   )}
                 >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ background: "var(--xevo-success)" }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-mono text-[var(--xevo-text)] truncate">
+                  {/* Left: liveness dot + port */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{
+                        backgroundColor: server.isAlive
+                          ? "var(--color-live)"
+                          : "var(--color-text-disabled)",
+                        boxShadow: server.isAlive
+                          ? "0 0 6px var(--color-live-glow)"
+                          : "none",
+                      }}
+                    />
+                    <span className="text-[12px] font-mono text-[var(--color-text-primary)] tabular-nums">
                       :{server.port}
-                    </div>
-                    <div className="text-[10px] text-[var(--xevo-text-faint)] truncate">
+                    </span>
+                  </div>
+
+                  {/* Right: name + Open link */}
+                  <div className="flex-1 min-w-0 flex items-center justify-between">
+                    <span className="text-[12px] text-[var(--color-text-muted)] truncate">
                       {server.label ?? server.title ?? `${server.protocol}://localhost:${server.port}`}
-                    </div>
+                    </span>
+                    <span className="text-[11px] text-[var(--color-accent)] opacity-0 group-hover:opacity-100 shrink-0 ml-2">
+                      Open →
+                    </span>
                   </div>
                 </button>
               ))}
@@ -245,56 +241,50 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
         </section>
 
         {/* ── Bookmarks ─────────────────────────────────────────── */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-1.5">
-              <Bookmark size={12} className="text-[var(--xevo-text-faint)]" />
-              <h2 className="text-[11px] font-semibold tracking-[0.08em] text-[var(--xevo-accent)] uppercase">
-                Bookmarks
-              </h2>
+        {wsBookmarks.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5">
+                <Bookmark size={12} className="text-[var(--color-text-disabled)]" />
+                <h2 className="text-[10px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
+                  Bookmarks
+                </h2>
+              </div>
+              <button
+                onClick={() => setActivePanel("bookmarks")}
+                className="text-[10px] text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
+              >
+                View all
+              </button>
             </div>
-            <button
-              onClick={() => setActivePanel("bookmarks")}
-              className="text-[10px] text-[var(--xevo-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
-            >
-              View all
-            </button>
-          </div>
 
-          {wsBookmarks.length === 0 ? (
-            <div className="p-4 text-center">
-              <p className="text-[12px] text-[var(--xevo-text-muted)]">
-                No bookmarks yet · Press <kbd className="px-1 py-0.5 bg-[var(--xevo-badge-bg)] text-[var(--xevo-text-muted)] rounded text-[9px] font-mono">Ctrl+D</kbd> to save one
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {wsBookmarks.map((bookmark) => (
                 <button
                   key={bookmark.id}
                   onClick={() => openBookmark(bookmark.url)}
                   className={cn(
-                    "w-full flex items-center gap-2 p-2 rounded-md text-left",
-                    "hover:bg-[var(--xevo-hover)] transition-colors"
+                    "w-full flex items-center gap-2 px-3 h-8 rounded-[4px] text-left",
+                    "hover:bg-[var(--color-hover)] transition-colors duration-0"
                   )}
                 >
                   <ArrowRight
                     size={11}
-                    className="text-[var(--xevo-text-faint)] flex-shrink-0"
+                    className="text-[var(--color-text-disabled)] flex-shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[12px] text-[var(--xevo-text)] truncate">
+                    <span className="text-[12px] text-[var(--color-text-primary)] truncate">
                       {bookmark.title}
-                    </div>
-                    <div className="text-[10px] text-[var(--xevo-text-faint)] truncate font-mono">
+                    </span>
+                    <span className="text-[10px] text-[var(--color-text-disabled)] truncate font-mono ml-2">
                       {bookmark.url}
-                    </div>
+                    </span>
                   </div>
                 </button>
               ))}
             </div>
-          )}
-        </section>
+          </section>
+        )}
       </div>
     </div>
   );

@@ -80,22 +80,23 @@ export function OverlayPanel({ apiTesterContent, notesContent }: OverlayPanelPro
       className="absolute top-0 left-0 right-0 z-10 flex flex-col overflow-hidden border-b"
       style={{
         height: `${heightPercent}%`,
-        background: "var(--xevo-modal-bg)",
-        borderColor: "var(--xevo-border)",
+        background: "var(--color-elevated)",
+        borderColor: "var(--color-border)",
       }}
     >
       {/* Header with close button */}
       <div
         className="flex items-center justify-between h-8 px-2 border-b flex-shrink-0"
-        style={{ borderColor: "var(--xevo-border-subtle)" }}
+        style={{ borderColor: "var(--color-border-subtle)" }}
       >
-        <span className="text-[11px] font-semibold text-[var(--xevo-text-muted)]">
+        <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
           {overlayPanel === "api-tester" ? "API Tester" : "Notes"}
         </span>
         <button
           onClick={closeOverlay}
-          className="w-5 h-5 flex items-center justify-center rounded text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)] transition-colors"
+          className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
           title="Close panel (Esc)"
+          aria-label="Close panel"
         >
           <X size={12} />
         </button>
@@ -110,12 +111,12 @@ export function OverlayPanel({ apiTesterContent, notesContent }: OverlayPanelPro
       {/* Drag handle */}
       <div
         onMouseDown={handleDragStart}
-        className="h-1.5 flex items-center justify-center cursor-ns-resize flex-shrink-0 hover:bg-[var(--xevo-hover)] transition-colors"
-        style={{ borderTop: "1px solid var(--xevo-border-subtle)" }}
+        className="h-1.5 flex items-center justify-center cursor-ns-resize flex-shrink-0 hover:bg-[var(--color-hover)] transition-colors"
+        style={{ borderTop: "1px solid var(--color-border-subtle)" }}
       >
         <GripHorizontal
           size={10}
-          className="text-[var(--xevo-text-faint)]"
+          className="text-[var(--color-text-disabled)]"
         />
       </div>
     </div>

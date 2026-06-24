@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
+import { closeTabWebview } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
@@ -97,6 +98,7 @@ export function TabContextMenu({
   function handleClose() {
     useWorkspacesStore.getState().removeTabFromWorkspace(workspaceId, tabId);
     useTabsStore.getState().closeTab(tabId);
+    closeTabWebview(tabId).catch(() => {});
     onClose();
   }
 
@@ -109,6 +111,7 @@ export function TabContextMenu({
     for (const id of others) {
       useWorkspacesStore.getState().removeTabFromWorkspace(workspaceId, id);
       useTabsStore.getState().closeTab(id);
+      closeTabWebview(id).catch(() => {});
     }
     onClose();
   }
@@ -127,8 +130,8 @@ export function TabContextMenu({
         left: pos.x,
         top: pos.y,
         width: MENU_WIDTH,
-        background: "var(--xevo-modal-bg)",
-        border: "1px solid var(--xevo-modal-border)",
+        background: "var(--color-elevated)",
+        border: "1px solid var(--color-border)",
         borderRadius: 6,
         boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
         padding: 4,
@@ -166,18 +169,18 @@ function MenuItem({
       className="w-full text-left text-[12px] px-2 h-7 rounded transition-colors"
       style={{
         background: "transparent",
-        color: disabled ? "var(--xevo-text-faint)" : "var(--xevo-text-muted)",
+        color: disabled ? "var(--color-text-disabled)" : "var(--color-text-muted)",
         cursor: disabled ? "not-allowed" : "pointer",
         border: "none",
         outline: "none",
       }}
       onMouseEnter={(e) => {
-        if (!disabled) e.currentTarget.style.background = "var(--xevo-hover)";
-        if (!disabled) e.currentTarget.style.color = "var(--xevo-text)";
+        if (!disabled) e.currentTarget.style.background = "var(--color-hover)";
+        if (!disabled) e.currentTarget.style.color = "var(--color-text-primary)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = "transparent";
-        if (!disabled) e.currentTarget.style.color = "var(--xevo-text-muted)";
+        if (!disabled) e.currentTarget.style.color = "var(--color-text-muted)";
       }}
       role="menuitem"
     >
@@ -190,7 +193,7 @@ function Separator() {
   return (
     <div
       className="my-1"
-      style={{ height: 1, background: "var(--xevo-border)" }}
+      style={{ height: 1, background: "var(--color-border)" }}
       role="separator"
     />
   );

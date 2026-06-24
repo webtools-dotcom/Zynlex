@@ -66,7 +66,7 @@ export function LoadingBar({ isLoading }: LoadingBarProps) {
         style={{
           height: "100%",
           width: 0,
-          background: "var(--xevo-accent, #3b82f6)",
+          background: "var(--color-accent)",
           animation,
         }}
       />

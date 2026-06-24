@@ -60,9 +60,9 @@ export function Base64Tool() {
   }, [output]);
 
   const textareaStyle = {
-    background: "var(--xevo-content-bg)",
-    borderColor: "var(--xevo-border)",
-    color: "var(--xevo-text)",
+    background: "var(--color-base)",
+    borderColor: "var(--color-border)",
+    color: "var(--color-text-primary)",
   };
 
   return (
@@ -75,9 +75,9 @@ export function Base64Tool() {
             onClick={() => setMode(m)}
             className="flex-1 h-7 text-[11px] border rounded-[4px] capitalize transition-colors"
             style={{
-              background: mode === m ? "var(--xevo-accent)20" : "transparent",
-              color: mode === m ? "var(--xevo-accent)" : "var(--xevo-text-muted)",
-              borderColor: mode === m ? "var(--xevo-accent)40" : "var(--xevo-border)",
+              background: mode === m ? "var(--color-accent)20" : "transparent",
+              color: mode === m ? "var(--color-accent)" : "var(--color-text-muted)",
+              borderColor: mode === m ? "var(--color-accent)40" : "var(--color-border)",
             }}
           >
             {m}
@@ -91,19 +91,19 @@ export function Base64Tool() {
           type="checkbox"
           checked={urlSafe}
           onChange={(e) => setUrlSafe(e.target.checked)}
-          className="accent-[var(--xevo-accent)]"
+          className="accent-[var(--color-accent)]"
         />
-        <span className="text-[11px]" style={{ color: "var(--xevo-text-muted)" }}>
+        <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
           URL-safe (- and _)
         </span>
       </label>
 
       {/* Input label */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--xevo-text-muted)" }}>
+        <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
           Input
         </span>
-        <span className="text-[10px]" style={{ color: "var(--xevo-text-faint)" }}>
+        <span className="text-[10px]" style={{ color: "var(--color-text-disabled)" }}>
           {input.length} chars
         </span>
       </div>
@@ -119,17 +119,17 @@ export function Base64Tool() {
 
       {/* Output label */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--xevo-text-muted)" }}>
+        <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
           Output
         </span>
-        <span className="text-[10px]" style={{ color: "var(--xevo-text-faint)" }}>
+        <span className="text-[10px]" style={{ color: "var(--color-text-disabled)" }}>
           {output.length} chars
         </span>
       </div>
 
       {/* Error or output */}
       {error !== null ? (
-        <p className="text-[11px]" style={{ color: "var(--xevo-danger)" }}>
+        <p className="text-[11px]" style={{ color: "var(--color-dead)" }}>
           {error}
         </p>
       ) : (
@@ -138,7 +138,7 @@ export function Base64Tool() {
           readOnly
           value={output}
           className="w-full resize-none font-mono text-[11px] p-2 rounded border outline-none"
-          style={{ ...textareaStyle, background: "var(--xevo-modal-bg)" }}
+          style={{ ...textareaStyle, background: "var(--color-elevated)" }}
         />
       )}
 
@@ -149,8 +149,8 @@ export function Base64Tool() {
           disabled={!output}
           className="text-[11px] px-2 py-0.5 rounded border transition-colors disabled:opacity-40"
           style={{
-            borderColor: "var(--xevo-border)",
-            color: copied ? "var(--xevo-success)" : "var(--xevo-text-muted)",
+            borderColor: "var(--color-border)",
+            color: copied ? "var(--color-live)" : "var(--color-text-muted)",
           }}
         >
           {copied ? "Copied!" : "Copy"}

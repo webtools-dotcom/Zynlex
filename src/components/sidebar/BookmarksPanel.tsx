@@ -69,7 +69,7 @@ export function BookmarksPanel() {
     <div className="p-2">
       {/* Header row */}
       <div className="flex items-center justify-between px-1 mb-2">
-        <p className="text-[10px] font-semibold tracking-widest text-[var(--xevo-text-faint)] uppercase">
+        <p className="text-[10px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
           {wsName} Bookmarks
         </p>
         {wsBookmarks.length > 0 && (
@@ -84,7 +84,7 @@ export function BookmarksPanel() {
               }
             }}
             title="Clear all bookmarks in this workspace"
-            className="text-[10px] text-[var(--xevo-text-faint)] hover:text-[var(--xevo-danger)] transition-colors"
+            className="text-[10px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
           >
             Clear all
           </button>
@@ -96,13 +96,13 @@ export function BookmarksPanel() {
         <div className="text-center py-6">
           <Bookmark
             size={20}
-            className="text-[var(--xevo-text-faint)] mx-auto mb-2"
+            className="text-[var(--color-text-disabled)] mx-auto mb-2"
           />
-          <p className="text-[11px] text-[var(--xevo-text-faint)]">
+          <p className="text-[11px] text-[var(--color-text-disabled)]">
             No bookmarks yet
           </p>
-          <p className="text-[10px] text-[var(--xevo-text-faint)] mt-1">
-            Press <kbd className="px-1 py-0.5 bg-[var(--xevo-badge-bg)] text-[var(--xevo-text)] rounded text-[9px] font-mono">Ctrl+D</kbd> on a tab to save it
+          <p className="text-[10px] text-[var(--color-text-disabled)] mt-1">
+            Press <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-primary)] rounded text-[9px] font-mono">Ctrl+D</kbd> on a tab to save it
           </p>
         </div>
       ) : (
@@ -112,8 +112,8 @@ export function BookmarksPanel() {
             <div
               key={bookmark.id}
               className={cn(
-                "group flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-[var(--xevo-hover)] transition-colors mb-0.5",
-                isJustAdded && "ring-2 ring-[var(--xevo-success)] bg-[var(--xevo-success)]/10"
+                "group flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-[var(--color-hover)] transition-colors mb-0.5",
+                isJustAdded && "ring-2 ring-[var(--color-live)] bg-[var(--color-live)]/10"
               )}
             >
               {renamingId === bookmark.id ? (
@@ -129,7 +129,7 @@ export function BookmarksPanel() {
                     }
                   }}
                   autoFocus
-                  className="flex-1 bg-[var(--xevo-badge-bg)] outline-none border border-[var(--xevo-accent)] rounded px-1.5 py-0.5 text-[11px] text-[var(--xevo-text)]"
+                  className="flex-1 bg-[var(--color-elevated)] outline-none border border-[var(--color-accent)] rounded px-1.5 py-0.5 text-[11px] text-[var(--color-text-primary)]"
                 />
               ) : (
                 <button
@@ -140,10 +140,10 @@ export function BookmarksPanel() {
                   title={`${bookmark.title}\n${bookmark.url}\n\nClick to open · Double-click to rename`}
                   className="flex-1 min-w-0 text-left"
                 >
-                  <div className="text-[11px] text-[var(--xevo-text)] truncate">
+                  <div className="text-[11px] text-[var(--color-text-primary)] truncate">
                     {bookmark.title}
                   </div>
-                  <div className="text-[10px] text-[var(--xevo-text-faint)] truncate">
+                  <div className="text-[10px] text-[var(--color-text-disabled)] truncate">
                     {getHost(bookmark.url)}
                   </div>
                 </button>
@@ -151,9 +151,10 @@ export function BookmarksPanel() {
               <button
                 onClick={() => openBookmark(bookmark.url)}
                 title="Open in new tab"
+                aria-label="Open bookmark in new tab"
                 className={cn(
                   "w-5 h-5 flex items-center justify-center rounded",
-                  "text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-modal-border)]",
+                  "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-border)]",
                   "opacity-0 group-hover:opacity-100 transition-opacity"
                 )}
               >
@@ -162,9 +163,10 @@ export function BookmarksPanel() {
               <button
                 onClick={() => removeBookmark(bookmark.id)}
                 title="Remove bookmark"
+                aria-label="Remove bookmark"
                 className={cn(
                   "w-5 h-5 flex items-center justify-center rounded",
-                  "text-[var(--xevo-text-faint)] hover:text-[var(--xevo-danger)] hover:bg-[var(--xevo-modal-border)]",
+                  "text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] hover:bg-[var(--color-border)]",
                   "opacity-0 group-hover:opacity-100 transition-opacity"
                 )}
               >

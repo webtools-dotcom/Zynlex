@@ -166,7 +166,7 @@ export function AddressBar({
         className={cn(
           "flex-1 flex items-center gap-1.5 h-7 px-2 rounded-[7px] border transition-all duration-150",
           focused
-            ? "border-[var(--xevo-accent-border)] bg-[var(--xevo-content-bg)] shadow-[0_0_0_2px_rgba(255,255,255,0.04)]"
+            ? "border-[var(--xevo-accent-border)] bg-[var(--xevo-content-bg)]"
             : "border-[var(--xevo-border)] bg-[var(--xevo-content-bg)] hover:border-[var(--xevo-text-faint)]",
         )}
       >

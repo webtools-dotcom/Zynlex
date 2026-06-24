@@ -1,11 +1,40 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Save, Search, FileText } from "lucide-react";
+import { Save, Search, FileText, Pin, Download } from "lucide-react";
+import { RichTextEditor, type RichTextEditorHandle } from "@tolipovjs/rich-text";
 import { useNotesStore } from "@/stores/notes";
 import { useWorkspacesStore } from "@/stores/workspaces";
+import { useSettingsStore } from "@/stores/settings";
+import type { NoteColor } from "@/types";
+
+const COLOR_OPTIONS: { value: NoteColor; label: string; hex: string }[] = [
+  { value: "", label: "None", hex: "transparent" },
+  { value: "red", label: "Red", hex: "#ef4444" },
+  { value: "orange", label: "Orange", hex: "#f97316" },
+  { value: "yellow", label: "Yellow", hex: "#eab308" },
+  { value: "green", label: "Green", hex: "#22c55e" },
+  { value: "blue", label: "Blue", hex: "#3b82f6" },
+  { value: "purple", label: "Purple", hex: "#a855f7" },
+];
+
+function stripHtml(html: string): string {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return div.textContent || div.innerText || "";
+}
+
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function readingTime(wordCount: number): string {
+  const mins = Math.max(1, Math.ceil(wordCount / 200));
+  return `${mins} min read`;
+}
 
 export function NotesNotepad() {
   const { activeWorkspaceId } = useWorkspacesStore();
-  const { notes, createNote, updateNote, deleteNote } = useNotesStore();
+  const theme = useSettingsStore((s) => s.settings.theme);
+  const { notes, createNote, updateNote, deleteNote, togglePin, setColor } = useNotesStore();
 
   const wsNotes = useMemo(
     () => notes.filter((n) => n.workspaceId === activeWorkspaceId),
@@ -15,8 +44,9 @@ export function NotesNotepad() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "">("");
+  const [showColorPicker, setShowColorPicker] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<RichTextEditorHandle>(null);
 
   const selectedNote = wsNotes.find((n) => n.id === selectedId) ?? null;
 
@@ -26,7 +56,7 @@ export function NotesNotepad() {
     return wsNotes.filter(
       (n) =>
         n.title.toLowerCase().includes(q) ||
-        n.content.toLowerCase().includes(q)
+        stripHtml(n.content).toLowerCase().includes(q)
     );
   }, [wsNotes, searchQuery]);
 
@@ -42,12 +72,12 @@ export function NotesNotepad() {
   }, [activeWorkspaceId, createNote]);
 
   const handleContentChange = useCallback(
-    (value: string) => {
+    (html: string) => {
       if (!selectedId) return;
       setSaveStatus("saving");
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
-        updateNote(selectedId, { content: value });
+        updateNote(selectedId, { content: html });
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus(""), 1500);
       }, 500);
@@ -58,15 +88,39 @@ export function NotesNotepad() {
   const handleTitleChange = useCallback(
     (value: string) => {
       if (!selectedId) return;
-      updateNote(selectedId, { title: value.trim() || "Untitled" });
+      updateNote(selectedId, { title: value });
     },
     [selectedId, updateNote]
   );
 
   const wordCount = useMemo(() => {
     if (!selectedNote?.content) return 0;
-    return selectedNote.content.trim().split(/\s+/).filter(Boolean).length;
+    return countWords(stripHtml(selectedNote.content));
   }, [selectedNote?.content]);
+
+  const charCount = useMemo(() => {
+    if (!selectedNote?.content) return 0;
+    return stripHtml(selectedNote.content).length;
+  }, [selectedNote?.content]);
+
+  const handleExport = useCallback(() => {
+    if (!selectedNote) return;
+    const text = stripHtml(selectedNote.content);
+    const title = selectedNote.title || "Untitled";
+    const blob = new Blob([`# ${title}\n\n${text}`], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [selectedNote]);
+
+  const resolvedTheme = useMemo(() => {
+    if (theme === "dark") return "dark" as const;
+    if (theme === "light") return "light" as const;
+    return "auto" as const;
+  }, [theme]);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -74,25 +128,26 @@ export function NotesNotepad() {
       <div
         className="w-48 flex-shrink-0 flex flex-col border-r overflow-hidden"
         style={{
-          borderColor: "var(--xevo-border-subtle)",
-          background: "var(--xevo-sidebar-bg)",
+          borderColor: "var(--color-border-subtle)",
+          background: "var(--color-surface)",
         }}
       >
         {/* Search + New */}
-        <div className="flex items-center gap-1 p-1.5 border-b" style={{ borderColor: "var(--xevo-border-subtle)" }}>
-          <div className="flex-1 flex items-center gap-1 px-1.5 py-1 rounded border" style={{ borderColor: "var(--xevo-border)" }}>
-            <Search size={10} className="text-[var(--xevo-text-faint)]" />
+        <div className="flex items-center gap-1 p-1.5 border-b" style={{ borderColor: "var(--color-border-subtle)" }}>
+          <div className="flex-1 flex items-center gap-1 px-1.5 py-1 rounded border" style={{ borderColor: "var(--color-border)" }}>
+            <Search size={10} className="text-[var(--color-text-disabled)]" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
-              className="flex-1 text-[10px] bg-transparent outline-none text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)]"
+              className="flex-1 text-[10px] bg-transparent outline-none text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
             />
           </div>
           <button
             onClick={handleCreate}
             title="New note"
-            className="w-6 h-6 flex items-center justify-center rounded text-[var(--xevo-text-faint)] hover:text-[var(--xevo-accent)] hover:bg-[var(--xevo-hover)] transition-colors"
+            aria-label="New note"
+            className="w-6 h-6 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-accent)] hover:bg-[var(--color-hover)] transition-colors"
           >
             <FileText size={11} />
           </button>
@@ -102,7 +157,7 @@ export function NotesNotepad() {
         <div className="flex-1 overflow-y-auto">
           {filteredNotes.length === 0 ? (
             <div className="px-2 py-4 text-center">
-              <p className="text-[10px] text-[var(--xevo-text-faint)]">
+              <p className="text-[10px] text-[var(--color-text-disabled)]">
                 {searchQuery ? "No matches" : "No notes"}
               </p>
             </div>
@@ -113,23 +168,34 @@ export function NotesNotepad() {
                 onClick={() => setSelectedId(note.id)}
                 className={`w-full text-left px-2 py-1.5 border-b transition-colors ${
                   selectedId === note.id
-                    ? "bg-[var(--xevo-accent-dim)]"
-                    : "hover:bg-[var(--xevo-hover)]"
+                    ? "bg-[var(--color-accent-dim)]"
+                    : "hover:bg-[var(--color-hover)]"
                 }`}
-                style={{ borderColor: "var(--xevo-border-subtle)" }}
+                style={{ borderColor: "var(--color-border-subtle)" }}
               >
-                <span
-                  className={`text-[11px] font-medium block truncate ${
-                    selectedId === note.id
-                      ? "text-[var(--xevo-accent)]"
-                      : "text-[var(--xevo-text-muted)]"
-                  }`}
-                >
-                  {note.title}
-                </span>
-                <span className="text-[9px] text-[var(--xevo-text-faint)]">
+                <div className="flex items-center gap-1">
+                  {note.color && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ background: COLOR_OPTIONS.find((c) => c.value === note.color)?.hex }}
+                    />
+                  )}
+                  <span
+                    className={`text-[11px] font-medium truncate ${
+                      selectedId === note.id
+                        ? "text-[var(--color-accent)]"
+                        : "text-[var(--color-text-muted)]"
+                    }`}
+                  >
+                    {note.title || "Untitled"}
+                  </span>
+                  {note.isPinned && (
+                    <Pin size={8} className="text-[var(--color-text-disabled)] flex-shrink-0" />
+                  )}
+                </div>
+                <span className="text-[9px] text-[var(--color-text-disabled)]">
                   {note.content
-                    ? note.content.slice(0, 40) + (note.content.length > 40 ? "..." : "")
+                    ? stripHtml(note.content).slice(0, 40) + (stripHtml(note.content).length > 40 ? "..." : "")
                     : "Empty"}
                 </span>
               </button>
@@ -142,21 +208,83 @@ export function NotesNotepad() {
       <div className="flex-1 flex flex-col min-w-0">
         {selectedNote ? (
           <>
-            {/* Title */}
-            <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: "var(--xevo-border-subtle)" }}>
+            {/* Title + controls */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: "var(--color-border-subtle)" }}>
               <input
                 value={selectedNote.title}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                className="flex-1 text-[13px] font-semibold bg-transparent outline-none text-[var(--xevo-text)]"
-                placeholder="Note title"
+                className="flex-1 text-[13px] font-semibold bg-transparent outline-none text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
+                placeholder="Untitled"
               />
               <div className="flex items-center gap-1.5">
                 {saveStatus && (
-                  <span className="text-[9px] text-[var(--xevo-text-faint)] flex items-center gap-1">
+                  <span className="text-[9px] text-[var(--color-text-disabled)] flex items-center gap-1">
                     <Save size={9} />
                     {saveStatus === "saving" ? "Saving..." : "Saved"}
                   </span>
                 )}
+                <button
+                  onClick={() => togglePin(selectedNote.id)}
+                  title={selectedNote.isPinned ? "Unpin" : "Pin"}
+                  aria-label={selectedNote.isPinned ? "Unpin note" : "Pin note"}
+                  className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
+                    selectedNote.isPinned
+                      ? "text-[var(--color-accent)]"
+                      : "text-[var(--color-text-disabled)] hover:text-[var(--color-accent)]"
+                  } hover:bg-[var(--color-hover)]`}
+                >
+                  <Pin size={10} />
+                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowColorPicker(showColorPicker === selectedNote.id ? null : selectedNote.id)}
+                    title="Note color"
+                    className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-accent)] hover:bg-[var(--color-hover)] transition-colors"
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full border"
+                      style={{
+                        background: selectedNote.color
+                          ? COLOR_OPTIONS.find((c) => c.value === selectedNote.color)?.hex
+                          : "transparent",
+                        borderColor: "var(--color-text-disabled)",
+                      }}
+                    />
+                  </button>
+                  {showColorPicker === selectedNote.id && (
+                    <div
+                      className="absolute right-0 top-full mt-1 z-20 p-1.5 rounded border flex gap-1"
+                      style={{
+                        background: "var(--color-elevated)",
+                        borderColor: "var(--color-border)",
+                      }}
+                    >
+                      {COLOR_OPTIONS.map((c) => (
+                        <button
+                          key={c.value}
+                          onClick={() => {
+                            setColor(selectedNote.id, c.value);
+                            setShowColorPicker(null);
+                          }}
+                          title={c.label}
+                          className="w-4 h-4 rounded-full border"
+                          style={{
+                            background: c.hex || "transparent",
+                            borderColor: "var(--color-border)",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={handleExport}
+                  title="Export as Markdown"
+                  aria-label="Export as Markdown"
+                  className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-accent)] hover:bg-[var(--color-hover)] transition-colors"
+                >
+                  <Download size={10} />
+                </button>
                 <button
                   onClick={() => {
                     if (window.confirm("Delete this note?")) {
@@ -164,38 +292,47 @@ export function NotesNotepad() {
                       setSelectedId(null);
                     }
                   }}
-                  className="text-[9px] text-[var(--xevo-text-faint)] hover:text-[var(--xevo-danger)]"
+                  className="text-[9px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
                 >
                   Delete
                 </button>
               </div>
             </div>
 
-            {/* Content */}
-            <textarea
-              key={selectedId}
-              ref={textareaRef}
-              defaultValue={selectedNote.content}
-              onChange={(e) => handleContentChange(e.target.value)}
-              placeholder="Start writing..."
-              className="flex-1 p-3 text-[12px] leading-relaxed bg-transparent outline-none text-[var(--xevo-text-muted)] resize-none font-mono"
-              style={{ fontFamily: "var(--xevo-font-body, inherit)" }}
-            />
+            {/* Rich text editor */}
+            <div className="flex-1 overflow-hidden min-h-0" style={{ background: "var(--color-base)" }}>
+              <RichTextEditor
+                key={selectedId}
+                ref={editorRef}
+                value={selectedNote.content}
+                onChange={handleContentChange}
+                theme={resolvedTheme}
+                toolbar="basic"
+                slashMenu
+                markdownShortcuts
+                bubbleToolbar
+                findReplace
+                placeholder="Start writing... Type / for blocks, ** for bold, # for heading"
+                minHeight="100%"
+                style={{ height: "100%", border: "none", borderRadius: 0 }}
+              />
+            </div>
 
             {/* Footer */}
             <div
-              className="flex items-center justify-between px-3 py-1 border-t text-[9px] text-[var(--xevo-text-faint)]"
-              style={{ borderColor: "var(--xevo-border-subtle)" }}
+              className="flex items-center justify-between px-3 py-1 border-t text-[9px] text-[var(--color-text-disabled)]"
+              style={{ borderColor: "var(--color-border-subtle)" }}
             >
-              <span>{selectedNote.content.length} chars</span>
+              <span>{charCount} chars</span>
               <span>{wordCount} words</span>
+              <span>{readingTime(wordCount)}</span>
             </div>
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <FileText size={24} className="mx-auto mb-2 text-[var(--xevo-text-faint)] opacity-30" />
-              <p className="text-[11px] text-[var(--xevo-text-faint)]">
+              <FileText size={24} className="mx-auto mb-2 text-[var(--color-text-disabled)] opacity-30" />
+              <p className="text-[11px] text-[var(--color-text-disabled)]">
                 Select a note or create a new one
               </p>
             </div>

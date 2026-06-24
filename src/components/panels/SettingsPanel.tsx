@@ -11,7 +11,7 @@ import { useUIStore } from "@/stores/ui";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] uppercase tracking-wider text-[var(--xevo-text-faint)] mt-5 mb-2 pt-4 border-t border-[var(--xevo-border-subtle)] first:mt-0 first:pt-0 first:border-t-0">
+    <div className="text-[10px] uppercase tracking-wider text-[var(--color-text-disabled)] mt-5 mb-2 pt-4 border-t border-[var(--color-border-subtle)] first:mt-0 first:pt-0 first:border-t-0">
       {children}
     </div>
   );
@@ -35,10 +35,10 @@ function ThemeButton({
       className={
         "px-3 py-1 text-xs rounded border " +
         (active
-          ? "text-[var(--xevo-text)] border-[var(--xevo-text-muted)]"
-          : "text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] border-transparent")
+          ? "text-[var(--color-text-primary)] border-[var(--color-text-muted)]"
+          : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] border-transparent")
       }
-      style={active ? { background: "var(--xevo-tab-active)" } : undefined}
+      style={active ? { background: "var(--color-elevated)" } : undefined}
     >
       {label}
     </button>
@@ -62,8 +62,8 @@ function SearchEngineButton({
       onClick={() => onSelect(value)}
       className={
         active
-          ? "border border-[color:var(--xevo-accent)]/50 bg-[color:var(--xevo-accent)]/10 text-[var(--xevo-text)] rounded px-2 py-1.5 text-xs text-center"
-          : "border border-[var(--xevo-border)] text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] rounded px-2 py-1.5 text-xs text-center"
+          ? "border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/10 text-[var(--color-text-primary)] rounded px-2 py-1.5 text-xs text-center"
+          : "border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] rounded px-2 py-1.5 text-xs text-center"
       }
     >
       {label}
@@ -85,11 +85,11 @@ function CompactToggle({
       aria-checked={value}
       className={
         "w-9 h-5 rounded-full relative transition-colors " +
-        (value ? "bg-[var(--xevo-accent)]" : "bg-[var(--xevo-border)]")
+        (value ? "bg-[var(--color-accent)]" : "bg-[var(--color-border)]")
       }
     >
       <span
-        className="absolute top-0.5 w-4 h-4 rounded-full bg-[var(--xevo-text)] transition-transform"
+        className="absolute top-0.5 w-4 h-4 rounded-full bg-[var(--color-text-primary)] transition-transform"
         style={{ transform: value ? "translateX(18px)" : "translateX(2px)" }}
       />
     </button>
@@ -119,19 +119,20 @@ export function SettingsPanel() {
 
   return (
     <div
-      className="absolute top-0 right-0 w-[300px] h-full border-l z-50 overflow-y-auto p-4 shadow-2xl xevo-settings-panel"
+      className="absolute top-0 right-0 w-[300px] h-full border-l z-50 overflow-y-auto p-4 xevo-settings-panel"
       style={{
-        background: "var(--xevo-modal-bg)",
-        borderColor: "var(--xevo-modal-border)",
+        background: "var(--color-elevated)",
+        borderColor: "var(--color-border)",
       }}
     >
       {/* Header */}
       <div className="flex justify-between items-center mb-4">
-        <span className="text-sm font-semibold text-[var(--xevo-text)]">Settings</span>
+        <span className="text-sm font-semibold text-[var(--color-text-primary)]">Settings</span>
         <button
           onClick={toggleSettingsPanel}
-          className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)]"
+          className="text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)]"
           title="Close (Esc)"
+          aria-label="Close settings"
         >
           <X size={16} />
         </button>
@@ -163,8 +164,8 @@ export function SettingsPanel() {
 
       <div className="flex justify-between items-center mt-3">
         <div>
-          <span className="text-sm text-[var(--xevo-text-muted)] block">Compact Mode</span>
-          <span className="text-xs text-[var(--xevo-text-faint)] block">Reduce UI chrome size</span>
+          <span className="text-sm text-[var(--color-text-muted)] block">Compact Mode</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">Reduce UI chrome size</span>
         </div>
         <CompactToggle
           value={settings.compactMode}
@@ -208,10 +209,10 @@ export function SettingsPanel() {
           placeholder="https://search.example.com?q=%s"
           value={settings.customSearchUrl}
           onChange={(e) => setCustomSearchUrl(e.target.value)}
-          className="w-full mt-1 px-2 py-1 text-xs border rounded text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)] outline-none focus:border-[var(--xevo-accent)]"
+          className="w-full mt-1 px-2 py-1 text-xs border rounded text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] outline-none focus:border-[var(--color-accent)]"
           style={{
-            background: "var(--xevo-badge-bg)",
-            borderColor: "var(--xevo-modal-border)",
+            background: "var(--color-elevated)",
+        borderColor: "var(--color-border)",
           }}
         />
       )}
@@ -220,8 +221,8 @@ export function SettingsPanel() {
       <SectionHeader>Port Scanner</SectionHeader>
 
       <div className="flex justify-between items-center mb-1">
-        <span className="text-sm text-[var(--xevo-text-muted)]">Scan Interval</span>
-        <span className="text-xs text-[var(--xevo-text-faint)]">
+        <span className="text-sm text-[var(--color-text-muted)]">Scan Interval</span>
+        <span className="text-xs text-[var(--color-text-disabled)]">
           {settings.portScanInterval}s
         </span>
       </div>
@@ -236,12 +237,12 @@ export function SettingsPanel() {
         className="w-full accent-blue-500"
       />
 
-      <span className="text-xs text-[var(--xevo-text-faint)] block mt-1">
+      <span className="text-xs text-[var(--color-text-disabled)] block mt-1">
         How often to scan for running dev servers
       </span>
 
       {/* ── About ───────────────────────────────────────────────────── */}
-      <div className="text-xs text-[var(--xevo-text-faint)] mt-6 space-y-1">
+      <div className="text-xs text-[var(--color-text-disabled)] mt-6 space-y-1">
         <div>XEVO Browser v1.1.0</div>
         <div>Open source · Zero telemetry · Zero accounts</div>
       </div>

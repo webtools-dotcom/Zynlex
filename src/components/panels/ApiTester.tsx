@@ -365,11 +365,11 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
 
   const statusColor = response
     ? response.status >= 200 && response.status < 300
-      ? "var(--xevo-success)"
+      ? "var(--color-live)"
       : response.status >= 400
-        ? "var(--xevo-danger)"
-        : "var(--xevo-warning)"
-    : "var(--xevo-text-faint)";
+        ? "var(--color-dead)"
+        : "var(--color-warn)"
+    : "var(--color-text-disabled)";
 
   // ── Render ──────────────────────────────────────────────────────
 
@@ -490,7 +490,7 @@ function MethodSelector({
         }}
       >
         {METHODS.map((m) => (
-          <option key={m} value={m} style={{ color: "var(--xevo-text)" }}>
+          <option key={m} value={m} style={{ color: "var(--color-text-primary)" }}>
             {m}
           </option>
         ))}
@@ -508,11 +508,11 @@ function RequestEditor(p: BodySharedProps) {
   const canHaveBody = p.method !== "GET" && p.method !== "HEAD";
 
   return (
-    <div className="border-b" style={{ borderColor: "var(--xevo-border)" }}>
+    <div className="border-b" style={{ borderColor: "var(--color-border)" }}>
       {/* Tabs */}
       <div
         className="flex items-center gap-1 px-3 py-2 border-b"
-        style={{ borderColor: "var(--xevo-border)" }}
+        style={{ borderColor: "var(--color-border)" }}
       >
         <TabButton
           active={p.editorTab === "headers"}
@@ -547,27 +547,28 @@ function RequestEditor(p: BodySharedProps) {
                   onChange={(e) =>
                     p.updateHeader(h.id, { enabled: e.target.checked })
                   }
-                  className="accent-[var(--xevo-accent)] flex-shrink-0"
+                  className="accent-[var(--color-accent)] flex-shrink-0"
                 />
                 <input
                   type="text"
                   value={h.key}
                   onChange={(e) => p.updateHeader(h.id, { key: e.target.value })}
                   placeholder="Header name"
-                  className="flex-1 min-w-0 px-2 py-1 text-[11px] font-mono bg-[var(--xevo-badge-bg)] text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)] rounded outline-none border focus:border-[var(--xevo-accent)]"
-                  style={{ borderColor: "var(--xevo-modal-border)" }}
+                  className="flex-1 min-w-0 px-2 py-1 text-[11px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
+                  style={{ borderColor: "var(--color-border)" }}
                 />
                 <input
                   type="text"
                   value={h.value}
                   onChange={(e) => p.updateHeader(h.id, { value: e.target.value })}
                   placeholder="Value"
-                  className="flex-1 min-w-0 px-2 py-1 text-[11px] font-mono bg-[var(--xevo-badge-bg)] text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)] rounded outline-none border focus:border-[var(--xevo-accent)]"
-                  style={{ borderColor: "var(--xevo-modal-border)" }}
+                  className="flex-1 min-w-0 px-2 py-1 text-[11px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
+                  style={{ borderColor: "var(--color-border)" }}
                 />
                 <button
                   onClick={() => p.removeHeader(h.id)}
-                  className="w-6 h-6 flex items-center justify-center rounded text-[var(--xevo-text-faint)] hover:text-[var(--xevo-danger)] hover:bg-[var(--xevo-hover)]"
+                  aria-label="Remove header"
+                  className="w-6 h-6 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] hover:bg-[var(--color-hover)]"
                 >
                   <X size={11} />
                 </button>
@@ -575,7 +576,7 @@ function RequestEditor(p: BodySharedProps) {
             ))}
             <button
               onClick={p.addHeaderRow}
-              className="flex items-center gap-1 text-[11px] text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] mt-1"
+              className="flex items-center gap-1 text-[11px] text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] mt-1"
             >
               <Plus size={11} /> Add header
             </button>
@@ -588,13 +589,13 @@ function RequestEditor(p: BodySharedProps) {
             onChange={(e) => p.setBody(e.target.value)}
             placeholder='{"key": "value"}'
             spellCheck={false}
-            className="w-full h-40 px-2 py-1.5 text-[11px] font-mono bg-[var(--xevo-badge-bg)] text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)] rounded outline-none border resize-none"
-            style={{ borderColor: "var(--xevo-modal-border)" }}
+            className="w-full h-40 px-2 py-1.5 text-[11px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border resize-none"
+            style={{ borderColor: "var(--color-border)" }}
           />
         )}
 
         {p.editorTab === "body" && !canHaveBody && (
-          <p className="text-[11px] text-[var(--xevo-text-faint)] text-center py-4">
+          <p className="text-[11px] text-[var(--color-text-disabled)] text-center py-4">
             {p.method} requests cannot have a body
           </p>
         )}
@@ -606,17 +607,17 @@ function RequestEditor(p: BodySharedProps) {
               onChange={(e) => p.setCurlInput(e.target.value)}
               placeholder={`curl -X POST 'https://api.example.com/users' -H 'Content-Type: application/json' -d '{"name":"John"}'`}
               spellCheck={false}
-              className="w-full h-32 px-2 py-1.5 text-[11px] font-mono bg-[var(--xevo-badge-bg)] text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)] rounded outline-none border resize-none"
-              style={{ borderColor: "var(--xevo-modal-border)" }}
+              className="w-full h-32 px-2 py-1.5 text-[11px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border resize-none"
+              style={{ borderColor: "var(--color-border)" }}
             />
             <button
               onClick={p.importCurl}
               disabled={!p.curlInput.trim()}
-              className="w-full h-8 text-[12px] font-medium rounded text-white bg-[var(--xevo-accent)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full h-8 text-[12px] font-medium rounded text-white bg-[var(--color-accent)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Import
             </button>
-            <p className="text-[10px] text-[var(--xevo-text-faint)]">
+            <p className="text-[10px] text-[var(--color-text-disabled)]">
               Pastes a cURL command and parses it into the request fields.
             </p>
           </div>
@@ -631,7 +632,7 @@ function ResponseViewer(p: BodySharedProps) {
     return (
       <div
         className="p-3 text-[11px] font-mono"
-        style={{ color: "var(--xevo-danger)" }}
+        style={{ color: "var(--color-dead)" }}
       >
         {p.error}
       </div>
@@ -639,7 +640,7 @@ function ResponseViewer(p: BodySharedProps) {
   }
   if (!p.response) {
     return (
-      <div className="p-6 text-center text-[11px] text-[var(--xevo-text-faint)]">
+      <div className="p-6 text-center text-[11px] text-[var(--color-text-disabled)]">
         Send a request to see the response
       </div>
     );
@@ -651,32 +652,33 @@ function ResponseViewer(p: BodySharedProps) {
       {/* Status bar */}
       <div
         className="flex items-center gap-3 px-3 py-2 border-b text-[11px]"
-        style={{ borderColor: "var(--xevo-border)" }}
+        style={{ borderColor: "var(--color-border)" }}
       >
         <span
           className="font-bold px-1.5 py-0.5 rounded"
           style={{
             background: p.statusColor + "22",
             color: p.statusColor,
+            fontFeatureSettings: '"tnum" 1',
           }}
         >
           {r.status}
         </span>
-        <span className="text-[var(--xevo-text)] truncate">
+        <span className="text-[var(--color-text-primary)] truncate">
           {r.statusText || "(no status text)"}
         </span>
-        <span className="ml-auto flex items-center gap-3 text-[var(--xevo-text-faint)]">
-          <span className="flex items-center gap-1">
+        <span className="ml-auto flex items-center gap-3 text-[var(--color-text-disabled)]">
+          <span className="flex items-center gap-1" style={{ fontFeatureSettings: '"tnum" 1' }}>
             <Clock size={10} /> {r.durationMs}ms
           </span>
-          <span>{formatBytes(r.size)}</span>
+          <span style={{ fontFeatureSettings: '"tnum" 1' }}>{formatBytes(r.size)}</span>
         </span>
       </div>
 
       {/* Tabs */}
       <div
         className="flex items-center gap-1 px-3 py-1.5 border-b"
-        style={{ borderColor: "var(--xevo-border)" }}
+        style={{ borderColor: "var(--color-border)" }}
       >
         <TabButton
           active={p.responseTab === "body"}
@@ -692,7 +694,7 @@ function ResponseViewer(p: BodySharedProps) {
         />
         <button
           onClick={p.copyResponse}
-          className="ml-auto flex items-center gap-1 px-2 py-0.5 text-[10px] rounded text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)]"
+          className="ml-auto flex items-center gap-1 px-2 py-0.5 text-[10px] rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
         >
           {p.copied ? <Check size={10} /> : <Clipboard size={10} />}
           {p.copied ? "Copied" : "Copy"}
@@ -702,21 +704,21 @@ function ResponseViewer(p: BodySharedProps) {
       {/* Tab content */}
       <div className="flex-1 overflow-auto p-3">
         {p.responseTab === "body" ? (
-          <pre className="text-[11px] font-mono text-[var(--xevo-text)] whitespace-pre-wrap break-all">
+          <pre className="text-[11px] font-mono text-[var(--color-text-primary)] whitespace-pre-wrap break-all">
             {r.formattedBody}
           </pre>
         ) : (
           <div className="space-y-0.5">
             {Object.entries(r.headers).map(([k, v]) => (
               <div key={k} className="flex text-[11px] font-mono">
-                <span className="text-[var(--xevo-accent)] mr-2 flex-shrink-0">
+                <span className="text-[var(--color-accent)] mr-2 flex-shrink-0">
                   {k}:
                 </span>
-                <span className="text-[var(--xevo-text)] break-all">{v}</span>
+                <span className="text-[var(--color-text-primary)] break-all">{v}</span>
               </div>
             ))}
             {Object.keys(r.headers).length === 0 && (
-              <p className="text-[11px] text-[var(--xevo-text-faint)]">No headers</p>
+              <p className="text-[11px] text-[var(--color-text-disabled)]">No headers</p>
             )}
           </div>
         )}
@@ -730,7 +732,7 @@ function HistoryPanel(p: BodySharedProps) {
     return (
       <button
         onClick={() => p.setHistoryOpen(true)}
-        className="flex items-center gap-1 text-[10px] text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] px-2 py-1"
+        className="flex items-center gap-1 text-[10px] text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] px-2 py-1"
       >
         <ChevronUp size={10} /> History ({p.history.length})
       </button>
@@ -739,24 +741,26 @@ function HistoryPanel(p: BodySharedProps) {
   return (
     <div
       className="border-t"
-      style={{ borderColor: "var(--xevo-border)" }}
+      style={{ borderColor: "var(--color-border)" }}
     >
       <div className="flex items-center justify-between px-3 py-1.5">
-        <span className="text-[10px] font-semibold tracking-wider text-[var(--xevo-text-faint)] uppercase flex items-center gap-1">
+        <span className="text-[10px] font-semibold tracking-wider text-[var(--color-text-disabled)] uppercase flex items-center gap-1">
           <History size={10} /> History
         </span>
         <div className="flex items-center gap-1">
           {p.history.length > 0 && (
             <button
               onClick={p.onClearHistory}
-              className="text-[10px] text-[var(--xevo-text-faint)] hover:text-[var(--xevo-danger)] px-1"
+              aria-label="Clear request history"
+              className="text-[10px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] px-1"
             >
               <Trash2 size={10} />
             </button>
           )}
           <button
             onClick={() => p.setHistoryOpen(false)}
-            className="text-[10px] text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)]"
+            aria-label="Collapse history"
+            className="text-[10px] text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)]"
           >
             <ChevronDown size={10} />
           </button>
@@ -764,7 +768,7 @@ function HistoryPanel(p: BodySharedProps) {
       </div>
       <div className="max-h-32 overflow-y-auto">
         {p.history.length === 0 ? (
-          <p className="text-[10px] text-[var(--xevo-text-faint)] text-center py-2">
+          <p className="text-[10px] text-[var(--color-text-disabled)] text-center py-2">
             No requests yet
           </p>
         ) : (
@@ -772,7 +776,7 @@ function HistoryPanel(p: BodySharedProps) {
             <button
               key={h.id}
               onClick={() => p.loadFromHistory(h)}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--xevo-hover)]"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--color-hover)]"
             >
               <span
                 className="text-[10px] font-bold flex-shrink-0"
@@ -780,22 +784,23 @@ function HistoryPanel(p: BodySharedProps) {
               >
                 {h.method}
               </span>
-              <span className="text-[11px] text-[var(--xevo-text-muted)] font-mono flex-1 min-w-0 truncate">
+              <span className="text-[11px] text-[var(--color-text-muted)] font-mono flex-1 min-w-0 truncate">
                 {h.url}
               </span>
               <span
                 className="text-[10px] font-mono flex-shrink-0"
                 style={{
                   color: h.status >= 200 && h.status < 300
-                    ? "var(--xevo-success)"
+                    ? "var(--color-live)"
                     : h.status >= 400
-                      ? "var(--xevo-danger)"
-                      : "var(--xevo-warning)",
+                      ? "var(--color-dead)"
+                      : "var(--color-warn)",
+                  fontFeatureSettings: '"tnum" 1',
                 }}
               >
                 {h.status}
               </span>
-              <span className="text-[10px] text-[var(--xevo-text-faint)] flex-shrink-0">
+              <span className="text-[10px] text-[var(--color-text-disabled)] flex-shrink-0" style={{ fontFeatureSettings: '"tnum" 1' }}>
                 {h.durationMs}ms
               </span>
             </button>
@@ -811,17 +816,17 @@ function QuickUrls(p: BodySharedProps) {
   return (
     <div
       className="flex items-center gap-1 flex-wrap px-3 py-2 border-t"
-      style={{ borderColor: "var(--xevo-border)" }}
+      style={{ borderColor: "var(--color-border)" }}
     >
-      <span className="text-[10px] text-[var(--xevo-text-faint)] mr-1">
+      <span className="text-[10px] text-[var(--color-text-disabled)] mr-1">
         Quick:
       </span>
       {p.quickUrls.map((u) => (
         <button
           key={u}
           onClick={() => p.setUrl(u)}
-          className="px-1.5 py-0.5 text-[10px] font-mono rounded border text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)]"
-          style={{ borderColor: "var(--xevo-modal-border)" }}
+          className="px-1.5 py-0.5 text-[10px] font-mono rounded border text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
+          style={{ borderColor: "var(--color-border)" }}
         >
           {u}
         </button>
@@ -834,7 +839,7 @@ function TopBar(p: BodySharedProps) {
   return (
     <div
       className="flex items-center gap-1.5 p-2 border-b"
-      style={{ borderColor: "var(--xevo-border)" }}
+      style={{ borderColor: "var(--color-border)" }}
     >
       <MethodSelector method={p.method} setMethod={p.setMethod} />
       <input
@@ -850,13 +855,13 @@ function TopBar(p: BodySharedProps) {
         }}
         placeholder="https://api.example.com/endpoint"
         spellCheck={false}
-        className="flex-1 min-w-0 h-9 px-2 text-[12px] font-mono bg-[var(--xevo-badge-bg)] text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)] rounded outline-none border focus:border-[var(--xevo-accent)]"
-        style={{ borderColor: "var(--xevo-modal-border)" }}
+        className="flex-1 min-w-0 h-9 px-2 text-[12px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
+        style={{ borderColor: "var(--color-border)" }}
       />
       <button
         onClick={p.send}
         disabled={p.sending || !p.url.trim()}
-        className="h-9 px-3 text-[12px] font-medium rounded text-white bg-[var(--xevo-accent)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+        className="h-9 px-3 text-[12px] font-medium rounded text-white bg-[var(--color-accent)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
       >
         {p.sending ? (
           <span className="animate-pulse">Sending…</span>
@@ -892,8 +897,8 @@ function TabButton({
       className={cn(
         "flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors",
         active
-          ? "bg-[var(--xevo-hover)] text-[var(--xevo-text)]"
-          : "text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)]",
+          ? "bg-[var(--color-hover)] text-[var(--color-text-primary)]"
+          : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]",
         disabled && "opacity-40 cursor-not-allowed"
       )}
     >
@@ -903,8 +908,8 @@ function TabButton({
         <span
           className="px-1 text-[9px] rounded font-mono"
           style={{
-            background: "var(--xevo-badge-bg)",
-            color: "var(--xevo-text-muted)",
+            background: "var(--color-elevated)",
+            color: "var(--color-text-muted)",
           }}
         >
           {badge}
@@ -937,25 +942,25 @@ function EmbeddedBody(p: BodySharedProps) {
 function FullPageBody(p: BodySharedProps & { onClose?: () => void }) {
   return (
     <div
-      className="w-[900px] h-[700px] max-w-[95vw] max-h-[95vh] flex flex-col rounded-lg overflow-hidden border"
+      className="w-[900px] h-[700px] max-w-[95vw] max-h-[95vh] flex flex-col rounded-[6px] overflow-hidden border"
       style={{
-        background: "var(--xevo-modal-bg)",
-        borderColor: "var(--xevo-modal-border)",
-        boxShadow: "0 25px 50px rgba(0,0,0,0.8)",
+        background: "var(--color-elevated)",
+        borderColor: "var(--color-border)",
       }}
       onClick={(e) => e.stopPropagation()}
     >
       <div
         className="flex items-center justify-between h-10 px-3 border-b"
-        style={{ borderColor: "var(--xevo-modal-border)" }}
+        style={{ borderColor: "var(--color-border)" }}
       >
-        <span className="text-[12px] font-semibold text-[var(--xevo-text)] flex items-center gap-1.5">
+        <span className="text-[12px] font-semibold text-[var(--color-text-primary)] flex items-center gap-1.5">
           <Code2 size={13} /> API Tester
         </span>
         <button
           onClick={p.onClose}
-          className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)]"
+          className="text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)]"
           title="Close (Esc)"
+          aria-label="Close API Tester"
         >
           <X size={14} />
         </button>

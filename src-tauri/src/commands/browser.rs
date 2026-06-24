@@ -5,16 +5,10 @@ use tauri::{
     WebviewWindow,
 };
 
-// JavaScript that implements Find-in-Page on top of the WebView's DOM.
-// Tauri 2.11.2 does not expose a native find API on WebviewWindow, so we
-// walk the DOM, wrap matches in <mark> elements, track the active match,
-// and report results back to Rust via __TAURI_INTERNALS__.invoke.
-//
-// Three functions are exposed on window:
-//   __xevoFind(query, forward)        — find and select first/next/prev
-//   __xevoFindNext(forward)          — cycle to next/prev match
-//   __xevoClearFind()                — remove highlights
-//   __xevoReportFindResult(active, total) — callback to Rust
+use crate::BrowserState;
+
+// ─── Injected Scripts ────────────────────────────────────────────────
+
 const XEVO_FIND_SCRIPT: &str = r##"
 (function() {
   function reportFindResult(active, total) {
@@ -91,7 +85,7 @@ const XEVO_FIND_SCRIPT: &str = r##"
         if (p.closest && p.closest("mark.xevo-find-hit")) {
           return NodeFilter.FILTER_REJECT;
         }
-        if (!node.nodeValue || node.nodeValue.toLowerCase().indexOf(q) === -1) {
+        if (!node.nodeValue || node.nodeValue.toLowerCase().indexOf(query) === -1) {
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
@@ -123,9 +117,7 @@ const XEVO_FIND_SCRIPT: &str = r##"
         mark.style.color = "#000";
         mark.style.padding = "0";
         range.surroundContents(mark);
-      } catch (e) {
-        // Range crosses element boundary - skip this match
-      }
+      } catch (e) {}
     }
   }
 
@@ -154,7 +146,6 @@ const XEVO_FIND_SCRIPT: &str = r##"
     var s = window.__xevoFindState;
     if (!s || s.matches.length === 0) {
       if (s && s.query) {
-        // Re-run the find in case the page changed
         window.__xevoFind(s.query, forward);
       }
       return;
@@ -180,7 +171,6 @@ const XEVO_FIND_SCRIPT: &str = r##"
     var marks = document.querySelectorAll("mark.xevo-find-hit");
     var active = marks[s.currentIndex];
     if (active) {
-      // Remove any prior active class, then mark this one
       for (var i = 0; i < marks.length; i++) {
         marks[i].style.backgroundColor = "#fde047";
       }
@@ -189,26 +179,12 @@ const XEVO_FIND_SCRIPT: &str = r##"
     }
   }
 
-  // Reset find state on every fresh page load so old highlights don't
-  // persist when the user navigates to a new page mid-find.
   document.addEventListener("DOMContentLoaded", function() {
     window.__xevoFindState = { query: "", matches: [], currentIndex: -1 };
   });
 })();
 "##;
 
-// JavaScript that forwards Ctrl/Cmd+D from inside the webview to the
-// Rust app so the bookmark action works even when the user is focused
-// on page content. The Tauri webview is a separate OS window, so
-// keydown listeners in the main React app never fire when the user is
-// reading a page. We install a capture-phase listener in the webview
-// itself, suppress Chromium's built-in "bookmark this page" handler,
-// and invoke `browser_bookmark_request` which Rust turns into a
-// `browser://bookmark-request` event for the React app.
-//
-// We skip the action when the user is typing in a text input on the
-// page (search boxes, comment fields, contenteditable, etc.) so we
-// don't hijack their Ctrl+D.
 const XEVO_BOOKMARK_SCRIPT: &str = r##"
 (function() {
   function isEditableTarget(t) {
@@ -220,15 +196,12 @@ const XEVO_BOOKMARK_SCRIPT: &str = r##"
   }
 
   function onKeyDown(e) {
-    // Ctrl+D (Windows/Linux) or Cmd+D (macOS), no shift/alt
     var mod = e.ctrlKey || e.metaKey;
     if (!mod) return;
     if (e.shiftKey || e.altKey) return;
     if (e.key !== "d" && e.key !== "D") return;
-    // Don't hijack Ctrl+D when the user is typing in a text field on the page
     if (isEditableTarget(e.target)) return;
 
-    // Suppress Chromium's built-in "bookmark this page" action
     e.preventDefault();
     e.stopPropagation();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
@@ -241,18 +214,116 @@ const XEVO_BOOKMARK_SCRIPT: &str = r##"
     } catch (err) {}
   }
 
-  // Use capture phase so we run before the page's own handlers
-  // and before Chromium's built-in bookmark shortcut
   document.addEventListener("keydown", onKeyDown, true);
-  // Re-attach on every fresh page so we always have a listener
   document.addEventListener("DOMContentLoaded", function() {
     document.addEventListener("keydown", onKeyDown, true);
   });
 })();
 "##;
 
-const BROWSER_LABEL: &str = "browser";
+const XEVO_SHORTCUT_FORWARD_SCRIPT: &str = r##"
+(function() {
+  var SHORTCUTS = {
+    "k": "ctrl+k",
+    "t": "ctrl+t",
+    "w": "ctrl+w",
+    "b": "ctrl+b",
+    ",": "ctrl+,",
+    "l": "ctrl+l",
+    "1": "ctrl+1",
+    "2": "ctrl+2",
+    "3": "ctrl+3",
+    "4": "ctrl+4",
+    "5": "ctrl+5",
+    "6": "ctrl+6",
+    "7": "ctrl+7",
+    "8": "ctrl+8",
+    "9": "ctrl+9"
+  };
 
+  function isEditableTarget(t) {
+    if (!t) return false;
+    var tag = (t.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if (t.isContentEditable) return true;
+    return false;
+  }
+
+  function forward(shortcut) {
+    try {
+      if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
+        window.__TAURI_INTERNALS__.invoke("forward_shortcut", { shortcut: shortcut })
+          .catch(function() {});
+      }
+    } catch (err) {}
+  }
+
+  function blockEvent(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+  }
+
+  function onKeyDown(e) {
+    if (e.key === "Escape") {
+      blockEvent(e);
+      forward("escape");
+      return;
+    }
+
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      if (e.key === "ArrowLeft") {
+        blockEvent(e);
+        forward("alt+left");
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        blockEvent(e);
+        forward("alt+right");
+        return;
+      }
+    }
+
+    if (!(e.ctrlKey || e.metaKey)) return;
+
+    if (e.shiftKey && !e.altKey && (e.key === "T" || e.key === "t")) {
+      blockEvent(e);
+      forward("ctrl+shift+t");
+      return;
+    }
+
+    if (e.shiftKey && !e.altKey && e.key === "Tab") {
+      blockEvent(e);
+      forward("ctrl+shift+tab");
+      return;
+    }
+
+    if (e.shiftKey && !e.altKey && (e.key === "?" || e.key === "/")) {
+      blockEvent(e);
+      forward("ctrl+?");
+      return;
+    }
+
+    if (isEditableTarget(e.target)) return;
+    if (e.shiftKey || e.altKey) return;
+
+    var mapping = SHORTCUTS[(e.key || "").toLowerCase()];
+    if (mapping) {
+      blockEvent(e);
+      forward(mapping);
+    }
+  }
+
+  document.addEventListener("keydown", onKeyDown, true);
+  document.addEventListener("DOMContentLoaded", function() {
+    document.addEventListener("keydown", onKeyDown, true);
+  });
+})();
+"##;
+
+// BROWSER_INIT_SCRIPT — JSON viewer + tab info reporting.
+// Now reads window.__XEVO_TAB_ID (injected per-webview) to include
+// the tab ID in update_tab_info calls so events are routed correctly.
 const BROWSER_INIT_SCRIPT: &str = r#"
 (function() {
   function xevoRenderJson() {
@@ -369,9 +440,7 @@ const BROWSER_INIT_SCRIPT: &str = r#"
           }
         });
       }
-    } catch (e) {
-      // Silently ignore - not JSON, or page is cross-origin
-    }
+    } catch (e) {}
   }
   document.addEventListener("DOMContentLoaded", xevoRenderJson);
 
@@ -389,16 +458,16 @@ const BROWSER_INIT_SCRIPT: &str = r#"
         var el = document.querySelector(selectors[i]);
         if (el && el.href) { favicon = el.href; break; }
       }
+      var tabId = window.__XEVO_TAB_ID || "";
       if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
         window.__TAURI_INTERNALS__.invoke("update_tab_info", {
+          tabId: tabId,
           title: title,
           url: url,
           favicon: favicon
         }).catch(function() {});
       }
-    } catch (e) {
-      // Silently ignore - page may be cross-origin or script may be blocked
-    }
+    } catch (e) {}
   }
 
   document.addEventListener("DOMContentLoaded", xevoSendPageInfo);
@@ -413,6 +482,12 @@ const BROWSER_INIT_SCRIPT: &str = r#"
   }
 })();
 "#;
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+fn webview_label_for_tab(tab_id: &str) -> String {
+    format!("browser-{}", tab_id)
+}
 
 fn resolve_url(input: &str) -> String {
     let s = input.trim();
@@ -434,21 +509,12 @@ fn resolve_url(input: &str) -> String {
     )
 }
 
-// Ensure the browser WebviewWindow exists at the given URL and logical
-// (CSS) bounds. If the window already exists, just navigate and reposition
-// — `WebviewWindow` natively supports `set_position`/`set_size`/`navigate`,
-// unlike the previous Tauri 2 child webview path where those methods
-// internally called `self.window()` and returned
-// "current webview is not a WebviewWindow".
-//
-// The window is built as a REAL WebviewWindow (not a child webview) with
-// the main window as its parent. The OS uses the parent for z-order
-// (child above parent) and lifecycle (child closes when parent closes).
-// Position is absolute screen coordinates (logical / CSS pixels); the OS
-// scales to physical via DPI.
-fn ensure_browser_window(
+/// Build a WebviewWindow for a tab. Injects per-tab __XEVO_TAB_ID plus
+/// all shared init scripts (JSON viewer, find, bookmark, shortcut forward).
+fn create_webview_for_tab(
     app: &AppHandle,
     main_window: &WebviewWindow,
+    tab_id: &str,
     url: &str,
     x: f64,
     y: f64,
@@ -457,63 +523,57 @@ fn ensure_browser_window(
 ) -> Result<WebviewWindow, String> {
     let width = width.max(1.0);
     let height = height.max(1.0);
-
-    if let Some(existing) = app.get_webview_window(BROWSER_LABEL) {
-        existing
-            .set_position(Position::Logical(LogicalPosition::new(x, y)))
-            .map_err(|e| e.to_string())?;
-        existing
-            .set_size(Size::Logical(LogicalSize::new(width, height)))
-            .map_err(|e| e.to_string())?;
-        existing
-            .navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
-            .map_err(|e| {
-                eprintln!("[xevo] browser navigate failed: {e}");
-                e.to_string()
-            })?;
-        existing.show().map_err(|e| e.to_string())?;
-        return Ok(existing);
-    }
-
+    let label = webview_label_for_tab(tab_id);
     let parsed = url
         .parse::<url::Url>()
         .map_err(|e| e.to_string())?;
+
+    let tab_id_nav = tab_id.to_string();
     let app_for_nav = app.clone();
+    let tab_id_load = tab_id.to_string();
     let app_for_load = app.clone();
 
+    // Per-tab init script that sets __XEVO_TAB_ID
+    let tab_id_init = format!("window.__XEVO_TAB_ID = \"{}\";", tab_id);
+
     let webview =
-        WebviewWindowBuilder::new(app, BROWSER_LABEL, WebviewUrl::External(parsed))
+        WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed))
             .parent(main_window)
             .map_err(|e| e.to_string())?
             .decorations(false)
             .resizable(false)
             .inner_size(width, height)
             .position(x, y)
+            .initialization_script(&tab_id_init)
             .initialization_script(BROWSER_INIT_SCRIPT)
             .initialization_script(XEVO_FIND_SCRIPT)
             .initialization_script(XEVO_BOOKMARK_SCRIPT)
+            .initialization_script(XEVO_SHORTCUT_FORWARD_SCRIPT)
             .on_navigation(move |nav_url| {
                 let url_str = nav_url.to_string();
-                let _ = app_for_nav.emit("browser://url-changed", url_str);
+                let _ = app_for_nav.emit("browser://url-changed", serde_json::json!({
+                    "tabId": tab_id_nav,
+                    "url": url_str,
+                }));
                 true
             })
             .on_page_load(move |webview, payload| {
                 match payload.event() {
                     PageLoadEvent::Started => {
-                        let _ = app_for_load.emit("browser://loading", true);
+                        let _ = app_for_load.emit("browser://loading", serde_json::json!({
+                            "tabId": tab_id_load,
+                            "loading": true,
+                        }));
                     }
                     PageLoadEvent::Finished => {
-                        let _ = app_for_load.emit("browser://loading", false);
+                        let _ = app_for_load.emit("browser://loading", serde_json::json!({
+                            "tabId": tab_id_load,
+                            "loading": false,
+                        }));
 
-                        // Rust-side title extraction fallback. In a real
-                        // WebviewWindow, __TAURI_INTERNALS__ is available,
-                        // so the init script's update_tab_info call should
-                        // fire on its own — but we re-eval the same script
-                        // here and again after a delay to catch late SPA
-                        // title mutations.
-                        let title_script = r#"
-(function() {
-  try {
+                        let title_script = format!(
+                            r#"(function() {{
+  try {{
     var title = document.title || "";
     var url = location.href || "";
     var favicon = null;
@@ -522,26 +582,31 @@ fn ensure_browser_window(
       'link[rel="shortcut icon"][href]',
       'link[rel="apple-touch-icon"][href]'
     ];
-    for (var i = 0; i < sels.length; i++) {
+    for (var i = 0; i < sels.length; i++) {{
       var el = document.querySelector(sels[i]);
-      if (el && el.href) { favicon = el.href; break; }
-    }
-    if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-      window.__TAURI_INTERNALS__.invoke("update_tab_info", {
-        title: title, url: url, favicon: favicon
-      }).catch(function() {});
-    }
-  } catch (e) {}
-})();
-"#;
-                        let _ = webview.eval(title_script);
+      if (el && el.href) {{ favicon = el.href; break; }}
+    }}
+    var tabId = window.__XEVO_TAB_ID || "{}";
+    if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {{
+      window.__TAURI_INTERNALS__.invoke("update_tab_info", {{
+        tabId: tabId,
+        title: title,
+        url: url,
+        favicon: favicon
+      }}).catch(function() {{}});
+    }}
+  }} catch (e) {{}}
+}})();"#,
+                            tab_id_load
+                        );
+                        let _ = webview.eval(&title_script);
 
                         let wv_for_later = webview.clone();
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(Duration::from_millis(500)).await;
-                            let _ = wv_for_later.eval(title_script);
+                            let _ = wv_for_later.eval(&title_script);
                             tokio::time::sleep(Duration::from_millis(1000)).await;
-                            let _ = wv_for_later.eval(title_script);
+                            let _ = wv_for_later.eval(&title_script);
                         });
                     }
                 }
@@ -550,42 +615,146 @@ fn ensure_browser_window(
             .map_err(|e| e.to_string())?;
 
     webview.show().map_err(|e| e.to_string())?;
-
     Ok(webview)
 }
 
+// ─── Commands ────────────────────────────────────────────────────────
+
+/// Create a new webview for a tab and show it. Hides the previously active
+/// webview. Called on first navigation (when a URL is entered).
 #[tauri::command]
-pub async fn browser_navigate(
+pub async fn browser_create_tab(
     window: tauri::WebviewWindow,
     app: AppHandle,
+    state: tauri::State<'_, BrowserState>,
+    tab_id: String,
     url: String,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    // Frontend passes logical (CSS) pixels. Tauri's WebviewWindowBuilder
-    // and set_position(Logical) / set_size(Logical) APIs expect logical
-    // pixels; the OS scales to physical via DPI. No scale_factor()
-    // multiplication needed.
     let resolved = resolve_url(&url);
-    ensure_browser_window(&app, &window, &resolved, x, y, width, height)?;
 
-    app.emit("browser://url-changed", resolved)
-        .map_err(|e| e.to_string())?;
+    // Hide the previously active webview
+    let prev_label = state.active_tab_label.lock().unwrap().clone();
+    if let Some(prev) = prev_label {
+        if let Some(wv) = app.get_webview_window(&prev) {
+            let _ = wv.hide();
+        }
+    }
+
+    // Create the new webview
+    let webview = create_webview_for_tab(
+        &app, &window, &tab_id, &resolved, x, y, width, height,
+    )?;
+
+    // Track as active
+    *state.active_tab_label.lock().unwrap() = Some(webview.label().to_string());
 
     Ok(())
 }
 
+/// Activate a tab: hide the current webview and show + reposition the target.
+/// If the target webview doesn't exist yet, creates it.
 #[tauri::command]
-pub async fn browser_set_bounds(
+pub async fn browser_activate_tab(
+    window: tauri::WebviewWindow,
     app: AppHandle,
+    state: tauri::State<'_, BrowserState>,
+    tab_id: String,
+    url: String,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
+    let label = webview_label_for_tab(&tab_id);
+
+    // Hide the currently active webview (if different)
+    let prev_label = state.active_tab_label.lock().unwrap().clone();
+    if let Some(ref prev) = prev_label {
+        if prev != &label {
+            if let Some(wv) = app.get_webview_window(prev) {
+                let _ = wv.hide();
+            }
+        }
+    }
+
+    // If target already exists, just show + reposition
+    if let Some(webview) = app.get_webview_window(&label) {
+        webview
+            .set_position(Position::Logical(LogicalPosition::new(x, y)))
+            .map_err(|e| e.to_string())?;
+        webview
+            .set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))))
+            .map_err(|e| e.to_string())?;
+        webview.show().map_err(|e| e.to_string())?;
+        *state.active_tab_label.lock().unwrap() = Some(label);
+        return Ok(());
+    }
+
+    // Target doesn't exist — create it
+    let resolved = resolve_url(&url);
+    let webview = create_webview_for_tab(
+        &app, &window, &tab_id, &resolved, x, y, width, height,
+    )?;
+    *state.active_tab_label.lock().unwrap() = Some(webview.label().to_string());
+
+    Ok(())
+}
+
+/// Close a tab's webview.
+#[tauri::command]
+pub async fn browser_close_tab(
+    app: AppHandle,
+    state: tauri::State<'_, BrowserState>,
+    tab_id: String,
+) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = app.get_webview_window(&label) {
+        wv.close().map_err(|e| e.to_string())?;
+    }
+    // If this was the active tab, clear the tracker
+    let mut active = state.active_tab_label.lock().unwrap();
+    if active.as_deref() == Some(&label) {
+        *active = None;
+    }
+    Ok(())
+}
+
+/// Navigate a specific tab's webview to a new URL.
+#[tauri::command]
+pub async fn browser_navigate_tab(
+    app: AppHandle,
+    tab_id: String,
+    url: String,
+) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    let resolved = resolve_url(&url);
+    if let Some(wv) = app.get_webview_window(&label) {
+        wv.navigate(resolved.parse().map_err(|e: url::ParseError| e.to_string())?)
+            .map_err(|e| {
+                eprintln!("[xevo] browser_navigate_tab failed: {e}");
+                e.to_string()
+            })?;
+    }
+    Ok(())
+}
+
+// ─── Bounds ──────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn browser_set_bounds(
+    app: AppHandle,
+    tab_id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = app.get_webview_window(&label) {
         wv.set_position(Position::Logical(LogicalPosition::new(x, y)))
             .map_err(|e| e.to_string())?;
         wv.set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))))
@@ -595,32 +764,30 @@ pub async fn browser_set_bounds(
 }
 
 #[tauri::command]
-pub async fn browser_show(
+pub async fn browser_reposition(
     app: AppHandle,
+    tab_id: String,
     x: f64,
     y: f64,
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
-        let _ = wv.set_position(Position::Logical(LogicalPosition::new(x, y)));
-        let _ = wv.set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))));
-        let _ = wv.show();
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = app.get_webview_window(&label) {
+        wv.set_position(Position::Logical(LogicalPosition::new(x, y)))
+            .map_err(|e| e.to_string())?;
+        wv.set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))))
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
-#[tauri::command]
-pub async fn browser_hide(app: AppHandle) -> Result<(), String> {
-    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
-        let _ = wv.hide();
-    }
-    Ok(())
-}
+// ─── Navigation (per-tab) ────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn browser_go_back(app: AppHandle) -> Result<(), String> {
-    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
+pub async fn browser_go_back(app: AppHandle, tab_id: String) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = app.get_webview_window(&label) {
         if let Err(err) = wv.eval("window.history.back()") {
             eprintln!("[xevo] browser_go_back eval failed: {err}");
         }
@@ -629,8 +796,9 @@ pub async fn browser_go_back(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn browser_go_forward(app: AppHandle) -> Result<(), String> {
-    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
+pub async fn browser_go_forward(app: AppHandle, tab_id: String) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = app.get_webview_window(&label) {
         if let Err(err) = wv.eval("window.history.forward()") {
             eprintln!("[xevo] browser_go_forward eval failed: {err}");
         }
@@ -639,8 +807,9 @@ pub async fn browser_go_forward(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn browser_reload(app: AppHandle) -> Result<(), String> {
-    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
+pub async fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = app.get_webview_window(&label) {
         if let Err(err) = wv.eval("window.location.reload()") {
             eprintln!("[xevo] browser_reload eval failed: {err}");
         }
@@ -649,20 +818,16 @@ pub async fn browser_reload(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn browser_close(app: AppHandle) -> Result<(), String> {
-    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
-        wv.close().map_err(|e| e.to_string())?;
+pub async fn browser_stop_loading(app: AppHandle, tab_id: String) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = app.get_webview_window(&label) {
+        wv.eval("window.stop()").map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
-// Invoked by XEVO_BOOKMARK_SCRIPT (a keydown listener injected into the
-// webview) when the user presses Ctrl/Cmd+D while focused on page
-// content. The webview is a separate OS window, so the main React app's
-// keydown listener never sees this event. We forward it to the frontend
-// as a `browser://bookmark-request` event, which useWebviewBridge listens
-// for and routes to toggleBookmarkForActiveTab() in
-// src/lib/bookmarkAction.ts.
+// ─── Bookmark & Shortcut forwarding (global, not tab-specific) ───────
+
 #[tauri::command]
 pub fn browser_bookmark_request(app: AppHandle) -> Result<(), String> {
     app.emit("browser://bookmark-request", ())
@@ -671,8 +836,16 @@ pub fn browser_bookmark_request(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn forward_shortcut(app: AppHandle, shortcut: String) -> Result<(), String> {
+    app.emit("xevo://shortcut", shortcut)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn update_tab_info(
     app: AppHandle,
+    tab_id: String,
     title: String,
     url: String,
     favicon: Option<String>,
@@ -680,6 +853,7 @@ pub fn update_tab_info(
     app.emit(
         "browser://tab-info",
         serde_json::json!({
+            "tabId": tab_id,
             "title": title,
             "url": url,
             "favicon": favicon,
@@ -689,13 +863,7 @@ pub fn update_tab_info(
     Ok(())
 }
 
-// ─── Find in Page ────────────────────────────────────────────────────
-//
-// Tauri 2.11.2 does not expose a native find API on WebviewWindow, so
-// the find UI is implemented in JavaScript that walks the DOM, wraps
-// matches in <mark> elements, and reports results back to Rust via a
-// callback invoke. Rust then forwards the result to the frontend as a
-// `browser://find-result` event.
+// ─── Find in Page (per-tab) ──────────────────────────────────────────
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FindResultPayload {
@@ -704,11 +872,11 @@ pub struct FindResultPayload {
     pub final_update: bool,
 }
 
-fn eval_find_script(app: &AppHandle, script_body: &str) -> Result<(), String> {
+fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<(), String> {
+    let label = webview_label_for_tab(tab_id);
     let wv = app
-        .get_webview_window(BROWSER_LABEL)
-        .ok_or_else(|| "browser webview not initialized".to_string())?;
-    // Wrap the body in an IIFE so `return` works at top-level.
+        .get_webview_window(&label)
+        .ok_or_else(|| "browser webview not found for tab".to_string())?;
     let wrapped = format!(
         "(function() {{ {} }})();",
         script_body.replace('\\', "\\\\").replace('`', "\\`")
@@ -725,7 +893,6 @@ fn build_invoke_call(func_name: &str, args: Vec<String>) -> String {
 }
 
 fn js_string_literal(s: &str) -> String {
-    // Escape for a JS double-quoted string literal
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for ch in s.chars() {
@@ -750,24 +917,26 @@ fn js_string_literal(s: &str) -> String {
 #[tauri::command]
 pub async fn browser_find(
     app: AppHandle,
+    tab_id: String,
     query: String,
     forward: Option<bool>,
 ) -> Result<(), String> {
     if query.is_empty() {
         let script = build_invoke_call("__xevoClearFind", vec![]);
-        return eval_find_script(&app, &script);
+        return eval_find_script(&app, &tab_id, &script);
     }
     let fwd = forward.unwrap_or(true);
     let body = build_invoke_call(
         "__xevoFind",
         vec![js_string_literal(&query), format!("{}", fwd)],
     );
-    eval_find_script(&app, &body)
+    eval_find_script(&app, &tab_id, &body)
 }
 
 #[tauri::command]
 pub async fn browser_find_next(
     app: AppHandle,
+    tab_id: String,
     forward: Option<bool>,
 ) -> Result<(), String> {
     let fwd = forward.unwrap_or(true);
@@ -775,13 +944,13 @@ pub async fn browser_find_next(
         "__xevoFindNext",
         vec![format!("{}", fwd)],
     );
-    eval_find_script(&app, &body)
+    eval_find_script(&app, &tab_id, &body)
 }
 
 #[tauri::command]
-pub async fn browser_stop_find(app: AppHandle) -> Result<(), String> {
+pub async fn browser_stop_find(app: AppHandle, tab_id: String) -> Result<(), String> {
     let body = build_invoke_call("__xevoClearFind", vec![]);
-    eval_find_script(&app, &body)
+    eval_find_script(&app, &tab_id, &body)
 }
 
 #[tauri::command]
@@ -801,30 +970,7 @@ pub fn browser_find_callback(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn browser_stop_loading(app: AppHandle) -> Result<(), String> {
-    let wv = app
-        .get_webview_window("browser")
-        .ok_or("browser window not found")?;
-    wv.eval("window.stop()").map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn browser_reposition(
-    app: AppHandle,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-) -> Result<(), String> {
-    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
-        wv.set_position(Position::Logical(LogicalPosition::new(x, y)))
-            .map_err(|e| e.to_string())?;
-        wv.set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))))
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
+// ─── Theme (apply to all webviews) ───────────────────────────────────
 
 #[tauri::command]
 pub async fn browser_set_theme(app: AppHandle, theme: String) -> Result<(), String> {
@@ -844,8 +990,40 @@ pub async fn browser_set_theme(app: AppHandle, theme: String) -> Result<(), Stri
   }} catch (e) {{}}
 }})();"#
     );
-    if let Some(wv) = app.get_webview_window(BROWSER_LABEL) {
-        let _ = wv.eval(&script);
+    // Apply to ALL browser webviews (all labels starting with "browser-")
+    for (_, wv) in app.webview_windows() {
+        if wv.label().starts_with("browser-") {
+            let _ = wv.eval(&script);
+        }
+    }
+    Ok(())
+}
+
+// ─── Hide/Show (for overlays) ────────────────────────────────────────
+
+#[tauri::command]
+pub async fn browser_hide_tab(app: AppHandle, tab_id: String) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = app.get_webview_window(&label) {
+        let _ = wv.hide();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn browser_show_tab(
+    app: AppHandle,
+    tab_id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = app.get_webview_window(&label) {
+        let _ = wv.set_position(Position::Logical(LogicalPosition::new(x, y)));
+        let _ = wv.set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))));
+        let _ = wv.show();
     }
     Ok(())
 }

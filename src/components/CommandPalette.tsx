@@ -62,7 +62,7 @@ export function CommandPalette() {
         type: "command",
         label: "New Tab",
         sublabel: "Open a new empty tab",
-        icon: <Plus size={14} className="text-[var(--xevo-text-muted)]" />,
+        icon: <Plus size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
           const wsId = activeWorkspaceId;
           const newTabId = useTabsStore.getState().addTab(wsId, {});
@@ -76,7 +76,7 @@ export function CommandPalette() {
         type: "command",
         label: "Open Settings",
         sublabel: "Theme, search engine, scan interval",
-        icon: <Settings size={14} className="text-[var(--xevo-text-muted)]" />,
+        icon: <Settings size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
           useUIStore.getState().toggleSettingsPanel();
           useUIStore.getState().closeCommandPalette();
@@ -87,7 +87,7 @@ export function CommandPalette() {
         type: "command",
         label: "Close Current Tab",
         sublabel: "Close the active tab",
-        icon: <X size={14} className="text-[var(--xevo-text-muted)]" />,
+        icon: <X size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
           const wsState = useWorkspacesStore.getState();
           const ws = wsState.workspaces[activeWorkspaceId];
@@ -104,7 +104,7 @@ export function CommandPalette() {
         type: "command",
         label: "Open Bookmarks Panel",
         sublabel: "Show saved bookmarks in the sidebar",
-        icon: <Bookmark size={14} className="text-[var(--xevo-text-muted)]" />,
+        icon: <Bookmark size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
           useUIStore.getState().setActivePanel("bookmarks");
           useUIStore.getState().closeCommandPalette();
@@ -115,7 +115,7 @@ export function CommandPalette() {
         type: "command",
         label: "Open API Tester",
         sublabel: "Test HTTP endpoints in a split panel",
-        icon: <Code2 size={14} className="text-[var(--xevo-text-muted)]" />,
+        icon: <Code2 size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
           useUIStore.getState().openOverlay("api-tester");
           useUIStore.getState().closeCommandPalette();
@@ -126,7 +126,7 @@ export function CommandPalette() {
         type: "command",
         label: "Find in Page",
         sublabel: "Open the in-page search bar (Ctrl+F)",
-        icon: <Search size={14} className="text-[var(--xevo-text-muted)]" />,
+        icon: <Search size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
           useUIStore.getState().openFind();
           useUIStore.getState().closeCommandPalette();
@@ -183,34 +183,36 @@ export function CommandPalette() {
       onClick={() => useUIStore.getState().closeCommandPalette()}
     >
       <div
-        className="w-[560px] max-h-[480px] flex flex-col overflow-hidden rounded-lg border"
+        className="w-[560px] flex flex-col overflow-hidden rounded-[6px] border"
         style={{
-          background: "var(--xevo-modal-bg)",
-          borderColor: "var(--xevo-modal-border)",
+          background: "var(--color-elevated)",
+          borderColor: "var(--color-border)",
           boxShadow: "0 25px 50px rgba(0,0,0,0.8)",
+          animation: "paletteIn 80ms cubic-bezier(0, 0, 0.2, 1)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="flex items-center h-12 px-4 border-b shrink-0"
-          style={{ borderColor: "var(--xevo-modal-border)" }}
+          className="flex items-center h-[44px] px-4 border-b shrink-0"
+          style={{ borderColor: "var(--color-border)" }}
         >
-          <Search size={15} className="text-[var(--xevo-text-faint)] shrink-0" />
+          <Search size={15} className="text-[var(--color-text-disabled)] shrink-0" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search tabs and commands..."
-            className="flex-1 ml-3 bg-transparent outline-none text-sm text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)]"
+            className="flex-1 ml-3 bg-transparent outline-none text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
+            style={{ fontFamily: "var(--font-ui)" }}
           />
           {query === "" && (
             <kbd
-              className="px-1.5 py-0.5 text-[10px] border rounded"
+              className="px-1.5 py-0.5 text-[10px] border rounded-[2px]"
               style={{
-                background: "var(--xevo-badge-bg)",
-                borderColor: "var(--xevo-modal-border)",
-                color: "var(--xevo-text-faint)",
+                background: "var(--color-elevated)",
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-disabled)",
               }}
             >
               ESC
@@ -218,9 +220,9 @@ export function CommandPalette() {
           )}
         </div>
 
-        <div ref={listRef} className="overflow-y-auto">
+        <div ref={listRef} className="max-h-[320px] overflow-y-auto">
           {results.length === 0 ? (
-            <div className="py-8 text-center text-sm text-[var(--xevo-text-faint)]">
+            <div className="py-8 text-center text-[13px] text-[var(--color-text-disabled)]">
               {query ? `No results for "${query}"` : "Start typing to search..."}
             </div>
           ) : (
@@ -228,39 +230,38 @@ export function CommandPalette() {
               <div
                 key={item.id}
                 onClick={item.action}
-                className={`flex items-center h-11 px-3 gap-2.5 cursor-pointer transition-colors ${
+                className={`flex items-center h-8 px-3 gap-3 cursor-pointer transition-colors duration-0 ${
                   index === selectedIndex
-                    ? "bg-[var(--xevo-hover)]"
-                    : "hover:bg-[var(--xevo-hover)]"
+                    ? "bg-[var(--color-accent-dim)]"
+                    : "hover:bg-[var(--color-hover)]"
                 }`}
               >
                 <div className="w-5 h-5 flex items-center justify-center shrink-0">
                   {item.type === "tab" ? (
-                    <Globe size={13} className="text-[var(--xevo-text-faint)]" />
+                    <Globe size={14} className="text-[var(--color-text-muted)]" />
                   ) : (
                     item.icon
                   )}
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-[var(--xevo-text)] truncate">{item.label}</div>
-                  {item.sublabel && (
-                    <div className="text-[11px] text-[var(--xevo-text-faint)] truncate">
-                      {item.sublabel}
-                    </div>
-                  )}
+                  <div className="text-[13px] text-[var(--color-text-primary)] truncate">{item.label}</div>
                 </div>
 
-                {item.type === "tab" && (
+                {item.type === "tab" ? (
                   <span
-                    className="text-[9px] px-1 py-0.5 border rounded shrink-0"
+                    className="text-[9px] px-1 py-0.5 border rounded-[2px] shrink-0"
                     style={{
-                      background: "var(--xevo-badge-bg)",
-                      borderColor: "var(--xevo-modal-border)",
-                      color: "var(--xevo-text-faint)",
+                      background: "var(--color-elevated)",
+                      borderColor: "var(--color-border)",
+                      color: "var(--color-text-disabled)",
                     }}
                   >
                     TAB
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-[var(--color-text-disabled)] shrink-0">
+                    {item.sublabel}
                   </span>
                 )}
               </div>
