@@ -149,11 +149,15 @@ export interface HistoryEntry {
 
 // ─── Notes ────────────────────────────────────────────────────────
 
+export type NoteColor = "" | "red" | "orange" | "yellow" | "green" | "blue" | "purple";
+
 export interface Note {
   id: string;
   workspaceId: string;
   title: string;
   content: string;
+  isPinned: boolean;
+  color: NoteColor;
   createdAt: number;
   updatedAt: number;
 }

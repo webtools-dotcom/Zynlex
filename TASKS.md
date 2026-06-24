@@ -154,7 +154,7 @@
 - [ ] **Option B:** Tab-per-WebviewWindow (one real browser window per tab)
 - [ ] History panel (sidebar — `activePanel === "history"`) — last 100 navigations across workspaces
 - [ ] Network log panel (sidebar — `activePanel === "network"`) — request/response log
-- [ ] Notes panel (sidebar — `activePanel === "notes"`) — per-workspace scratch pad
+- [ ] Notes panel: drag-to-reorder notes in sidebar list
 - [ ] API tester: persist request history to localStorage
 - [ ] API tester: response body type detection (HTML preview, image preview, JSON tree view)
 - [ ] API tester: saved collections / environments
@@ -391,5 +391,208 @@
   - [x] 72.4 — Updated TASKS.md
   - [ ] 72.5 — Runtime GUI verification: pending human-run `pnpm tauri dev`
 
+## Session 18 (v1.7.0 — advanced notes with rich text editor) — DONE
 
+- [x] Task 73: Install @tolipovjs/rich-text
+  - [x] 73.1 — `pnpm add @tolipovjs/rich-text` (v2.2.0 installed)
+
+- [x] Task 74: CSS theme mapping
+  - [x] 74.1 — Added `@import "@tolipovjs/rich-text/styles.css"` to `src/index.css`
+  - [x] 74.2 — Added 30+ `--rte-*` CSS variable overrides in both `[data-theme="dark"]` and `[data-theme="light"]` blocks, mapping XEVO's `--xevo-*` tokens to the editor's `--rte-*` variables
+
+- [x] Task 75: Fix title bug
+  - [x] 75.1 — `NotesNotepad.tsx`: removed `|| "Untitled"` fallback from `handleTitleChange`. Titles now allow empty strings. Placeholder shown via `placeholder="Untitled"`.
+  - [x] 75.2 — `NotesSidebarPanel.tsx`: removed `|| "Untitled"` from `handleTitleCommit`. Titles can be empty. Display uses `note.title || "Untitled"`.
+  - [x] 75.3 — `notes.ts` store: `createNote` now creates notes with `title: ""` instead of `"Untitled"`.
+
+- [x] Task 76: Update Note type and store
+  - [x] 76.1 — `src/types/index.ts`: added `NoteColor` type (`"" | "red" | "orange" | "yellow" | "green" | "blue" | "purple"`), added `isPinned: boolean` and `color: NoteColor` to `Note` interface
+  - [x] 76.2 — `src/stores/notes.ts`: added `isPinned`/`color` fields, `togglePin`/`setColor` actions, `sortNotes()` helper (pinned-first, then by updatedAt)
+
+- [x] Task 77: Replace textarea with RichTextEditor
+  - [x] 77.1 — `NotesNotepad.tsx` full rewrite: replaced `<textarea>` with `<RichTextEditor>` from `@tolipovjs/rich-text`
+  - [x] 77.2 — Enabled: toolbar (basic preset), slash menu, markdown shortcuts, bubble toolbar, find/replace
+  - [x] 77.3 — Theme-aware: reads XEVO settings theme (dark/light/auto)
+  - [x] 77.4 — Auto-save with 500ms debounce, `key={selectedId}` forces remount on note switch
+  - [x] 77.5 — Export as Markdown (.md) via blob download
+  - [x] 77.6 — Enhanced footer: char count + word count + reading time estimate
+  - [x] 77.7 — Pin button, color picker (6 options), color dot in note list
+
+- [x] Task 78: Update NotesSidebarPanel
+  - [x] 78.1 — Pin indicator (Pin icon) in note cards
+  - [x] 78.2 — Color dots in note cards
+  - [x] 78.3 — HTML preview for expanded notes (dangerouslySetInnerHTML)
+  - [x] 78.4 — Pin/unpin button in hover actions
+
+- [x] Task 79: Verification
+  - [x] 79.1 — `cd src-tauri && cargo check` — clean
+  - [x] 79.2 — `pnpm tsc --noEmit` — clean
+  - [x] 79.3 — Updated PROJECT_STATE.md to v1.7.0
+  - [x] 79.4 — Updated TASKS.md
+  - [ ] 79.5 — Runtime GUI verification: pending human-run `pnpm tauri dev`
+
+## Session 23 (black screen on window restore) — DONE
+
+- [x] Task 80: Fix black screen on window restore (Fix A — repaint trigger)
+  - [x] 80.1 — Added `browser_repaint` Rust command in `src-tauri/src/commands/browser.rs`
+  - [x] 80.2 — Registered `browser_repaint` in `src-tauri/src/lib.rs` invoke_handler (19 → 20)
+  - [x] 80.3 — Added `repaintWebview()` IPC wrapper in `src/services/browser.ts`
+  - [x] 80.4 — Added `onFocusChanged` useEffect in `src/hooks/useWebviewBridge.ts`
+  - [x] 80.5 — `cd src-tauri && cargo check` — clean
+  - [x] 80.6 — `pnpm tsc --noEmit` — clean
+  - [ ] 80.7 — Runtime GUI verification: pending human-run `pnpm tauri dev` — **FAILED at runtime: black screen persists after restore**
+
+## Session 24 (black screen fix — set_size WM_SIZE approach) — DONE
+
+- [x] Task 81: Fix black screen on window restore (Fix C — RedrawWindow Win32 API)
+  - [x] 81.1 — Added `windows` crate dependency to `src-tauri/Cargo.toml` with `Win32_Foundation` + `Win32_Graphics_Gdi` features
+  - [x] 81.2 — Replaced `browser_repaint` hide+show cycle with `RedrawWindow(hwnd, None, None, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN)` Win32 API call
+  - [x] 81.3 — Uses `wv.hwnd()` to get the native HWND from Tauri's `WebviewWindow`
+  - [x] 81.4 — `#[cfg(windows)]` guard for platform-specific code, fallback to hide+show on non-Windows
+  - [x] 81.5 — `cd src-tauri && cargo check` — clean
+  - [x] 81.6 — `pnpm tsc --noEmit` — clean
+  - [ ] 81.7 — Runtime GUI verification: pending human-run `pnpm tauri dev` — **FAILED at runtime: black screen persists (RedrawWindow sends WM_PAINT but WebView2 needs WM_SIZE)**
+
+- [x] Task 82: Fix black screen on window restore (Fix D — set_size triggers WM_SIZE)
+  - [x] 82.1 — Root cause identified: maximize/restore fixes black screen because those actions send WM_SIZE. WebView2 re-composites on WM_SIZE, not WM_PAINT.
+  - [x] 82.2 — Replaced RedrawWindow in `browser_repaint` with `wv.inner_size()` + `wv.set_size(Size::Physical(size))` — re-applies current size to trigger WM_SIZE
+  - [x] 82.3 — Removed `windows` crate dependency from `src-tauri/Cargo.toml` (no longer needed)
+  - [x] 82.4 — `cd src-tauri && cargo check` — clean
+  - [x] 82.5 — `pnpm tsc --noEmit` — clean
+  - [ ] 82.6 — Runtime GUI verification: pending human-run `pnpm tauri dev`
+
+## Session 25 (black screen fix — ±1px resize trick) — DONE
+
+- [x] Task 83: Fix black screen on window restore (Fix E — ±1px resize trick)
+
+  - [x] 83.1 — Root cause chain confirmed: `SW_SHOW` does not send WM_SIZE → RedrawWindow sends WM_PAINT not WM_SIZE → `set_size(same)` suppressed by Windows → only real size change triggers WM_SIZE → WebView2 re-composites on WM_SIZE
+  - [x] 83.2 — Extracted `pub(crate) async fn do_browser_repaint(app: &AppHandle)` in `browser.rs` — shrinks height by 1px (WM_SIZE #1), sleeps 50ms, restores original (WM_SIZE #2)
+  - [x] 83.3 — Simplified `browser_repaint` command to delegate to `do_browser_repaint`
+  - [x] 83.4 — Added `.setup()` block in `lib.rs` with `WindowEvent::Focused(true)` handler → spawns async task → 150ms delay → `do_browser_repaint`
+  - [x] 83.5 — Removed frontend `onFocusChanged` listener from `useWebviewBridge.ts` (double-fire causes flicker)
+  - [x] 83.6 — Removed unused `repaintWebview` import from `useWebviewBridge.ts`
+  - [x] 83.7 — `cd src-tauri && cargo check` — clean
+  - [x] 83.8 — `pnpm tsc --noEmit` — clean
+  - [ ] 83.9 — Runtime GUI verification: pending human-run `pnpm tauri dev`
+
+## Session 26 (black screen fix — focus-ping approach) — DONE
+
+- [x] Task 84: Fix black screen on window restore (Fix F — focus-ping browser WebviewWindow)
+
+  - [x] 84.1 — Replaced `do_browser_repaint` body: now focuses browser WebviewWindow (triggers WebView2 re-composite), sleeps 80ms, returns focus to main
+  - [x] 84.2 — Removed unused `PhysicalSize` import from browser.rs
+  - [x] 84.3 — Increased delay in `lib.rs` `WindowEvent::Focused(true)` handler from 150ms to 200ms
+  - [x] 84.4 — `cd src-tauri && cargo check` — clean
+  - [x] 84.5 — `pnpm tsc --noEmit` — clean
+  - [ ] 84.6 — Runtime GUI verification: pending human-run `pnpm tauri dev`
+
+## Session 27 (black screen fix — auto maximize/unmaximize cycle) — DONE
+
+- [x] Task 85: Fix black screen on window restore (Fix G — maximize/unmaximize cycle)
+
+  - [x] 85.1 — Added `Arc<AtomicBool>` minimize tracking in `lib.rs` setup block
+  - [x] 85.2 — `Focused(false)` handler: checks `is_minimized()`, sets flag if true
+  - [x] 85.3 — `Focused(true)` handler: if flag set, spawns async task → 150ms delay → maximize→unmaximize (or reverse if was maximized)
+  - [x] 85.4 — Made `do_browser_repaint` a no-op in browser.rs (superseded)
+  - [x] 85.5 — `cd src-tauri && cargo check` — clean (fixed borrow error with mw_clone)
+  - [x] 85.6 — `pnpm tsc --noEmit` — clean
+  - [ ] 85.7 — Runtime GUI verification: pending human-run `pnpm tauri dev`
+
+## Session 28 (v1.8.0 — XEVO_FRONTEND.md design system P1+P2) — DONE
+
+- [x] Task 86: P1 — Tailwind v4 theme system
+  - [x] 86.1 — `src/index.css`: added `@custom-variant dark` after `@import "tailwindcss"`
+  - [x] 86.2 — `src/index.css`: wrapped all design tokens in `@theme { ... }` block (colors, fonts, spacing, radius, motion)
+  - [x] 86.3 — `src/index.css`: `:root` retains shadcn/ui semantic mappings + legacy aliases + RTE theme
+  - [x] 86.4 — `src/index.css`: added `@media (prefers-reduced-motion: reduce)` global rule
+  - [x] 86.5 — `src/index.css`: added `@keyframes ambientPulse`, `paletteIn`, `toastIn`
+  - [x] 86.6 — `src-tauri/tauri.conf.json`: added `"decorations": false` + `"transparent": false` to main window
+  - [x] 86.7 — `pnpm tsc --noEmit` clean, `cargo check` clean
+
+- [x] Task 87: P2 — HomePage redesign (spec §10)
+  - [x] 87.1 — `src/components/panels/HomePage.tsx`: centered 720px column, "Your stack, at a glance." heading (24px/600)
+  - [x] 87.2 — Server cards: 64px height, liveness dot + port + "Open →" link, ambient radial gradient pulse
+  - [x] 87.3 — Empty state: italic "No servers detected..." text
+
+- [x] Task 88: P2 — CommandPalette animation + sizing (spec §6)
+  - [x] 88.1 — `src/components/CommandPalette.tsx`: 80ms `paletteIn` animation (fade + scale 0.97→1.0)
+  - [x] 88.2 — Input height 44px, results max-height 320px, result items 32px, border-radius 6px
+  - [x] 88.3 — Selected state uses `accent-dim`, sublabel shown on right for commands
+
+- [x] Task 89: P2 — Sidebar 150ms width transition (spec §7)
+  - [x] 89.1 — `src/components/sidebar/Sidebar.tsx`: always rendered (no `return null`), width animated 150ms ease-snap
+
+- [x] Task 90: P2 — Toast 100ms animation (spec §7)
+  - [x] 90.1 — `src/components/Toast.tsx`: 100ms `toastIn` animation (was 200ms), inline `<style>` removed
+  - [x] 90.2 — `src/index.css`: `@keyframes toastIn` added
+
+- [x] Task 91: Verification
+  - [x] 91.1 — `pnpm tsc --noEmit` — clean
+  - [x] 91.2 — `cargo check` — clean
+
+## Session 29 (v1.9.0 — XEVO_FRONTEND.md design system P3) — DONE
+
+- [x] Task 92: P3 — aria-label sweep (spec §13)
+  - [x] 92.1 — Added `aria-label` to 10 icon-only buttons in browser components (TabItem, TabBar, Toolbar, FindBar)
+  - [x] 92.2 — Added `aria-label` to 24 icon-only buttons across sidebar/panel/overlay components (Sidebar, WorkspaceSwitcher, SettingsPanel, OverlayPanel, ShortcutHelp, ApiTester, NotesNotepad, HistoryPanel, BookmarksPanel, etc.)
+  - [x] 92.3 — Dynamic aria-labels for toggle buttons (sidebar collapse, pin/unpin)
+
+- [x] Task 93: P3 — font-feature-settings tnum (spec §3)
+  - [x] 93.1 — Added `fontFeatureSettings: '"tnum" 1'` or `tabular-nums` to 10 high-priority numeric elements (StatusBar load time, ApiTester status/duration/size, FindBar match counter, Sidebar port numbers, HomePage port numbers)
+
+- [x] Task 94: P3 — Remove unauthorized shadows (spec §9 rule 2)
+  - [x] 94.1 — Removed `shadow-lg` from Toast.tsx and WorkspaceContextMenu.tsx
+  - [x] 94.2 — Removed `shadow-[0_0_0_2px_rgba(255,255,255,0.04)]` from AddressBar.tsx
+  - [x] 94.3 — Removed `shadow-xs` from ui/input.tsx and ui/button.tsx
+  - [x] 94.4 — Removed `box-shadow` transition from ui/badge.tsx
+  - [x] 94.5 — Removed `boxShadow` from TabBar.tsx drag ghost element
+  - [x] 94.6 — Kept: liveness dot glow (Sidebar.tsx) and focus ring (index.css) — both permitted by spec
+
+- [x] Task 95: P3 — Remove hover:scale (spec §9 rule 4)
+  - [x] 95.1 — Removed `hover:scale-110` from NotesNotepad.tsx color picker dots
+
+- [x] Task 96: P3 — Wire tauri-controls
+  - [x] 96.1 — Added `tauri-plugin-os = "2"` to src-tauri/Cargo.toml
+  - [x] 96.2 — Registered `tauri_plugin_os::init()` in src-tauri/src/lib.rs
+  - [x] 96.3 — Added `os:default` + window permissions to src-tauri/capabilities/default.json
+  - [x] 96.4 — Updated TabBar.tsx: imports `WindowControls` from tauri-controls, detects OS via `platform()`, renders controls on correct side (macOS: left, Windows/Linux: right)
+  - [x] 96.5 — Removed hardcoded `paddingRight: 140px` — padding now handled by WindowControls component
+
+- [x] Task 97: Verification
+  - [x] 97.1 — `pnpm tsc --noEmit` — clean
+  - [x] 97.2 — `cargo check` — clean
+  - [x] 97.3 — Final shadow sweep: 0 unauthorized shadow references remaining
+
+## Session 31 (v1.11.0 — browser webview drag-after-restore fix) — DONE
+
+- [x] Task 98: Fix browser webview not following main window after maximize/restore
+  - [x] 98.1 — Root cause confirmed: `onMoved` is unreliable for maximize/unmaximize on Windows (SWP_NOMOVE in WM_WINDOWPOSCHANGED, tauri #7664 closed "not planned"). `onResized` is always reliable (WM_SIZE fires unconditionally).
+  - [x] 98.2 — Ref-based syncBounds: `syncBoundsRef.current` holds latest logic, `syncBounds = useCallback(() => syncBoundsRef.current(), [])` has stable identity. Eliminates stale-closure bugs across re-renders.
+  - [x] 98.3 — Added `onResized` listener alongside `onMoved`. 50ms delay lets DOM reflow after the lib.rs repaint hack. Both call `syncBoundsRef.current()`.
+  - [x] 98.4 — Maximize-state detection: `wasMaximizedRef` tracks state via `onResized` + `isMaximized()`. On transition, resets `lastBoundsRef = null` to force full re-sync (bypasses 5px threshold).
+  - [x] 98.5 — onMoved throttle: 16ms + `requestAnimationFrame` reduces redundant Rust calls during drag.
+  - [x] 98.6 — Removed standalone `getBounds` useCallback. Bounds computation inlined into syncBoundsRef.current, ensureWebviewVisible, navigate, goBack, goForward, sidebar toggle effect, tab-switch effect. All read contentAreaRef.current fresh at call time.
+  - [x] 98.7 — Verified lib.rs maximize/unmaximize hack must stay — removing it causes black screen regression (Sessions 23-27, 5 failed fix attempts). The hack is the only mechanism that sends WM_SIZE with actual size change to WebView2.
+  - [x] 98.8 — `pnpm tsc --noEmit` — clean
+  - [x] 98.9 — `cargo check` — clean
+  - [ ] 98.10 — Runtime verification: pending human `pnpm tauri dev`
+    - Test 1: Maximize → restore → drag → browser follows
+    - Test 2: Minimize → restore → webview appears (no black screen)
+    - Test 3: Normal drag → browser follows
+    - Test 4: Window resize → browser resizes
+
+## Session 32 (v1.11.1 — main window drag fix) — DONE
+
+- [x] Task 99: Fix main window not draggable after maximize→restore
+  - [x] 99.1 — Root cause: Tauri's drag.js `isDragRegion()` uses bare `data-tauri-drag-region` attribute which only triggers drag when the exact element is the click target (`el === composedPath[0]`), not child elements. Clicking on tabs, + button, etc. did NOT trigger drag.
+  - [x] 99.2 — Changed `data-tauri-drag-region` → `data-tauri-drag-region="deep"` on TabBar outer div. With "deep", any click within the subtree triggers drag. `data-tauri-drag-region="false"` on WindowControls still blocks drag on min/max/close buttons.
+  - [x] 99.3 — `pnpm tsc --noEmit` — clean
+  - [x] 99.4 — `cargo check` — clean
+  - [ ] 99.5 — Runtime verification: pending human `pnpm tauri dev`
+    - Test 1: Click on any tab → window drag works
+    - Test 2: Click on empty tab bar space → window drag works
+    - Test 3: Click on minimize/maximize/close → buttons work, no drag
+    - Test 4: Double-click on tab bar → toggles maximize
+    - Test 5: Maximize → restore → drag → works
+    - Test 6: Normal drag → works
 

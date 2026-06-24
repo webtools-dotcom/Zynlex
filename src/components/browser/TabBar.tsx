@@ -1,10 +1,12 @@
 import { Plus } from "lucide-react";
 import { useEffect, useCallback, useRef, useState } from "react";
+import { WindowControls } from "./WindowControls";
 import { TabItem } from "./TabItem";
 import { TabContextMenu } from "./TabContextMenu";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
+import { closeTabWebview } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
@@ -55,6 +57,7 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
   const handleCloseTab = useCallback((tabId: string) => {
     removeTabFromWorkspace(activeWorkspaceId, tabId);
     closeTab(tabId);
+    closeTabWebview(tabId).catch(() => {});
   }, [activeWorkspaceId, removeTabFromWorkspace, closeTab]);
 
   const handleContextMenu = useCallback((tabId: string, e: React.MouseEvent) => {
@@ -100,8 +103,7 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
     ghost.style.pointerEvents = "none";
     ghost.style.opacity = "0.9";
     ghost.style.transition = "none";
-    ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
-    ghost.style.background = "var(--xevo-tab-active)";
+    ghost.style.background = "var(--color-elevated)";
     document.body.appendChild(ghost);
     dragGhostRef.current = ghost;
 
@@ -220,11 +222,15 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
 
   return (
     <div
-      className="h-9 flex items-stretch flex-shrink-0 overflow-hidden"
+      className="h-[36px] flex items-stretch flex-shrink-0 overflow-hidden"
       data-tab-bar="true"
+      data-tauri-drag-region="deep"
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      style={{ background: "var(--xevo-tab-bar)", borderBottom: "1px solid var(--xevo-border-subtle)" }}
+      style={{
+        background: "var(--color-surface)",
+        borderBottom: "1px solid var(--color-border-subtle)",
+      }}
     >
       <div
         className="flex items-stretch flex-1 overflow-x-auto"
@@ -252,15 +258,20 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
       <button
         onClick={openNewTab}
         title="New tab (Ctrl+T)"
+        aria-label="New tab"
         onPointerOver={handlePlusPointerOver}
-        className="flex-shrink-0 w-9 flex items-center justify-center text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)] transition-colors border-l"
+        className="flex-shrink-0 w-9 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors border-l"
         style={{
-          borderColor: dropTarget === "__end__" ? "var(--xevo-accent)" : "var(--xevo-border)",
+          borderColor: dropTarget === "__end__" ? "var(--color-accent)" : "var(--color-border)",
           borderLeftWidth: dropTarget === "__end__" ? 2 : 1,
         }}
       >
         <Plus size={13} />
       </button>
+
+      <div className="flex-shrink-0 flex items-stretch">
+        <WindowControls />
+      </div>
 
       {contextMenu && (
         <TabContextMenu

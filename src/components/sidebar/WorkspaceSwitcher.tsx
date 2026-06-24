@@ -25,23 +25,23 @@ function WorkspaceIcon({ workspace, isActive, tabCount, onClick, onContextMenu }
       title={`${workspace.name} (${tabCount} tab${tabCount !== 1 ? "s" : ""})`}
       style={{
         backgroundColor: isActive
-          ? "rgba(255,255,255,0.08)"
+          ? "var(--color-accent-dim)"
           : "transparent",
       }}
       className={cn(
-        "relative w-8 h-8 rounded-md flex items-center justify-center",
-        "text-xs font-semibold transition-all duration-150",
+        "relative w-8 h-8 rounded-[4px] flex items-center justify-center",
+        "text-xs font-semibold transition-colors duration-80",
         "hover:opacity-90 select-none",
-        !isActive && "hover:bg-[var(--xevo-hover)]"
+        !isActive && "hover:bg-[var(--color-hover)]",
       )}
     >
-      <span style={{ color: isActive ? "var(--xevo-text)" : "var(--xevo-text-muted)" }}>
+      <span style={{ color: isActive ? "var(--color-accent)" : "var(--color-text-muted)" }}>
         {workspace.icon || workspace.name.charAt(0).toUpperCase()}
       </span>
       {tabCount > 0 && !isActive && (
         <span
           className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full text-[8px] flex items-center justify-center font-bold leading-none"
-          style={{ background: "var(--xevo-badge-bg)", color: "var(--xevo-text)" }}
+          style={{ background: "var(--color-elevated)", color: "var(--color-text-primary)" }}
         >
           {tabCount > 9 ? "9+" : tabCount}
         </span>
@@ -92,14 +92,15 @@ export function WorkspaceSwitcher() {
     <div
       className="w-12 flex flex-col items-center py-2 gap-1.5 flex-shrink-0 border-r"
       style={{
-        background: "var(--xevo-workspace-bar)",
-        borderColor: "var(--xevo-border)",
+        background: "var(--color-base)",
+        borderColor: "var(--color-border)",
       }}
     >
       <button
         onClick={toggleSidebar}
         title={sidebarOpen ? "Collapse Sidebar (Ctrl+B)" : "Expand Sidebar (Ctrl+B)"}
-        className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)]"
+        aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+        className="w-8 h-8 rounded-[4px] flex items-center justify-center transition-colors text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
       >
         {sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeft size={14} />}
       </button>
@@ -127,7 +128,8 @@ export function WorkspaceSwitcher() {
       <button
         onClick={handleNew}
         title="New workspace"
-        className="w-8 h-8 rounded-md flex items-center justify-center transition-colors text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)]"
+        aria-label="New workspace"
+        className="w-8 h-8 rounded-[4px] flex items-center justify-center transition-colors text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
       >
         <Plus size={14} />
       </button>
@@ -135,9 +137,10 @@ export function WorkspaceSwitcher() {
       <div className="mt-auto pb-2">
         <button
           onClick={toggleSettingsPanel}
-          className="w-10 h-10 flex items-center justify-center text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] rounded-lg hover:bg-[var(--xevo-hover)] transition-colors"
-          style={{ borderTop: "1px solid var(--xevo-border-subtle)" }}
+          className="w-10 h-10 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] rounded-[4px] hover:bg-[var(--color-hover)] transition-colors"
+          style={{ borderTop: "1px solid var(--color-border-subtle)" }}
           title="Settings (Ctrl+,)"
+          aria-label="Settings"
         >
           <Settings size={18} />
         </button>

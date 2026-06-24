@@ -34,14 +34,12 @@ function LiveServersPanel() {
     setActiveTab,
   } = useWorkspacesStore();
 
-  // Show pinned first, then alive, then recently-seen offline
   const sorted = [...servers].sort((a, b) => {
     if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
     if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1;
     return a.port - b.port;
   });
 
-  // Only show: pinned + currently alive + servers seen in the last hour
   const visible = sorted.filter(
     (s) =>
       s.isPinned ||
@@ -61,31 +59,29 @@ function LiveServersPanel() {
 
   return (
     <div className="p-2">
-      {/* Header row */}
       <div className="flex items-center justify-between px-1 mb-2">
-        <p className="text-[10px] font-bold tracking-[0.09em] text-[var(--xevo-text-muted)] uppercase">
+        <p className="text-[10px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
           Live Servers
         </p>
         {isScanning && (
-          <span className="text-[9px] text-[var(--xevo-text-faint)] animate-pulse">
+          <span className="text-[9px] text-[var(--color-text-disabled)] animate-pulse">
             scanning…
           </span>
         )}
         {!isScanning && lastScanAt && (
-          <span className="text-[9px] text-[var(--xevo-text-faint)]">
+          <span className="text-[9px] text-[var(--color-text-disabled)]">
             {Math.round((Date.now() - lastScanAt) / 1000)}s ago
           </span>
         )}
       </div>
 
-      {/* Server list */}
       {visible.length === 0 ? (
         <div className="text-center py-4">
-          <p className="text-[12px] text-[var(--xevo-text-muted)]">
+          <p className="text-[12px] text-[var(--color-text-muted)]">
             {isScanning ? "Scanning ports..." : "No servers detected"}
           </p>
           {!isScanning && (
-            <p className="text-[11px] text-[var(--xevo-text-faint)] mt-1">
+            <p className="text-[11px] text-[var(--color-text-disabled)] mt-1">
               Start a dev server on localhost
             </p>
           )}
@@ -96,40 +92,42 @@ function LiveServersPanel() {
             key={server.port}
             onClick={() => openServer(server)}
             title={`Open ${server.protocol}://localhost:${server.port}`}
-            className="w-full flex items-center gap-2 px-3 h-8 rounded text-left group hover:bg-[rgba(255,255,255,0.04)] transition-colors mb-0.5 cursor-pointer"
+            className="w-full flex items-center gap-2 px-3 h-7 rounded-[4px] text-left group hover:bg-[var(--color-hover)] transition-colors mb-0.5 cursor-pointer"
           >
-            {/* Status dot */}
+            {/* Liveness dot — the signature */}
             <span
-              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              className="w-1.5 h-1.5 rounded-full shrink-0"
               style={{
                 backgroundColor: server.isAlive
-                  ? "var(--xevo-success)"
-                  : "var(--xevo-text-faint)",
+                  ? "var(--color-live)"
+                  : "var(--color-text-disabled)",
+                boxShadow: server.isAlive
+                  ? "0 0 6px var(--color-live-glow)"
+                  : "none",
+                animation: server.isAlive ? "live-pulse 3s infinite" : "none",
               }}
             />
 
             {/* Port + label */}
             <span className="flex-1 min-w-0">
-              <span className="text-[12px] font-mono font-medium text-[var(--xevo-text-muted)] group-hover:text-[var(--xevo-text)] transition-colors">
+              <span className="text-[12px] font-[var(--font-mono)] font-medium text-[var(--color-text-muted)] group-hover:text-[var(--color-text-primary)] transition-colors tabular-nums">
                 :{server.port}
               </span>
               {(server.label || server.title) && (
-                <span className="text-[11px] text-[var(--xevo-text-faint)] ml-1.5 truncate">
+                <span className="text-[11px] text-[var(--color-text-disabled)] ml-1.5 truncate">
                   {server.label ?? server.title}
                 </span>
               )}
             </span>
 
-            {/* Protocol badge for https */}
             {server.protocol === "https" && (
-              <span className="text-[9px] opacity-60 flex-shrink-0" style={{ color: "var(--xevo-success)" }}>
+              <span className="text-[9px] opacity-60 flex-shrink-0" style={{ color: "var(--color-live)" }}>
                 https
               </span>
             )}
 
-            {/* Pinned indicator */}
             {server.isPinned && (
-              <span className="text-[9px] opacity-60 flex-shrink-0" style={{ color: "var(--xevo-accent)" }}>
+              <span className="text-[9px] opacity-60 flex-shrink-0" style={{ color: "var(--color-accent)" }}>
                 •
               </span>
             )}
@@ -146,23 +144,22 @@ export function Sidebar() {
 
   const wsName = workspaces[activeWorkspaceId]?.name ?? "Workspace";
 
-  if (!sidebarOpen) return null;
-
   return (
     <div
       className="flex flex-col flex-shrink-0 border-r overflow-hidden"
       style={{
-        width: sidebarWidth,
-        background: "var(--xevo-sidebar-bg)",
-        borderColor: "var(--xevo-border)",
+        width: sidebarOpen ? sidebarWidth : 0,
+        background: "var(--color-surface)",
+        borderColor: "var(--color-border)",
+        transition: "width 150ms cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
       {/* Header */}
       <div
-        className="px-3 py-2 border-b flex-shrink-0"
-        style={{ borderColor: "var(--xevo-border-subtle)" }}
+        className="px-3 h-[28px] flex items-center border-b flex-shrink-0"
+        style={{ borderColor: "var(--color-border-subtle)" }}
       >
-        <span className="text-[10px] font-bold tracking-[0.09em] text-[var(--xevo-text-muted)] uppercase">
+        <span className="text-[10px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
           {wsName}
         </span>
       </div>
@@ -170,18 +167,19 @@ export function Sidebar() {
       {/* Panel icon nav */}
       <div
         className="flex items-center gap-0.5 px-1.5 py-1 border-b flex-shrink-0 overflow-x-auto"
-        style={{ borderColor: "var(--xevo-border-subtle)" }}
+        style={{ borderColor: "var(--color-border-subtle)" }}
       >
         {PANELS.map(({ id, Icon, label }) => (
           <button
             key={id}
             onClick={() => togglePanel(id)}
             title={label}
+            aria-label={label}
             className={cn(
-              "w-8 h-8 rounded-[6px] flex items-center justify-center flex-shrink-0 transition-colors",
+              "w-8 h-8 rounded-[4px] flex items-center justify-center flex-shrink-0 transition-colors",
               activePanel === id
-                ? "bg-[var(--xevo-accent-dim)] text-[var(--xevo-accent)]"
-                : "text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text-muted)] hover:bg-[rgba(255,255,255,0.04)]"
+                ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
+                : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]",
             )}
           >
             <Icon size={14} strokeWidth={1.5} />
@@ -206,7 +204,7 @@ export function Sidebar() {
           activePanel !== "jwt" &&
           activePanel !== "base64" &&
           activePanel !== null && (
-            <div className="flex items-center justify-center h-24 text-[11px] text-[var(--xevo-text-faint)]">
+            <div className="flex items-center justify-center h-24 text-[11px] text-[var(--color-text-disabled)]">
               Coming soon
             </div>
           )}

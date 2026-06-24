@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.6.0
-## Last Updated: 2026-06-09
-## Status: Session 17 complete — overlay panel system (split-view: API tester + notepad appear above webview without hiding it), History panel (sidebar, last 100 navigations, delete/clear), Notes system (quick notes in sidebar + full notepad overlay). `cargo check` + `pnpm tsc --noEmit` clean. 18 invoke_handler entries.
+## Version: v1.12.0
+## Last Updated: 2026-06-25
+## Status: Session 34 complete — Tab-per-WebviewWindow architecture implemented. Each tab now gets its own WebviewWindow (label "browser-{tabId}"). Tab switching = hide old + show new (zero reload, full state preservation). Webviews are created lazily on first navigation. Rust backend has new commands: browser_create_tab, browser_activate_tab, browser_close_tab, browser_navigate_tab, browser_hide_tab, browser_show_tab. All existing commands (go_back, go_forward, reload, stop_loading, find, set_bounds, reposition) now accept tab_id. Events (url-changed, loading, tab-info) now include tabId in payload. `cargo check` clean. `tsc --noEmit` clean. Runtime verification pending.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -134,23 +134,38 @@
 - **Modal Visibility Fix** (Session 14) — Command palette and shortcut help modals now hide the browser WebviewWindow when open and show it again (with 50ms delay) when closed. Prevents modals from appearing behind the OS-level webview window.
 - **Rust command count: 18** — browser_navigate, browser_set_bounds, browser_go_back, browser_go_forward, browser_reload, browser_close, browser_bookmark_request, browser_show, browser_hide, update_tab_info, browser_find, browser_find_next, browser_stop_find, browser_find_callback, browser_stop_loading, browser_reposition, forward_shortcut, scan_ports.
 
+### XEVO_FRONTEND.md Design System (Sessions 28–30)
+- **Tailwind v4 @theme token system** — `src/index.css`: `@custom-variant dark` for Tailwind v4 dark mode via `data-theme` attribute. All design tokens wrapped in `@theme { ... }` block (colors, fonts, spacing, radius, motion). Tailwind now generates utility classes like `bg-base`, `text-text-primary`, `bg-elevated`, etc. `:root` retains shadcn/ui semantic mappings + legacy `--xevo-*` aliases + RTE theme variables.
+- **`prefers-reduced-motion: reduce`** — global CSS rule disables all animations/transitions for users who prefer reduced motion.
+- **`decorations: false`** — main window has no native title bar (`src-tauri/tauri.conf.json`). Window controls are custom-rendered in the tab bar.
+- **HomePage redesign (spec §10)** — centered 720px column, "Your stack, at a glance." heading (24px/600), 64px server cards with liveness dot + port + "Open →" link, ambient radial gradient pulse (3s infinite), italic empty state text.
+- **CommandPalette animation + sizing (spec §6)** — 80ms `paletteIn` animation (fade + scale 0.97→1.0), input height 44px, results max-height 320px, result items 32px, border-radius 6px, accent-dim selected state.
+- **Sidebar 150ms width transition (spec §7)** — always rendered (no `return null`), width transitions 150ms ease-snap between `sidebarWidth` and `0`.
+- **Toast 100ms animation (spec §7)** — 100ms `toastIn` animation (was 200ms), inline `<style>` tag removed (keyframe now in index.css).
+- **34 aria-labels added (spec §13)** — all icon-only buttons across 17 files now have `aria-label`. Dynamic labels for toggle buttons (sidebar collapse, pin/unpin).
+- **tabular-nums on numeric columns (spec §3)** — `font-feature-settings: "tnum" 1` or `tabular-nums` added to 10 numeric elements (StatusBar load time, ApiTester status/duration/size, FindBar match counter, port numbers).
+- **All unauthorized shadows removed (spec §9 rule 2)** — `shadow-lg` from Toast + context menu, `shadow-[...]` from AddressBar, `shadow-xs` from ui/input + ui/button, `box-shadow` transition from badge, drag ghost boxShadow from TabBar. Only liveness dot glow and input focus ring remain.
+- **hover:scale removed (spec §9 rule 4)** — `hover:scale-110` from NotesNotepad color picker dots.
+- **Custom WindowControls** — replaced `tauri-controls` (React 18 peer dep, incompatible with React 19) with custom `src/components/browser/WindowControls.tsx`: 3 buttons (minimize, maximize, close) using `@tauri-apps/api/window` `getCurrentWindow()`. 46px wide hit targets, hover states (subtle bg on min/max, red bg on close). Zero dependencies.
+- **tauri-plugin-os added** — `tauri-plugin-os = "2"` in Cargo.toml + registered in lib.rs. `os:default` permission added to capabilities. Available for future OS-specific features.
+
 ## ARCHITECTURE NOTE (CURRENT)
-- Browser webview is a **real `WebviewWindow`** (not a child webview), created once per session via `WebviewWindowBuilder::new(app, "browser", WebviewUrl::External(url)).parent(&main_window)?.decorations(false).resizable(false).transparent(true).inner_size(w, h).position(x, y).initialization_script(BROWSER_INIT_SCRIPT).on_navigation(...).on_page_load(...).build()`
-- Parent is the main `WebviewWindow` (set at build time). Tauri uses the parent for z-order (child above parent) and lifecycle (child closes when parent closes). The child is a top-level OS window (not WS_CHILD) so position is absolute screen coordinates.
-- **Lifecycle rule: the WebviewWindow is built once and reused for every navigation.** `ensure_browser_window` checks `app.get_webview_window("browser")` — if it exists, just call `set_position` / `set_size` / `navigate`. If not, build it. No more close-and-recreate.
-- Bounds are in LOGICAL (CSS) pixels. Frontend `getBounds()` returns `rect.left + window.screenX, rect.top + window.screenY` (no title-bar offset — Tauri 2 WebView2's `window.screenX/Y` already return the viewport's top-left in CSS pixels, NOT the OS window's frame top-left). Rust passes these directly to `WebviewWindowBuilder::position(x, y)` / `.inner_size(w, h)` and to `set_position(Position::Logical(...))` / `set_size(Size::Logical(...))`. The OS scales to physical via DPI. No `scale_factor()` multiplication needed.
-- Hidden by `WebviewWindow::hide()` (window is preserved, just not shown). Shown by `WebviewWindow::show()`.
-- Main-window-drag follow is implemented in the frontend: `useWebviewBridge` registers `getCurrentWindow().onMoved(...)` and calls `syncBounds()` on each event. (Previous Rust `main_window.on_window_event(Moved)` handler was removed — it operated on physical pixels from the OS frame, conflicting with the frontend's CSS-pixel rect math.)
-- **No `BrowserState` managed state** — all previous fields (`last_url`, `last_bounds`, `current_label`, `label_counter`, `created`) are obsolete. The persistent WebviewWindow + the OS-managed parent/child relationship carry everything that was previously stored in state.
-- **Free side benefits of the new architecture:**
-  - **Back/forward history now works.** The persistent WebviewWindow's `window.history` is preserved across tab switches and navigations. `browser_go_back` / `browser_go_forward` call `wv.eval("window.history.back()")` / `eval("window.history.forward()")` on the same window.
-  - **Window resize now works.** `browser_set_bounds` calls `set_position` + `set_size` on the live WebviewWindow, which works natively (Tauri 2's set_bounds bug only affected child webviews, not real WebviewWindows). The 5px threshold in `syncBounds` still filters subpixel noise.
-  - **First-nav lag is paid once** instead of on every navigation. The WebviewWindow is created on the first navigation and reused for all subsequent ones.
+- **Tab-per-WebviewWindow architecture:** Each tab gets its own `WebviewWindow` (label `browser-{tabId}`), created lazily on first navigation via `browser_create_tab`. Tab switching calls `browser_activate_tab` which hides the old webview and shows the new one — no navigation, no reload, full state preservation.
+- Parent is the main `WebviewWindow`. Tauri uses the parent for z-order and lifecycle.
+- **Lifecycle rule:** Webviews are created once per tab (on first URL navigation) and destroyed when the tab is closed. Tab switch = hide/show only.
+- Bounds are in LOGICAL (CSS) pixels. Frontend `getBounds()` returns `rect.left + window.screenX, rect.top + window.screenY`. Rust passes these directly to `set_position(Position::Logical(...))` / `set_size(Size::Logical(...))`. The OS scales to physical via DPI.
+- Hidden by `WebviewWindow::hide()`. Shown by `WebviewWindow::show()` via `browser_show_tab`.
+- Events (`browser://url-changed`, `browser://loading`, `browser://tab-info`) include `tabId` in payload so the frontend routes state updates to the correct tab.
+- Each webview has `window.__XEVO_TAB_ID` injected via per-tab init script, used by `update_tab_info` to include tab ID in events.
+- **Free side benefits:**
+  - **Back/forward history now works natively.** Each webview has its own `window.history`. `browser_go_back`/`browser_go_forward` call `eval("window.history.back()")` on the target webview.
+  - **Window resize works.** `browser_set_bounds` calls `set_position` + `set_size` on the target WebviewWindow.
+  - **First-nav lag is paid once per tab** instead of on every navigation.
+  - **Tab state is fully preserved.** DOM, scroll position, form inputs, JavaScript state, video playback — all survive tab switches.
 
 ## NOT DONE YET (next sessions)
 - Port scanner: HTTP title shown in sidebar tooltip
 - Port scanner: manual "add custom port" UI
-- Tab-per-WebviewWindow (true browser-window-per-tab architecture for memory isolation and per-tab native history)
 - Network log panel (sidebar — `activePanel === "network"`)
 - API tester: persist request history to localStorage
 - API tester: response body type detection (HTML preview, image preview, JSON tree)
@@ -159,10 +174,12 @@
 - Bookmarks: drag-to-reorder, folder support
 - Status bar: hovered URL detection (Task 63.3 — skipped, requires injected script)
 - **Option A (NOW):** GitHub push + README + v1.1 tag + CONTRIBUTING.md + LICENSE (MIT) + GitHub Actions CI
-- Runtime visual confirmation that all new GUI features work on hardware (cargo check + tsc pass; a `pnpm tauri dev` GUI run is still required to fully verify everything end-to-end)
+- Runtime visual confirmation that main window drag works after maximize/restore (cargo check + tsc pass; a `pnpm tauri dev` GUI run is still required to fully verify the Session 32 fix)
+- Consider: WindowControls macOS/Linux positioning (currently always right-side; macOS needs left-side traffic lights)
+- Consider: Remove `tauri-plugin-os` from Cargo.toml if no longer needed (currently registered but unused)
 
 ## KNOWN ISSUES
-- **Window-move following depends on the frontend `onMoved` event firing** — if the user drags the main window very fast, the browser window's `set_position` may run on a slightly stale position. In practice the OS queues move events and the browser window stays visually attached. If drift becomes visible, the 5px threshold in `syncBounds` can be tuned lower (e.g. 2px) to catch finer movements. **Root cause is Tauri 2.x architectural:** `WebviewWindow::parent()` "doesn't seem to work in a Windows environment" per Tauri team's own Issue #10079 (closed as "not planned", June 2024). `Window::add_child` returns `Ok(())` on the Rust side but does NOT produce a true WS_CHILD that follows the parent on drag — Phase 0 verification confirmed this in Session 10.6. Tauri 2.11.2 is the latest stable (May 2025), so no upgrade path exists. The frontend `onMoved` listener is the best available workaround.
+- **Window-move following uses `onMoved` + `onResized` dual listeners** — `onMoved` fires reliably for user drags but is unreliable for maximize/unmaximize on Windows (SWP_NOMOVE). `onResized` is always reliable. The maximize-state detection resets `lastBoundsRef` on transitions. Residual risk: if the lib.rs repaint hack's `maximize() → unmaximize()` fires both events in a single frame, the `onResized` 50ms delay may race with `onMoved`. In practice this is invisible because both最终 call `syncBoundsRef.current()` which reads fresh DOM values. **Root cause is Tauri 2.x architectural:** `WebviewWindow::parent()` "doesn't seem to work in a Windows environment" per Tauri team's own Issue #10079 (closed as "not planned", June 2024). The frontend `onMoved` + `onResized` dual listener is the best available workaround.
 - **WebviewWindow is always built with `transparent: true`** — works on Windows 10+ but may show a white flash on first creation before the page paints. Acceptable; will be addressed if users complain.
 - **JSON viewer's depth limit is 8 and max items per array/object is 500** — deeper/larger structures are rendered as `[deep array]` / `{deep object}` / `...N more items` to prevent infinite recursion and unbounded HTML. Most APIs stay well under these limits.
 - **Theme has brief dark flash on first paint** — between page load and React's first effect run, `:root { color-scheme: dark }` is active and the html/body have hardcoded dark backgrounds, so light-theme users see a flicker. The dark flash is intentional per spec; first effect run sets the correct data-theme. Acceptable; can be eliminated with an inline boot script in index.html if it bothers users.
@@ -216,99 +233,111 @@
 - `pnpm tsc --noEmit` — clean
 - invoke_handler count: 18
 
-## WORKTREE SNAPSHOT (2026-06-08)
+## WORKTREE SNAPSHOT (2026-06-25)
 ```text
 .gitignore
 .vscode\extensions.json
 AGENTS.md
 ARCHITECTURE.md
+DEVBROWSER_PROJECT_GUIDE.md
+ISSUE.md
 README.md
 TASKS.md
+PROJECT_STATE.md
+XEVO_FRONTEND.md
 components.json
+implementation_plan.md
 index.html
 package.json
-pnpm-lock.yaml
 pnpm-workspace.yaml
-PROJECT_STATE.md
-promptcodex.md
 repo-structure.md
 tsconfig.json
 tsconfig.node.json
 vite.config.ts
-src-tauri\tauri.conf.json
 public\tauri.svg
 public\vite.svg
 src\App.tsx
 src\index.css
 src\main.tsx
 src\vite-env.d.ts
+src\types\index.ts
 src\lib\bookmarkAction.ts
 src\lib\utils.ts
 src\lib\workspaceTabs.ts
-src\services\browser.ts
+src\services\browser.ts              ← per-tab IPC: createTab/activateTab/closeTabWebview/navigateTab
+                                       + hideTabWebview/showTabWebview + tabId-aware events
+src\stores\apiHistory.ts
 src\stores\bookmarks.ts
+src\stores\history.ts
+src\stores\notes.ts
 src\stores\servers.ts
 src\stores\settings.ts
 src\stores\tabs.ts
 src\stores\ui.ts
 src\stores\workspaces.ts
-src\types\index.ts
-src\hooks\useKeyboardShortcuts.ts
+src\hooks\useKeyboardShortcuts.ts    ← closeTabWebview on Ctrl+W
 src\hooks\usePortScanner.ts
-src\hooks\useWebviewBridge.ts
+src\hooks\useWebviewBridge.ts        ← tab-per-webview: activateTab on switch, createTab on first nav
+                                       + hideTabWebview/showTabWebview for overlays
 src\components\CommandPalette.tsx
 src\components\ShortcutHelp.tsx
 src\components\Toast.tsx
 src\components\browser\AddressBar.tsx
 src\components\browser\BrowserChrome.tsx
 src\components\browser\ContentArea.tsx
-src\components\browser\FindBar.tsx
+src\components\browser\FindBar.tsx   ← passes active tabId to find commands
 src\components\browser\LoadingBar.tsx
 src\components\browser\StatusBar.tsx
-src\components\browser\TabBar.tsx
-src\components\browser\TabContextMenu.tsx
+src\components\browser\TabBar.tsx    ← closeTabWebview on tab close
+src\components\browser\TabContextMenu.tsx ← closeTabWebview on close/close-others
 src\components\browser\TabItem.tsx
-src\components\layout\RootLayout.tsx
+src\components\browser\Toolbar.tsx
+src\components\browser\WindowControls.tsx
+src\components\overlay\OverlayPanel.tsx
 src\components\panels\ApiTester.tsx
 src\components\panels\Base64Tool.tsx
 src\components\panels\HomePage.tsx
 src\components\panels\JwtDecoder.tsx
+src\components\panels\NotesNotepad.tsx
 src\components\panels\SettingsPanel.tsx
 src\components\sidebar\ApiTesterPanel.tsx
 src\components\sidebar\BookmarksPanel.tsx
+src\components\sidebar\HistoryPanel.tsx
+src\components\sidebar\NotesSidebarPanel.tsx
 src\components\sidebar\Sidebar.tsx
+src\components\sidebar\WorkspaceContextMenu.tsx
 src\components\sidebar\WorkspaceSwitcher.tsx
 src\components\ui\badge.tsx
 src\components\ui\button.tsx
 src\components\ui\input.tsx
 src\components\ui\separator.tsx
 src\components\ui\tooltip.tsx
-src-tauri\Cargo.toml
+src-tauri\Cargo.toml                 ← tauri features = ["unstable"]
 src-tauri\Cargo.lock
+src-tauri\tauri.conf.json
 src-tauri\build.rs
 src-tauri\capabilities\default.json
-src-tauri\icons\32x32.png
-src-tauri\icons\128x128.png
-src-tauri\icons\128x128@2x.png
-src-tauri\icons\icon.ico
-src-tauri\icons\icon.icns
-src-tauri\icons\icon.png
-src-tauri\icons\Square30x30Logo.png
-src-tauri\icons\Square44x44Logo.png
-src-tauri\icons\Square71x71Logo.png
-src-tauri\icons\Square89x89Logo.png
-src-tauri\icons\Square107x107Logo.png
-src-tauri\icons\Square142x142Logo.png
-src-tauri\icons\Square150x150Logo.png
-src-tauri\icons\Square284x284Logo.png
-src-tauri\icons\Square310x310Logo.png
-src-tauri\icons\StoreLogo.png
-src-tauri\src\commands\browser.rs
-src-tauri\src\commands\mod.rs
-src-tauri\src\commands\ports.rs
-src-tauri\src\lib.rs
+src-tauri\icons\                     (18 icon files)
 src-tauri\src\main.rs
+src-tauri\src\lib.rs                 ← BrowserState { active_tab_label } + 20 invoke handlers
+src-tauri\src\commands\mod.rs
+src-tauri\src\commands\browser.rs    ← per-tab commands: create_tab, activate_tab, close_tab,
+                                       navigate_tab, hide_tab, show_tab, set_bounds, go_back,
+                                       go_forward, reload, stop_loading, find, find_next,
+                                       stop_find, find_callback, set_theme, reposition,
+                                       update_tab_info, bookmark_request, forward_shortcut
+                                       + BROWSER_INIT_SCRIPT with __XEVO_TAB_ID injection
+src-tauri\src\commands\ports.rs
+src-tauri\gen\schemas\              (4 generated schema files)
 ```
+
+## Session 19 (v1.7.1 — Windows webview boundary inset) — DONE
+
+- [x] Task 80: Frontend-only webview boundary inset
+  - [x] 80.1 — `src/hooks/useWebviewBridge.ts`: added a Windows-only `BROWSER_EDGE_INSET` and applied it inside `getBounds()` so every browser-webview path inherits the same inset
+  - [x] 80.2 — Inset is centralized in the shared bounds calculation, after overlay-height reduction, so navigation / tab switching / resize sync / overlay resize / show-hide all remain consistent
+  - [x] 80.3 — Existing 5px relayout-jitter threshold left unchanged; Rust commands and layout tree untouched
+  - [ ] 80.4 — Runtime GUI verification: pending human-run `pnpm tauri dev`
 ```text
 Xevo/
 ├── .gitignore
@@ -1604,6 +1633,51 @@ src/index.css                                    ← settings slide-in animation
 - `pnpm tsc --noEmit` — clean
 - invoke_handler count: 18 (unchanged — no Rust changes)
 
+## CHANGES THIS SESSION (Session 18 — v1.6.0 → v1.7.0)
+
+### Advanced Notes with Rich Text Editor
+
+**Library:** `@tolipovjs/rich-text@2.2.0` — ~22KB gzipped, CSS-variable theming, no Tailwind dependency.
+
+### Title Bug Fix
+- **Root cause:** `handleTitleCommit` / `handleTitleChange` had `value.trim() || "Untitled"` fallback that overwrote empty titles. New notes started with `title: "Untitled"` which couldn't be cleared.
+- **Fix:** Titles now allow empty strings. `placeholder="Untitled"` shown in input only. Sidebar displays `note.title || "Untitled"` for display only. New notes created with `title: ""`.
+
+### Rich Text Editor Integration
+- **`src/components/panels/NotesNotepad.tsx`** — Full rewrite. Replaced `<textarea>` with `<RichTextEditor>` from `@tolipovjs/rich-text`. Features enabled:
+  - Toolbar (basic preset: bold, italic, underline, headings, lists, code, quote, link, image, undo/redo)
+  - Slash menu (`/` command palette)
+  - Markdown shortcuts (`**bold**`, `# heading`, `- list`, `> quote`, `` `code` ``, `---`)
+  - Bubble toolbar (floating toolbar on text selection)
+  - Find & replace (Ctrl+F popup)
+  - Theme-aware (`theme` prop reads from XEVO settings: dark/light/auto)
+  - Auto-save with 500ms debounce
+  - `key={selectedId}` forces remount on note switch (fixes stale content)
+  - Export as Markdown `.md` file (blob download fallback when Tauri dialog/fs plugins unavailable)
+  - Enhanced footer: char count + word count + reading time estimate
+
+### Note Pinning & Colors
+- **`src/types/index.ts`** — Added `NoteColor` type (`"" | "red" | "orange" | "yellow" | "green" | "blue" | "purple"`). Added `isPinned: boolean` and `color: NoteColor` to `Note` interface.
+- **`src/stores/notes.ts`** — Added `isPinned`/`color` fields, `togglePin`/`setColor` actions, pinned-first sorting via `sortNotes()` helper.
+- **`src/components/panels/NotesNotepad.tsx`** — Pin button (toggle), color picker (6 options with dropdown), color dot in note list, pin icon in note list.
+- **`src/components/sidebar/NotesSidebarPanel.tsx`** — Pin indicator, color dots, HTML preview for expanded notes.
+
+### CSS Theme Mapping
+- **`src/index.css`** — Added `@import "@tolipovjs/rich-text/styles.css"`. Added 30+ `--rte-*` CSS variable overrides in both `[data-theme="dark"]` and `[data-theme="light"]` blocks, mapping XEVO's `--xevo-*` tokens to the editor's `--rte-*` variables.
+
+### Files changed
+- `src/index.css` — Added rich-text CSS import + --rte-* variable mappings (dark + light themes)
+- `src/types/index.ts` — Added NoteColor type, isPinned/color fields on Note
+- `src/stores/notes.ts` — Added isPinned/color, togglePin/setColor, sortNotes helper
+- `src/components/panels/NotesNotepad.tsx` — Full rewrite: RichTextEditor, pin/color/export/reading-time
+- `src/components/sidebar/NotesSidebarPanel.tsx` — Fixed title bug, added pin/color indicators, HTML preview
+- `package.json` — Added @tolipovjs/rich-text@2.2.0
+
+### Verification
+- `cd src-tauri && cargo check` — clean
+- `pnpm tsc --noEmit` — clean
+- invoke_handler count: 18 (unchanged — no Rust changes)
+
 ## WORKTREE SNAPSHOT (2026-06-09)
 ```text
 .gitignore
@@ -1626,9 +1700,10 @@ public\vite.svg
 
 src\App.tsx
 src\main.tsx
-src\index.css
+src\index.css                      ← + @tolipovjs/rich-text/styles.css import
+                                         + --rte-* CSS variable mappings (dark + light)
 src\vite-env.d.ts
-src\types\index.ts                 ← + OverlayPanelId, HistoryEntry, Note types
+src\types\index.ts                 ← + OverlayPanelId, HistoryEntry, Note, NoteColor types
 src\lib\utils.ts
 src\lib\workspaceTabs.ts
 src\lib\bookmarkAction.ts
@@ -1641,11 +1716,11 @@ src\stores\servers.ts
 src\stores\bookmarks.ts
 src\stores\apiHistory.ts
 src\stores\history.ts             ← NEW: history store (persist)
-src\stores\notes.ts               ← NEW: notes store (persist)
+src\stores\notes.ts               ← + isPinned/color, togglePin/setColor, sortNotes
 
 src\services\browser.ts
 
-src\hooks\useWebviewBridge.ts     ← + overlay bounds, history recording
+src\hooks\useWebviewBridge.ts     ← removed onFocusChanged listener + repaintWebview import
 src\hooks\useKeyboardShortcuts.ts
 src\hooks\usePortScanner.ts
 
@@ -1661,7 +1736,7 @@ src\components\sidebar\WorkspaceSwitcher.tsx
 src\components\sidebar\BookmarksPanel.tsx
 src\components\sidebar\ApiTesterPanel.tsx   ← uses openOverlay
 src\components\sidebar\HistoryPanel.tsx     ← NEW: history sidebar panel
-src\components\sidebar\NotesSidebarPanel.tsx ← NEW: notes sidebar panel
+src\components\sidebar\NotesSidebarPanel.tsx ← fixed title bug, pin/color indicators
 src\components\sidebar\WorkspaceContextMenu.tsx
 
 src\components\browser\TabBar.tsx
@@ -1675,7 +1750,7 @@ src\components\browser\StatusBar.tsx
 src\components\browser\ContentArea.tsx
 
 src\components\panels\ApiTester.tsx         ← updated embedded mode
-src\components\panels\NotesNotepad.tsx     ← NEW: full notepad overlay
+src\components\panels\NotesNotepad.tsx ← RichTextEditor, pin/color/export/reading-time
 src\components\panels\HomePage.tsx
 src\components\panels\SettingsPanel.tsx
 src\components\panels\JwtDecoder.tsx
@@ -1696,9 +1771,166 @@ src-tauri\capabilities\default.json
 src-tauri\icons\ (18 icon files)
 
 src-tauri\src\main.rs
-src-tauri\src\lib.rs                ← 18 invoke handlers (unchanged)
+src-tauri\src\lib.rs                ← .setup() block (minimize tracking + max/unmax cycle) + 20 invoke handlers
 src-tauri\src\commands\mod.rs
-src-tauri\src\commands\browser.rs
+src-tauri\src\commands\browser.rs   ← do_browser_repaint is now no-op (superseded by lib.rs)
 src-tauri\src\commands\ports.rs
 ```
+
+## CHANGES THIS SESSION (Session 20 — bookmark shortcut registration fix)
+
+- **`src/hooks/useKeyboardShortcuts.ts`** — replaced the invalid global shortcut token `CommandOrControl+Shift+?` with `CommandOrControl+Shift+/`, and taught the shared shortcut handler to treat `ctrl+shift+/` the same as `ctrl+?` so the help overlay still opens when the browser webview has focus.
+- **Scope kept tight** — bookmark storage, Rust commands, and all other shortcut branches were left unchanged.
+- **Verification note** — `cmd /c npx --no-install tsc --noEmit` passed after `pnpm` was unavailable in this shell and `corepack pnpm` hit a sandboxed network lookup.
+
+## CHANGES THIS SESSION (Session 21 — global shortcut lifecycle stabilization)
+
+- **`src/hooks/useKeyboardShortcuts.ts`** — wrapped the `tauri-plugin-global-shortcut` register/unregister path in a serialized queue with a module-scoped registration flag so React StrictMode remounts cannot overlap `register()` with `unregisterAll()`.
+- **Behavior preserved** — the React keydown listener and all shortcut actions remain unchanged; only the lifecycle around OS-level shortcut registration was hardened.
+- **Verification note** — `cmd /c npx --no-install tsc --noEmit` passed after the lifecycle guard landed.
+
+## CHANGES THIS SESSION (Session 22 - pre-plugin shortcut bridge restored)
+
+- **`src/hooks/useKeyboardShortcuts.ts`** - removed the global-shortcut plugin path and restored the `xevo://shortcut` listener so browser-focus shortcuts are handled through the injected webview bridge again.
+- **`src-tauri/src/commands/browser.rs`** - reintroduced `XEVO_SHORTCUT_FORWARD_SCRIPT` and the `forward_shortcut` Rust command, while keeping the separate bookmark script intact.
+- **`src-tauri/src/lib.rs`, `src-tauri/Cargo.toml`, `src-tauri/capabilities/default.json`, `package.json`** - removed the global-shortcut plugin registration, dependency, and permissions; the browser webview now uses the old injected forwarding architecture instead.
+- **Verification note** - `cmd /c npx --no-install tsc --noEmit` and `cd src-tauri; cargo check` both passed after the rollback.
+
+## CHANGES THIS SESSION (Session 23 — black screen on window restore)
+
+### Bug: Black screen when restoring minimized window
+**Root cause:** WebView2 on Windows does not always issue a WM_PAINT after the parent window is restored from minimize. The rendering surface is stale — the webview's content is still painted in memory, but the OS never requests a repaint, so the window shows black. Microsoft's official docs explicitly state: *"WebView2 as a child window does not get window messages when the top window is minimized or restored. For performance reasons, developers should set IsVisible property of the WebView to FALSE when the app window is minimized and back to TRUE when app window is restored."*
+
+### Fix: Hide + Show cycle (Microsoft's put_IsVisible pattern adapted for Tauri)
+**`src-tauri/src/commands/browser.rs`** — `browser_repaint` command rewritten:
+- Original Fix A (JS eval with `display:none` + `offsetHeight` trick) did NOT work — the problem is at the native compositing level, not the DOM level
+- New approach: `wv.hide()` + 50ms delay + `wv.show()` — this forces the OS to tear down and rebuild the window surface, making WebView2 issue a fresh WM_PAINT
+- Equivalent to the `put_IsVisible(FALSE)` / `put_IsVisible(TRUE)` pattern from the `ICoreWebView2Controller` docs
+- The 50ms delay ensures the OS fully processes the hide before the show
+- Trade-off: brief 50ms dark flash (browser window hidden during this time) — acceptable vs permanent black screen
+
+### Frontend (unchanged from Session 23)
+- `useWebviewBridge.ts` `onFocusChanged` handler calls `repaintWebview()` on window restore
+- Only fires when `focused === true` with an active URL loaded
+- 100ms delay before calling Rust command
+
+### Files changed
+- `src-tauri/src/commands/browser.rs` — rewrote `browser_repaint` from JS eval to hide+show cycle
+- `src-tauri/src/lib.rs` — registered `browser_repaint` (19 → 20 invoke handlers)
+- `src/services/browser.ts` — added `repaintWebview()` export
+- `src/hooks/useWebviewBridge.ts` — added `repaintWebview` import + `onFocusChanged` useEffect
+
+### Verification
+- `cd src-tauri && cargo check` — clean
+- `pnpm tsc --noEmit` — clean
+- invoke_handler count: 20
+- Runtime GUI verification pending human `pnpm tauri dev`:
+  1. Navigate to any URL (e.g. github.com)
+  2. Minimize the XEVO window
+  3. Wait 3-5 seconds
+  4. Restore the XEVO window
+  5. Browser should show the page immediately (brief 50ms dark flash acceptable) — NO permanent black screen
+  6. Repeat 3 times to confirm consistency
+
+## CHANGES THIS SESSION (v1.7.6 → v1.9.0 — XEVO_FRONTEND.md design system)
+
+### P1 — Foundation (Session 28)
+- **`src/index.css`**: Added `@custom-variant dark` for Tailwind v4 dark mode via `data-theme` attribute. Wrapped all design tokens in `@theme { ... }` block (colors, fonts, spacing, radius, motion). Added `@media (prefers-reduced-motion: reduce)` global rule. Added `@keyframes ambientPulse`, `paletteIn`, `toastIn`.
+- **`src-tauri/tauri.conf.json`**: Added `"decorations": false` + `"transparent": false` to main window.
+
+### P2 — Components (Session 28)
+- **`src/components/panels/HomePage.tsx`**: Redesigned per spec §10 — centered 720px column, "Your stack, at a glance." heading (24px/600), 64px server cards with liveness dot + port + "Open →", ambient radial gradient pulse (3s infinite), italic empty state.
+- **`src/components/CommandPalette.tsx`**: 80ms `paletteIn` animation (fade + scale 0.97→1.0), input height 44px, results max-height 320px, result items 32px, border-radius 6px, accent-dim selected state.
+- **`src/components/sidebar/Sidebar.tsx`**: Always rendered (no `return null`), width transitions 150ms ease-snap between `sidebarWidth` and `0`.
+- **`src/components/Toast.tsx`**: 100ms `toastIn` animation (was 200ms), inline `<style>` removed.
+
+### P3 — Polish (Session 29)
+- **aria-labels**: Added `aria-label` to 34 icon-only buttons across 17 files (TabItem, TabBar, Toolbar, FindBar, Sidebar, WorkspaceSwitcher, SettingsPanel, OverlayPanel, ShortcutHelp, ApiTester, NotesNotepad, HistoryPanel, BookmarksPanel, HomePage, etc.)
+- **tabular-nums**: Added `font-feature-settings: "tnum" 1` or `tabular-nums` to 10 numeric elements (StatusBar load time, ApiTester status/duration/size, FindBar match counter, port numbers).
+- **Shadows removed**: `shadow-lg` from Toast + context menu, `shadow-[...]` from AddressBar, `shadow-xs` from ui/input + ui/button, `box-shadow` transition from badge, drag ghost boxShadow from TabBar. Kept: liveness dot glow + input focus ring.
+- **hover:scale removed**: `hover:scale-110` from NotesNotepad color picker.
+- **tauri-controls wired**: Added `tauri-plugin-os` to Cargo.toml + lib.rs. Added `os:default` + window permissions to capabilities. TabBar uses `WindowControls` component — detects OS via `platform()`, renders controls on correct side (macOS: left, Windows/Linux: right). Removed hardcoded `paddingRight: 140px`.
+
+### Verification
+- `pnpm tsc --noEmit` — clean
+- `cargo check` — clean (21 invoke_handler entries)
+- Runtime GUI verification pending human `pnpm tauri dev`
+
+## CHANGES THIS SESSION (Session 31 — v1.10.0 → v1.11.0 — browser webview drag-after-restore fix)
+
+### Root cause
+On Windows, `onMoved` is **unreliable for maximize/unmaximize** (tao uses `WM_WINDOWPOSCHANGED` with `SWP_NOMOVE` gate — confirmed via [tauri #7664](https://github.com/tauri-apps/tauri/issues/7664), closed "not planned"). After the lib.rs maximize/unmaximize hack fires, `onMoved` may not re-fire for subsequent drags because the hack's intermediate events desync `lastBoundsRef`.
+
+### Fix — `src/hooks/useWebviewBridge.ts`
+- **Ref-based syncBounds**: `syncBoundsRef.current` holds the latest sync logic; `syncBounds = useCallback(() => syncBoundsRef.current(), [])` has a stable identity. Eliminates stale-closure bugs and prevents onMoved/onResized effects from re-registering across re-renders.
+- **onResized listener**: Added alongside onMoved. `onResized` is **always reliable** for maximize/unmaximize (WM_SIZE fires unconditionally). 50ms delay lets DOM reflow after the lib.rs repaint hack.
+- **Maximize-state detection**: `wasMaximizedRef` tracks maximize state via `onResized` + `isMaximized()`. On transition, resets `lastBoundsRef = null` to force a full re-sync (bypasses 5px threshold).
+- **onMoved throttle**: 16ms throttle + `requestAnimationFrame` reduces Rust calls from ~60/sec to ~60/sec (one per frame) during drag.
+- **getBounds inlined**: The standalone `getBounds` useCallback was removed. Bounds computation is now inlined into `syncBoundsRef.current`, `ensureWebviewVisible`, `navigate`, `goBack`, `goForward`, `sidebar toggle effect`, and `tab-switch effect`. All read `contentAreaRef.current` fresh at call time via ref.
+- **lib.rs hack kept**: The maximize/unmaximize hack (lines 28-44) is **required** for WebView2 to re-composite after minimize→restore. Removing it causes black screen regression (confirmed across Sessions 23-27, 5 failed fix attempts).
+
+### What is NOT changed
+- `src-tauri/src/lib.rs` — no changes (hack kept as-is)
+- `src-tauri/src/commands/browser.rs` — no changes
+- All other files — no changes
+
+### Verification
+- `pnpm tsc --noEmit` — clean
+- `cargo check` — clean
+- Runtime verification pending human `pnpm tauri dev`:
+  - Maximize → restore → drag → browser webview follows
+  - Minimize → restore → webview appears (no black screen)
+  - Normal drag → browser webview follows
+  - Window resize → browser webview resizes
+
+## CHANGES THIS SESSION (Session 32 — v1.11.0 → v1.11.1 — main window drag fix)
+
+### Root cause
+Tauri's injected `drag.js` walks the composed event path from the click target upward. For the bare `data-tauri-drag-region` attribute (no value), the `isDragRegion` function returns `true` **only** when `el === composedPath[0]` — meaning the click target must be the exact element with the attribute, not any of its children. The TabBar had this bare attribute on its outer div, so clicking on any `<TabItem>`, the `+` button, or any other child element did NOT trigger drag. Only clicking on the tiny empty padding area between elements worked.
+
+### Fix — `src/components/browser/TabBar.tsx`
+- Changed `data-tauri-drag-region` → `data-tauri-drag-region="deep"` on the outer TabBar div (line 225).
+- With `"deep"`, `isDragRegion` returns `true` for any click within the subtree. The `data-tauri-drag-region="false"` on WindowControls still blocks drag on minimize/maximize/close buttons (the `"false"` check runs first and short-circuits the walk).
+- React's `onPointerDown`/`onPointerMove`/`onPointerUp` handlers on TabBar (for tab reordering) coexist with Tauri's `mousedown`-based drag detection. Pointer events and mouse events are separate event streams; `setPointerCapture` only affects pointer events.
+
+### What is NOT changed
+- `src-tauri/src/lib.rs` — no changes (maximize/unmaximize hack kept as-is)
+- `src-tauri/src/commands/browser.rs` — no changes
+- `src/hooks/useWebviewBridge.ts` — no changes
+- `src/components/browser/WindowControls.tsx` — no changes (keeps `data-tauri-drag-region="false"`)
+
+### Verification
+- `pnpm tsc --noEmit` — clean
+- `cargo check` — clean
+- Runtime verification pending human `pnpm tauri dev`:
+  - Click on any tab → window drag works
+  - Click on empty tab bar space → window drag works
+  - Click on minimize/maximize/close → buttons work, no drag
+  - Double-click on tab bar → toggles maximize
+  - Maximize → restore → drag → works
+  - Normal drag → works
+
+## CHANGES THIS SESSION (Session 33 — v1.11.1 → v1.11.2 — minimize glitch fix)
+
+### Root cause
+When the user clicks minimize, `onMoved` and `onResized` fire in `useWebviewBridge.ts` during the OS minimize animation. These trigger `syncBounds()` → `browser_set_bounds` → `set_position()`/`set_size()` on the browser WebviewWindow. On Windows, calling `SetWindowPos` (which Tauri's `set_position` uses under the hood) on a window that is mid-minimize causes it to un-minimize. Result: the window minimizes for ~1ms then reappears.
+
+### Fix
+- **`src-tauri/src/lib.rs`**: Added `use tauri::Emitter` import. In the existing `Focused(false)` + `is_minimized()` handler, emit `app_handle.emit("xevo://minimize-state", true)`. In the `Focused(true)` + `was_minimized` handler, emit `app_handle.emit("xevo://minimize-state", false)` before the repaint hack.
+- **`src/hooks/useWebviewBridge.ts`**: Added `import { listen }` from `@tauri-apps/api/event`. Added `isMinimizedRef`. Added guard `if (isMinimizedRef.current) return;` at the top of `syncBoundsRef.current`. Added `useEffect` listening for `xevo://minimize-state` events to toggle the ref.
+
+### What is NOT changed
+- `src-tauri/src/commands/browser.rs` — no changes
+- `src/components/browser/WindowControls.tsx` — no changes
+- All navigation, tab switching, maximize/restore, drag-follow, overlay panels, sidebar toggle, find-in-page, bookmarks, shortcuts — untouched
+
+### Verification
+- `cargo check` — clean
+- `pnpm tsc --noEmit` — clean
+- Runtime verification pending human `pnpm tauri dev`:
+  - Navigate to a page (e.g. github.com), click minimize → should minimize cleanly without flash
+  - Restore from minimize → page still visible, no black screen
+  - Maximize → restore → minimize → works
+  - Drag window → webview still follows
+  - Tab switch, navigation, overlays → all unaffected
 

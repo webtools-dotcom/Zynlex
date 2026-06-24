@@ -29,7 +29,7 @@ export function ApiTesterPanel() {
     <div className="p-2 flex flex-col gap-2">
       {/* Header */}
       <div className="flex items-center justify-between px-1">
-        <p className="text-[10px] font-semibold tracking-widest text-[var(--xevo-text-faint)] uppercase">
+        <p className="text-[10px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
           API Tester
         </p>
       </div>
@@ -37,23 +37,23 @@ export function ApiTesterPanel() {
       {/* Open button card */}
       <button
         onClick={() => openOverlay("api-tester")}
-        className="flex items-center gap-2 p-3 rounded-md text-left border border-[var(--xevo-border)] bg-[var(--xevo-modal-bg)] hover:border-[var(--xevo-accent)] hover:bg-[var(--xevo-hover)] transition-colors"
+        className="flex items-center gap-2 p-3 rounded-md text-left border border-[var(--color-border)] bg-[var(--color-elevated)] hover:border-[var(--color-accent)] hover:bg-[var(--color-hover)] transition-colors"
       >
-        <Code2 size={16} className="text-[var(--xevo-accent)] flex-shrink-0" />
+        <Code2 size={16} className="text-[var(--color-accent)] flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="text-[12px] text-[var(--xevo-text)] font-medium">
+          <div className="text-[12px] text-[var(--color-text-primary)] font-medium">
             Open API Tester
           </div>
-          <div className="text-[10px] text-[var(--xevo-text-faint)]">
+          <div className="text-[10px] text-[var(--color-text-disabled)]">
             Full editor in a centered window
           </div>
         </div>
-        <ArrowRight size={13} className="text-[var(--xevo-text-faint)] flex-shrink-0" />
+        <ArrowRight size={13} className="text-[var(--color-text-disabled)] flex-shrink-0" />
       </button>
 
       {/* Method reference cheat sheet */}
-      <div className="rounded-md border border-[var(--xevo-border)] bg-[var(--xevo-modal-bg)] p-2">
-        <div className="text-[9px] font-semibold tracking-widest text-[var(--xevo-text-faint)] uppercase mb-1.5">
+      <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] p-2">
+        <div className="text-[9px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase mb-1.5">
           Methods
         </div>
         <div className="grid grid-cols-2 gap-1">
@@ -73,11 +73,11 @@ export function ApiTesterPanel() {
       </div>
 
       {/* Recent requests */}
-      <div className="rounded-md border border-[var(--xevo-border)] bg-[var(--xevo-modal-bg)] overflow-hidden">
-        <div className="flex items-center justify-between px-2 py-1.5 border-b border-[var(--xevo-border)]">
+      <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] overflow-hidden">
+        <div className="flex items-center justify-between px-2 py-1.5 border-b border-[var(--color-border)]">
           <div className="flex items-center gap-1.5">
-            <Clock size={10} className="text-[var(--xevo-text-faint)]" />
-            <span className="text-[9px] font-semibold tracking-widest text-[var(--xevo-text-faint)] uppercase">
+            <Clock size={10} className="text-[var(--color-text-disabled)]" />
+            <span className="text-[9px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
               Recent ({history.length})
             </span>
           </div>
@@ -85,7 +85,8 @@ export function ApiTesterPanel() {
             <button
               onClick={clearHistory}
               title="Clear history"
-              className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-danger)]"
+              aria-label="Clear request history"
+              className="text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
             >
               <Trash2 size={10} />
             </button>
@@ -93,10 +94,10 @@ export function ApiTesterPanel() {
         </div>
         {history.length === 0 ? (
           <div className="px-2 py-3 text-center">
-            <p className="text-[10px] text-[var(--xevo-text-faint)]">
+            <p className="text-[10px] text-[var(--color-text-disabled)]">
               No requests yet
             </p>
-            <p className="text-[9px] text-[var(--xevo-text-faint)] mt-0.5">
+            <p className="text-[9px] text-[var(--color-text-disabled)] mt-0.5">
               Open the tester and send one
             </p>
           </div>
@@ -106,7 +107,7 @@ export function ApiTesterPanel() {
               <button
                 key={h.id}
                 onClick={() => openOverlay("api-tester")}
-                className="w-full flex items-center gap-1.5 px-2 py-1 text-left hover:bg-[var(--xevo-hover)] transition-colors"
+                className="w-full flex items-center gap-1.5 px-2 py-1 text-left hover:bg-[var(--color-hover)] transition-colors"
               >
                 <span
                   className="text-[9px] font-bold flex-shrink-0"
@@ -114,7 +115,7 @@ export function ApiTesterPanel() {
                 >
                   {h.method}
                 </span>
-                <span className="text-[10px] text-[var(--xevo-text-muted)] font-mono flex-1 min-w-0 truncate">
+                <span className="text-[10px] text-[var(--color-text-muted)] font-mono flex-1 min-w-0 truncate">
                   {h.url}
                 </span>
                 <span
@@ -122,10 +123,11 @@ export function ApiTesterPanel() {
                   style={{
                     color:
                       h.status >= 200 && h.status < 300
-                        ? "var(--xevo-success)"
+                        ? "var(--color-live)"
                         : h.status >= 400
-                          ? "var(--xevo-danger)"
-                          : "var(--xevo-warning)",
+                          ? "var(--color-dead)"
+                          : "var(--color-warn)",
+                    fontFeatureSettings: '"tnum" 1',
                   }}
                 >
                   {h.status}

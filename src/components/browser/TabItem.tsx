@@ -48,28 +48,21 @@ export function TabItem({
       onPointerDown={onPointerDown}
       className={cn(
         "group relative flex items-center gap-1.5",
-        "min-w-[80px] max-w-[180px] h-9 px-2.5",
+        "min-w-[80px] max-w-[180px] h-[36px] px-3",
         "cursor-grab select-none flex-shrink-0",
-        "border-r transition-all duration-100",
+        "border-b-2 border-r transition-colors",
         isDragging && "opacity-40",
         isActive
-          ? "text-[var(--xevo-text)]"
-          : "text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)]"
+          ? "bg-[var(--color-base)] text-[var(--color-text-primary)] border-b-[var(--color-accent)]"
+          : "bg-transparent text-[var(--color-text-muted)] border-b-transparent hover:bg-[var(--color-hover)] hover:text-[var(--color-text-secondary)]",
       )}
       style={{
-        background: isActive ? "var(--xevo-tab-active)" : "transparent",
-        borderColor: "var(--xevo-border)",
-        borderLeft: isDropTarget ? "2px solid var(--xevo-accent)" : undefined,
+        borderLeftColor: isDropTarget ? "var(--color-accent)" : undefined,
+        borderTopColor: isDropTarget ? "var(--color-accent)" : undefined,
+        borderBottomColor: isDropTarget ? "var(--color-accent)" : undefined,
+        borderRightColor: "var(--color-border-subtle)",
       }}
     >
-      {/* Active top line */}
-      {isActive && (
-        <div
-          className="absolute top-0 left-2 right-2 h-[2px] rounded-b-sm"
-          style={{ background: "var(--xevo-accent)" }}
-        />
-      )}
-
       {/* Favicon */}
       <div className="w-3.5 h-3.5 flex-shrink-0 flex items-center justify-center">
         {tab.favicon && !faviconError ? (
@@ -80,19 +73,19 @@ export function TabItem({
             onError={() => setFaviconError(true)}
           />
         ) : (
-          <div className="w-3.5 h-3.5 rounded-[3px] flex-shrink-0" style={{ background: "rgba(255,255,255,0.08)" }} />
+          <div className="w-3.5 h-3.5 rounded-[3px] flex-shrink-0" style={{ background: "var(--color-hover)" }} />
         )}
       </div>
 
       {/* Title */}
-      <span className="flex-1 min-w-0 text-[11px] leading-none truncate">
+      <span className="flex-1 min-w-0 text-[13px] font-medium leading-none truncate">
         {tab.isLoading ? "Loading…" : (tab.title || "New Tab")}
       </span>
 
       {/* Close button OR pin indicator */}
       {tab.isPinned ? (
         <span
-          className="flex-shrink-0 w-4 h-4 flex items-center justify-center text-[var(--xevo-text-faint)]"
+          className="flex-shrink-0 w-4 h-4 flex items-center justify-center text-[var(--color-text-disabled)]"
           title="Pinned"
           aria-label="Pinned tab"
         >
@@ -102,13 +95,14 @@ export function TabItem({
         <button
           onClick={handleCloseClick}
           data-tab-close="true"
+          aria-label="Close tab"
           className={cn(
-            "flex-shrink-0 w-3.5 h-3.5 rounded-[3px] flex items-center justify-center",
-            "transition-colors duration-100 text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[rgba(255,255,255,0.08)]",
-            isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            "flex-shrink-0 w-4 h-4 rounded-[2px] flex items-center justify-center",
+            "transition-colors text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-active)]",
+            isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
           )}
         >
-          <X size={9} strokeWidth={2.5} />
+          <X size={10} strokeWidth={2.5} />
         </button>
       )}
     </div>

@@ -9,9 +9,9 @@ import { Check, Info, X } from "lucide-react";
 import { useUIStore, type Toast } from "@/stores/ui";
 
 const KIND_COLORS: Record<Toast["kind"], { bg: string; border: string; fg: string }> = {
-  success: { bg: "var(--xevo-success)", border: "var(--xevo-success)", fg: "#0f0f0f" },
-  info: { bg: "var(--xevo-modal-bg)", border: "var(--xevo-modal-border)", fg: "var(--xevo-text)" },
-  danger: { bg: "var(--xevo-danger)", border: "var(--xevo-danger)", fg: "#fff" },
+  success: { bg: "var(--color-live)", border: "var(--color-live)", fg: "#0f0f0f" },
+  info: { bg: "var(--color-elevated)", border: "var(--color-border)", fg: "var(--color-text-primary)" },
+  danger: { bg: "var(--color-dead)", border: "var(--color-dead)", fg: "#fff" },
 };
 
 function ToastItem({ toast }: { toast: Toast }) {
@@ -21,11 +21,12 @@ function ToastItem({ toast }: { toast: Toast }) {
   return (
     <button
       onClick={() => dismiss(toast.id)}
-      className="flex items-center gap-2 px-3 py-2 rounded-md border text-left shadow-lg max-w-[340px] animate-[slideIn_0.2s_ease-out]"
+      className="flex items-center gap-2 px-3 py-2 rounded-md border text-left max-w-[340px]"
       style={{
         background: c.bg,
         borderColor: c.border,
         color: c.fg,
+        animation: "toastIn 100ms cubic-bezier(0, 0, 0.2, 1)",
       }}
     >
       <Icon size={13} className="flex-shrink-0" />
@@ -38,14 +39,11 @@ export function Toast() {
   const toasts = useUIStore((s) => s.toasts);
   if (toasts.length === 0) return null;
   return (
-    <>
-      <style>{`@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
-      <div className="fixed bottom-4 right-4 z-[9998] flex flex-col-reverse gap-1.5">
-        {toasts.slice(-5).map((t) => (
-          <ToastItem key={t.id} toast={t} />
-        ))}
-      </div>
-    </>
+    <div className="fixed bottom-4 right-4 z-[9998] flex flex-col-reverse gap-1.5">
+      {toasts.slice(-5).map((t) => (
+        <ToastItem key={t.id} toast={t} />
+      ))}
+    </div>
   );
 }
 

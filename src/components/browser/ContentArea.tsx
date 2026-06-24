@@ -30,7 +30,7 @@ export function ContentArea({ onBridgeReady }: ContentAreaProps) {
       ref={containerRef}
       className="absolute inset-0 overflow-hidden flex flex-col"
       style={{
-        background: "var(--xevo-content-bg)",
+        background: "var(--color-base)",
       }}
     >
       {/* XEVO Home page fills the content area when no tab is open */}

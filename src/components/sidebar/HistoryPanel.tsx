@@ -48,7 +48,7 @@ export function HistoryPanel() {
     <div className="p-2">
       {/* Header */}
       <div className="flex items-center justify-between px-1 mb-2">
-        <p className="text-[10px] font-bold tracking-[0.09em] text-[var(--xevo-text-muted)] uppercase">
+        <p className="text-[10px] font-bold tracking-[0.09em] text-[var(--color-text-muted)] uppercase">
           History
         </p>
         {entries.length > 0 && (
@@ -57,7 +57,8 @@ export function HistoryPanel() {
               if (window.confirm("Clear all history?")) clearAll();
             }}
             title="Clear all history"
-            className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-danger)] transition-colors"
+            aria-label="Clear all history"
+            className="text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
           >
             <Trash2 size={10} />
           </button>
@@ -66,18 +67,18 @@ export function HistoryPanel() {
 
       {entries.length === 0 ? (
         <div className="text-center py-4">
-          <Clock size={20} className="mx-auto mb-1.5 text-[var(--xevo-text-faint)] opacity-40" />
-          <p className="text-[11px] text-[var(--xevo-text-muted)]">
+          <Clock size={20} className="mx-auto mb-1.5 text-[var(--color-text-disabled)] opacity-40" />
+          <p className="text-[11px] text-[var(--color-text-muted)]">
             No history yet
           </p>
-          <p className="text-[10px] text-[var(--xevo-text-faint)] mt-0.5">
+          <p className="text-[10px] text-[var(--color-text-disabled)] mt-0.5">
             Pages you visit will appear here
           </p>
         </div>
       ) : (
         Object.entries(grouped).map(([label, items]) => (
           <div key={label} className="mb-2">
-            <p className="text-[9px] font-semibold tracking-widest text-[var(--xevo-text-faint)] uppercase px-1 mb-1">
+            <p className="text-[9px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase px-1 mb-1">
               {label}
             </p>
             {items.map((entry) => {
@@ -105,31 +106,33 @@ export function HistoryPanel() {
                           }}
                         />
                       ) : (
-                        <Globe size={10} className="text-[var(--xevo-text-faint)] flex-shrink-0" />
+                        <Globe size={10} className="text-[var(--color-text-disabled)] flex-shrink-0" />
                       )}
-                      <span className="text-[11px] text-[var(--xevo-text-muted)] truncate font-medium">
+                      <span className="text-[11px] text-[var(--color-text-muted)] truncate font-medium">
                         {entry.title || domain}
                       </span>
                     </div>
-                    <span className="text-[9px] text-[var(--xevo-text-faint)] font-mono truncate block">
+                    <span className="text-[9px] text-[var(--color-text-disabled)] font-mono truncate block">
                       {domain}
                     </span>
                   </button>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    <span className="text-[8px] text-[var(--xevo-text-faint)]">
+                    <span className="text-[8px] text-[var(--color-text-disabled)]">
                       {relativeTime(entry.timestamp)}
                     </span>
                     <button
                       onClick={() => openEntry(entry.url)}
                       title="Open in new tab"
-                      className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-accent)]"
+                      aria-label="Open in new tab"
+                      className="text-[var(--color-text-disabled)] hover:text-[var(--color-accent)]"
                     >
                       <ExternalLink size={9} />
                     </button>
                     <button
                       onClick={() => removeEntry(entry.id)}
                       title="Remove"
-                      className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-danger)]"
+                      aria-label="Remove from history"
+                      className="text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
                     >
                       <Trash2 size={9} />
                     </button>

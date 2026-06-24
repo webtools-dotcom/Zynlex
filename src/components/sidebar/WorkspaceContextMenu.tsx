@@ -58,16 +58,16 @@ export function WorkspaceContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[10000] py-1 rounded-md shadow-lg border text-[13px]"
+      className="fixed z-[10000] py-1 rounded-[4px] border text-[13px]"
       style={{
         left: pos.x,
         top: pos.y,
         width: MENU_WIDTH,
-        background: "var(--xevo-modal-bg)",
-        borderColor: "var(--xevo-modal-border)",
+        background: "var(--color-elevated)",
+        borderColor: "var(--color-border)",
       }}
     >
-      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--xevo-text-faint)] truncate">
+      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--color-text-disabled)] truncate">
         {workspaceName}
       </div>
       <button
@@ -81,8 +81,8 @@ export function WorkspaceContextMenu({
         className={
           "w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors " +
           (canDelete
-            ? "text-red-400 hover:bg-[var(--xevo-hover)]"
-            : "text-[var(--xevo-text-faint)] opacity-50 cursor-not-allowed")
+            ? "text-red-400 hover:bg-[var(--color-hover)]"
+            : "text-[var(--color-text-disabled)] opacity-50 cursor-not-allowed")
         }
       >
         <Trash2 size={13} />

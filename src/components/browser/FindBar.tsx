@@ -17,9 +17,18 @@ import {
   onFindResult,
 } from "@/services/browser";
 import { useUIStore } from "@/stores/ui";
+import { useWorkspacesStore } from "@/stores/workspaces";
+import { useTabsStore } from "@/stores/tabs";
+import { getLiveWorkspaceActiveTabId } from "@/lib/workspaceTabs";
 
 const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+function getActiveTabId(): string | null {
+  const wsState = useWorkspacesStore.getState();
+  const ws = wsState.workspaces[wsState.activeWorkspaceId];
+  return getLiveWorkspaceActiveTabId(ws, useTabsStore.getState().tabs);
+}
 
 export function FindBar() {
   const findOpen = useUIStore((s) => s.findOpen);
@@ -39,8 +48,10 @@ export function FindBar() {
       if (!IS_TAURI) return;
       if (q === lastQueriedRef.current) return;
       lastQueriedRef.current = q;
+      const tabId = getActiveTabId();
+      if (!tabId) return;
       try {
-        await webviewFind(q, true);
+        await webviewFind(tabId, q, true);
       } catch (e) {
         console.error("[xevo] webviewFind failed:", e);
       }
@@ -74,7 +85,8 @@ export function FindBar() {
       // Clear state when bar is hidden.
       lastQueriedRef.current = "";
       if (IS_TAURI) {
-        webviewStopFind().catch(() => {});
+        const tabId = getActiveTabId();
+        if (tabId) webviewStopFind(tabId).catch(() => {});
       }
     }
   }, [findOpen]);
@@ -103,7 +115,8 @@ export function FindBar() {
     if (e.key === "Enter") {
       e.preventDefault();
       if (IS_TAURI) {
-        webviewFindNext(!e.shiftKey).catch(() => {});
+        const tabId = getActiveTabId();
+        if (tabId) webviewFindNext(tabId, !e.shiftKey).catch(() => {});
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
@@ -123,11 +136,10 @@ export function FindBar() {
 
   return (
     <div
-      className="absolute top-2 right-2 z-50 flex items-center gap-1 h-8 px-2 rounded-md border"
+      className="absolute top-2 right-2 z-50 flex items-center gap-1 h-8 px-2 rounded-[4px] border"
       style={{
-        background: "var(--xevo-modal-bg)",
-        borderColor: "var(--xevo-modal-border)",
-        boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+        background: "var(--color-elevated)",
+        borderColor: "var(--color-border)",
       }}
       onKeyDown={(e) => {
         // Stop the Escape from bubbling to global shortcuts
@@ -136,7 +148,7 @@ export function FindBar() {
     >
       <Search
         size={12}
-        className="text-[var(--xevo-text-faint)] flex-shrink-0"
+        className="text-[var(--color-text-disabled)] flex-shrink-0"
       />
       <input
         ref={inputRef}
@@ -148,36 +160,47 @@ export function FindBar() {
         spellCheck={false}
         autoCorrect="off"
         autoCapitalize="off"
-        className="w-[180px] bg-transparent outline-none text-[12px] text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)] font-mono"
+        className="w-[180px] bg-transparent outline-none text-[12px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] font-mono"
       />
       {matchText && (
         <span
-          className="text-[10px] font-mono text-[var(--xevo-text-faint)] min-w-[60px] text-right select-none"
+          className="text-[10px] font-mono text-[var(--color-text-disabled)] min-w-[60px] text-right select-none tabular-nums"
           aria-live="polite"
         >
           {matchText}
         </span>
       )}
       <button
-        onClick={() => IS_TAURI && webviewFindNext(false).catch(() => {})}
+        onClick={() => {
+          if (!IS_TAURI) return;
+          const tabId = getActiveTabId();
+          if (tabId) webviewFindNext(tabId, false).catch(() => {});
+        }}
         disabled={!hasQuery || findTotalMatches === 0}
         title="Previous match (Shift+Enter)"
-        className="w-5 h-5 flex items-center justify-center rounded text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)] disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+        aria-label="Previous match"
+        className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
       >
         <ChevronUp size={12} />
       </button>
       <button
-        onClick={() => IS_TAURI && webviewFindNext(true).catch(() => {})}
+        onClick={() => {
+          if (!IS_TAURI) return;
+          const tabId = getActiveTabId();
+          if (tabId) webviewFindNext(tabId, true).catch(() => {});
+        }}
         disabled={!hasQuery || findTotalMatches === 0}
         title="Next match (Enter)"
-        className="w-5 h-5 flex items-center justify-center rounded text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)] disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+        aria-label="Next match"
+        className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
       >
         <ChevronDown size={12} />
       </button>
       <button
         onClick={closeFind}
         title="Close (Esc)"
-        className="w-5 h-5 flex items-center justify-center rounded text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] hover:bg-[var(--xevo-hover)] transition-colors"
+        aria-label="Close find bar"
+        className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
       >
         <X size={12} />
       </button>

@@ -46,9 +46,9 @@ function Kbd({ children }: { children: React.ReactNode }) {
     <kbd
       className="inline-block min-w-[20px] px-1.5 py-0.5 text-[10px] font-mono rounded text-center"
       style={{
-        background: "var(--xevo-badge-bg)",
-        border: "1px solid var(--xevo-modal-border)",
-        color: "var(--xevo-text)",
+        background: "var(--color-elevated)",
+        border: "1px solid var(--color-border)",
+        color: "var(--color-text-primary)",
       }}
     >
       {children}
@@ -74,25 +74,25 @@ export function ShortcutHelp() {
       onClick={() => useUIStore.getState().closeShortcutHelp()}
     >
       <div
-        className="w-[480px] max-h-[80vh] flex flex-col overflow-hidden rounded-lg border"
+        className="w-[480px] max-h-[80vh] flex flex-col overflow-hidden rounded-[6px] border"
         style={{
-          background: "var(--xevo-modal-bg)",
-          borderColor: "var(--xevo-modal-border)",
-          boxShadow: "0 25px 50px rgba(0,0,0,0.8)",
+          background: "var(--color-elevated)",
+          borderColor: "var(--color-border)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           className="flex items-center justify-between h-12 px-4 border-b shrink-0"
-          style={{ borderColor: "var(--xevo-modal-border)" }}
+          style={{ borderColor: "var(--color-border)" }}
         >
-          <span className="text-sm font-semibold text-[var(--xevo-text)]">
+          <span className="text-sm font-semibold text-[var(--color-text-primary)]">
             Keyboard Shortcuts
           </span>
           <button
             onClick={() => useUIStore.getState().closeShortcutHelp()}
-            className="text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text)] transition-colors"
+            className="text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] transition-colors"
             title="Close (Esc)"
+            aria-label="Close shortcuts help"
           >
             <X size={16} />
           </button>
@@ -102,19 +102,19 @@ export function ShortcutHelp() {
           {SHORTCUTS.map((s, i) => (
             <div
               key={i}
-              className="flex items-center justify-between px-4 py-1.5 hover:bg-[var(--xevo-hover)]"
+              className="flex items-center justify-between px-4 py-1.5 hover:bg-[var(--color-hover)]"
             >
               <div className="flex items-center gap-1 shrink-0">
                 {s.keys.map((k, j) => (
                   <span key={j} className="flex items-center gap-1">
                     <Kbd>{k}</Kbd>
                     {j < s.keys.length - 1 && (
-                      <span className="text-[var(--xevo-text-faint)] text-[10px]">+</span>
+                      <span className="text-[var(--color-text-disabled)] text-[10px]">+</span>
                     )}
                   </span>
                 ))}
               </div>
-              <span className="text-xs text-[var(--xevo-text-muted)] text-right ml-4 truncate">
+              <span className="text-xs text-[var(--color-text-muted)] text-right ml-4 truncate">
                 {s.description}
               </span>
             </div>
@@ -123,9 +123,9 @@ export function ShortcutHelp() {
 
         <div
           className="flex justify-end px-4 py-2 border-t shrink-0"
-          style={{ borderColor: "var(--xevo-modal-border)" }}
+          style={{ borderColor: "var(--color-border)" }}
         >
-          <span className="text-[10px] text-[var(--xevo-text-faint)]">
+          <span className="text-[10px] text-[var(--color-text-disabled)]">
             Press <Kbd>Esc</Kbd> to close
           </span>
         </div>
