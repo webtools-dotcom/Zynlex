@@ -107,12 +107,14 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
   }
 
   return (
-    <div className="w-full h-full overflow-y-auto pointer-events-auto flex flex-col items-center min-h-full"
-      style={{ paddingTop: "40vh" }}
-    >
-      <div className="w-full max-w-[720px] mx-auto px-6 -translate-y-1/2">
+    // FIX: true flex centering instead of paddingTop:40vh + translateY(-50%).
+    // The old approach left a large dead zone above sparse content. This
+    // centers the whole block in whatever height is actually available,
+    // and still scrolls correctly once content grows past viewport height.
+    <div className="w-full h-full overflow-y-auto pointer-events-auto flex flex-col items-center justify-center">
+      <div className="w-full max-w-[720px] mx-auto px-6 py-16">
         {/* ── Hero ──────────────────────────────────────────────── */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-14">
           <h1
             className="text-[24px] font-semibold tracking-tight text-[var(--color-text-primary)] mb-6"
             style={{ fontFamily: "var(--font-ui)" }}
@@ -120,10 +122,19 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
             Your stack, at a glance.
           </h1>
 
+          {/*
+            FIX: removed "max-w-xl mx-auto" (576px, centered) and use
+            "w-full" instead. The search bar now shares the exact same
+            left/right edges as the Live Servers / Bookmarks sections
+            below it (both live inside the same max-w-[720px] column).
+            That mismatch was the root cause of the "not symmetrical"
+            look — the search bar was narrower and offset from the
+            section content beneath it.
+          */}
           <form
             onSubmit={submitSearch}
             className={cn(
-              "flex items-center gap-2 h-11 px-3 mx-auto max-w-xl",
+              "flex items-center gap-2 h-11 px-3 w-full",
               "rounded-[4px] border transition-all duration-[120ms]",
               "border-[var(--color-border)] bg-[var(--color-elevated)]",
               "focus-within:border-[rgba(59,130,246,0.25)]"
@@ -159,20 +170,25 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
         </div>
 
         {/* ── Live Servers ──────────────────────────────────────── */}
-        <section className="mb-8 relative">
-          {/* Ambient gradient pulse — the one permitted gradient */}
-          {liveServers.length > 0 && (
-            <div
-              className="absolute inset-0 -z-10 pointer-events-none"
-              style={{
-                background: "radial-gradient(ellipse at center, var(--color-live-glow) 0%, transparent 70%)",
-                opacity: 0.15,
-                animation: "ambientPulse 3s ease-in-out infinite",
-              }}
-            />
-          )}
+        <section className="mb-12 relative">
+          {/*
+            FIX: removed "-z-10". A negative z-index with no stacking
+            context established between this element and the page root
+            was rendering the gradient behind the app's own background
+            layer — invisible no matter the opacity. Plain DOM order
+            (gradient div first, content after) already paints this
+            behind the header/cards without needing z-index at all.
+          */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: "radial-gradient(ellipse at center, var(--color-live-glow) 0%, transparent 70%)",
+              opacity: 0.15,
+              animation: "ambientPulse 3s ease-in-out infinite",
+            }}
+          />
 
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 relative">
             <div className="flex items-center gap-1.5">
               <Server size={12} className="text-[var(--color-text-disabled)]" />
               <h2 className="text-[10px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
@@ -190,19 +206,22 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
           </div>
 
           {liveServers.length === 0 ? (
-            <div className="py-4 text-center">
+            <div className="py-4 text-center relative">
               <p className="text-[13px] text-[var(--color-text-muted)] italic">
                 No servers detected. Start your dev server and XEVO will find it.
               </p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1 relative">
               {liveServers.map((server) => (
                 <button
                   key={server.port}
                   onClick={() => openServer(server.port, server.protocol)}
                   className={cn(
-                    "w-full flex items-center gap-3 h-16 px-4 text-left",
+                    // FIX: added "group" — the "Open →" label below uses
+                    // group-hover:opacity-100, which silently does nothing
+                    // without an ancestor literally classed "group".
+                    "group w-full flex items-center gap-3 h-16 px-4 text-left",
                     "rounded-[4px] border border-[var(--color-border)] bg-[var(--color-elevated)]",
                     "hover:bg-[var(--color-hover)] transition-colors duration-0"
                   )}
@@ -230,7 +249,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
                     <span className="text-[12px] text-[var(--color-text-muted)] truncate">
                       {server.label ?? server.title ?? `${server.protocol}://localhost:${server.port}`}
                     </span>
-                    <span className="text-[11px] text-[var(--color-accent)] opacity-0 group-hover:opacity-100 shrink-0 ml-2">
+                    <span className="text-[11px] text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
                       Open →
                     </span>
                   </div>
@@ -272,11 +291,11 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
                     size={11}
                     className="text-[var(--color-text-disabled)] flex-shrink-0"
                   />
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                     <span className="text-[12px] text-[var(--color-text-primary)] truncate">
                       {bookmark.title}
                     </span>
-                    <span className="text-[10px] text-[var(--color-text-disabled)] truncate font-mono ml-2">
+                    <span className="text-[10px] text-[var(--color-text-muted)] truncate font-mono">
                       {bookmark.url}
                     </span>
                   </div>

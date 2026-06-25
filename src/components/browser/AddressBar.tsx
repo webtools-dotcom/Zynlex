@@ -162,15 +162,24 @@ export function AddressBar({
         <RotateCw size={13} />
       </button>
 
+      {/*
+        FIX: gap-1.5 (6px) → gap-2 (8px) between the leading icon and
+        the input text, and the icon now sits in a fixed 14px square
+        (w-4 h-4 justify-center) instead of a plain inline flex span.
+        Search/Lock/Globe icons all render at slightly different
+        optical widths at this size; pinning them to a fixed box keeps
+        the text's starting position identical no matter which icon
+        is showing, instead of the text appearing to crowd the icon.
+      */}
       <div
         className={cn(
-          "flex-1 flex items-center gap-1.5 h-7 px-2 rounded-[7px] border transition-all duration-150",
+          "flex-1 flex items-center gap-2 h-7 px-2 rounded-[7px] border transition-all duration-150",
           focused
             ? "border-[var(--xevo-accent-border)] bg-[var(--xevo-content-bg)]"
             : "border-[var(--xevo-border)] bg-[var(--xevo-content-bg)] hover:border-[var(--xevo-text-faint)]",
         )}
       >
-        <div className="flex-shrink-0 text-[var(--xevo-text-faint)] flex items-center">
+        <div className="flex-shrink-0 w-4 h-4 text-[var(--xevo-text-faint)] flex items-center justify-center">
           {focused ? (
             <Search size={11} />
           ) : activeTab?.url ? (

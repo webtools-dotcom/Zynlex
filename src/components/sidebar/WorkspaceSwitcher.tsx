@@ -27,6 +27,9 @@ function WorkspaceIcon({ workspace, isActive, tabCount, onClick, onContextMenu }
         backgroundColor: isActive
           ? "var(--color-accent-dim)"
           : "transparent",
+        borderLeft: isActive
+          ? `2px solid ${workspace.color}`
+          : "2px solid transparent",
       }}
       className={cn(
         "relative w-8 h-8 rounded-[4px] flex items-center justify-center",
