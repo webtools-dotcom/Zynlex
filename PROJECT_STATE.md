@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.12.0
+## Version: v1.12.2
 ## Last Updated: 2026-06-25
-## Status: Session 34 complete — Tab-per-WebviewWindow architecture implemented. Each tab now gets its own WebviewWindow (label "browser-{tabId}"). Tab switching = hide old + show new (zero reload, full state preservation). Webviews are created lazily on first navigation. Rust backend has new commands: browser_create_tab, browser_activate_tab, browser_close_tab, browser_navigate_tab, browser_hide_tab, browser_show_tab. All existing commands (go_back, go_forward, reload, stop_loading, find, set_bounds, reposition) now accept tab_id. Events (url-changed, loading, tab-info) now include tabId in payload. `cargo check` clean. `tsc --noEmit` clean. Runtime verification pending.
+## Status: Session 36 complete — Added bookmark button (star icon) to the address bar in Toolbar.tsx. Button sits between the address input and settings button, toggles bookmark status via existing `toggleBookmarkForActiveTab()`, reactively shows filled/outline star based on current URL's bookmark state. `tsc --noEmit` clean.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -1933,4 +1933,34 @@ When the user clicks minimize, `onMoved` and `onResized` fire in `useWebviewBrid
   - Maximize → restore → minimize → works
   - Drag window → webview still follows
   - Tab switch, navigation, overlays → all unaffected
+
+## CHANGES THIS SESSION (Session 35 — v1.12.0 → v1.12.1)
+
+### Part A — Fixed duplicated bookmark URL display
+**Root cause:** Case (a) — title and url were the same string (store falls back to URL when no `document.title`), rendered as two adjacent inline `<span>` elements inside a plain `<div>` (no flex-col). Visually appeared as "https://github.com/https://github.com/" with only `ml-2` gap.
+**Fix:** `src/components/panels/HomePage.tsx` — converted inner div to `flex flex-col gap-0.5` and changed URL sublabel color from `text-text-disabled` to `text-text-muted` (slightly more visible, matches sidebar panel styling). BookmarksPanel.tsx was already correct (uses stacked `<div>` elements + `getHost()` sublabel).
+
+### Part B — Fixed ambient gradient not rendering
+**Root cause:** Gated-behind-servers. The gradient div was wrapped in `{liveServers.length > 0 && ...}`. When no servers detected (empty state), the gradient never rendered. The `ambientPulse` keyframe existed correctly in `index.css:357-361`.
+**Fix:** `src/components/panels/HomePage.tsx` — removed the conditional guard. The gradient now always renders in the Live Servers `<section>` regardless of server count.
+
+### Part C — Fixed active tab accent border
+**Root cause:** `tailwind-merge` conflict. `cn()` = `clsx` + `twMerge`. `border-b-2` (width) and `border-b-[var(--color-accent)]` (color) were merged into the same conflict group because tailwind-merge doesn't statically recognize arbitrary-value border colors. The later value won but was a color, not a width — browser ignored it, leaving no border.
+**Fix:** `src/components/browser/TabItem.tsx` — removed `border-b-[var(--color-accent)]` and `border-b-transparent` from className. Border color now handled entirely via inline `style` prop (`borderBottomColor` based on `isActive`/`isDropTarget`).
+
+### Part D — Restored workspace active-state distinguishability
+**Root cause:** Session 13 "Refined Monochrome" changed active workspace from colored left-border to plain white tint. All workspace icons looked generic.
+**Fix:** `src/components/sidebar/WorkspaceSwitcher.tsx` — added `borderLeft: 2px solid ${workspace.color}` when active (using the existing `workspace.color` field from the Workspace type). Kept accent-dim background tint for additional differentiation.
+
+### Part E — Loosened home page section spacing
+**Fix:** `src/components/panels/HomePage.tsx` — hero div `mb-10` (40px) → `mb-14` (56px). Live Servers section `mb-8` (32px) → `mb-12` (48px). Internal section spacing unchanged.
+
+### Files modified
+- `src/components/panels/HomePage.tsx` — Parts A, B, E
+- `src/components/browser/TabItem.tsx` — Part C
+- `src/components/sidebar/WorkspaceSwitcher.tsx` — Part D
+
+### Verification
+- `pnpm tsc —noEmit` — clean
+- No Rust changes, no new dependencies, no store changes
 

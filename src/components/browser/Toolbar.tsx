@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, Search, X, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, Search, X, MoreHorizontal, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
+import { useBookmarksStore } from "@/stores/bookmarks";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
+import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 
 function resolveInput(raw: string, searchEngine: string, customSearchUrl: string): string {
   const s = raw.trim();
@@ -39,6 +41,14 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
 
   const ws = workspaces[activeWorkspaceId];
   const activeTab = getLiveWorkspaceActiveTab(ws, tabs);
+
+  const bookmarks = useBookmarksStore((s) => s.bookmarks);
+  const isCurrentBookmarked =
+    activeTab?.url != null &&
+    activeTab.url !== "" &&
+    bookmarks.some(
+      (b) => b.workspaceId === activeWorkspaceId && b.url === activeTab.url,
+    );
 
   const [draft, setDraft] = useState(activeTab?.url ?? "");
   const [focused, setFocused] = useState(false);
@@ -201,6 +211,24 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
           )}
         </div>
       </div>
+
+      {/* Bookmark button */}
+      <button
+        onClick={() => toggleBookmarkForActiveTab()}
+        title={isCurrentBookmarked ? "Remove bookmark (Ctrl+D)" : "Bookmark (Ctrl+D)"}
+        aria-label={isCurrentBookmarked ? "Remove bookmark" : "Bookmark page"}
+        disabled={!activeTab?.url}
+        className={cn(
+          "w-7 h-7 flex items-center justify-center rounded-[4px] transition-colors",
+          activeTab?.url
+            ? isCurrentBookmarked
+              ? "text-[var(--color-accent)] hover:text-[var(--color-accent)] hover:bg-[var(--color-hover)] cursor-pointer"
+              : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] cursor-pointer"
+            : "text-[var(--color-text-disabled)] cursor-not-allowed opacity-40",
+        )}
+      >
+        <Star size={14} fill={isCurrentBookmarked ? "currentColor" : "none"} />
+      </button>
 
       {/* Right-side actions */}
       <button

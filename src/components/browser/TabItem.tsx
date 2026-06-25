@@ -53,14 +53,19 @@ export function TabItem({
         "border-b-2 border-r transition-colors",
         isDragging && "opacity-40",
         isActive
-          ? "bg-[var(--color-base)] text-[var(--color-text-primary)] border-b-[var(--color-accent)]"
-          : "bg-transparent text-[var(--color-text-muted)] border-b-transparent hover:bg-[var(--color-hover)] hover:text-[var(--color-text-secondary)]",
+          ? "bg-[var(--color-base)] text-[var(--color-text-primary)]"
+          : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text-secondary)]",
       )}
       style={{
-        borderLeftColor: isDropTarget ? "var(--color-accent)" : undefined,
-        borderTopColor: isDropTarget ? "var(--color-accent)" : undefined,
-        borderBottomColor: isDropTarget ? "var(--color-accent)" : undefined,
+        borderBottomColor: isDropTarget
+          ? "var(--color-accent)"
+          : isActive
+            ? "var(--color-accent)"
+            : "transparent",
         borderRightColor: "var(--color-border-subtle)",
+        ...(isDropTarget
+          ? { borderLeftColor: "var(--color-accent)", borderTopColor: "var(--color-accent)" }
+          : {}),
       }}
     >
       {/* Favicon */}
