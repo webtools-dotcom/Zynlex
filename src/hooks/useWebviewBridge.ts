@@ -71,10 +71,10 @@ const IS_WINDOWS =
 //
 // Change ONE value at a time, rebuild, and check only that edge.
 const WEBVIEW_EDGE_INSET = {
-  top: 4,
-  right: 4,
+  top: -4,
+  right: -4,
   bottom: 4,
-  left: 4,
+  left: -4,
 };
 
 /**
@@ -105,6 +105,7 @@ function isChromeOverlayOpen(): boolean {
     ui.commandPaletteOpen ||
     ui.shortcutHelpOpen ||
     ui.settingsPanelOpen ||
+    ui.apiTesterOpen ||
     ui.findOpen
   );
 }
