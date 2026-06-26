@@ -1,28 +1,35 @@
 import {
   Server, Bookmark, Clock, Network, Code2, FileText, KeyRound, Binary,
+  Shield, FlaskConical, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useServersStore } from "@/stores/servers";
 import { useTabsStore } from "@/stores/tabs";
+import { usePortScanner } from "@/hooks/usePortScanner";
 import { BookmarksPanel } from "@/components/sidebar/BookmarksPanel";
 import { ApiTesterPanel } from "@/components/sidebar/ApiTesterPanel";
 import { HistoryPanel } from "@/components/sidebar/HistoryPanel";
 import { NotesSidebarPanel } from "@/components/sidebar/NotesSidebarPanel";
 import { JwtDecoder } from "@/components/panels/JwtDecoder";
 import { Base64Tool } from "@/components/panels/Base64Tool";
+import { NetworkPanel } from "@/components/panels/NetworkPanel";
+import { HeadersPanel } from "@/components/panels/HeadersPanel";
+import { InspectorPanel } from "@/components/panels/InspectorPanel";
 import type { PanelId } from "@/types";
 
 const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
-  { id: "servers",   Icon: Server,   label: "Live Servers" },
-  { id: "bookmarks", Icon: Bookmark, label: "Bookmarks" },
-  { id: "history",   Icon: Clock,    label: "History" },
-  { id: "network",   Icon: Network,  label: "Network Log" },
-  { id: "api",       Icon: Code2,    label: "API Tester" },
-  { id: "notes",     Icon: FileText, label: "Notes" },
-  { id: "jwt",       Icon: KeyRound, label: "JWT Decoder" },
-  { id: "base64",    Icon: Binary,   label: "Base64" },
+  { id: "servers",    Icon: Server,       label: "Live Servers" },
+  { id: "bookmarks",  Icon: Bookmark,     label: "Bookmarks" },
+  { id: "history",    Icon: Clock,        label: "History" },
+  { id: "network",    Icon: Network,      label: "Network Log" },
+  { id: "headers",    Icon: Shield,       label: "Header Injection" },
+  { id: "inspector",  Icon: FlaskConical, label: "Inspector" },
+  { id: "api",        Icon: Code2,        label: "API Tester" },
+  { id: "notes",      Icon: FileText,     label: "Notes" },
+  { id: "jwt",        Icon: KeyRound,     label: "JWT Decoder" },
+  { id: "base64",     Icon: Binary,       label: "Base64" },
 ];
 
 function LiveServersPanel() {
@@ -33,6 +40,7 @@ function LiveServersPanel() {
     addTabToWorkspace,
     setActiveTab,
   } = useWorkspacesStore();
+  const { scan } = usePortScanner();
 
   const sorted = [...servers].sort((a, b) => {
     if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
@@ -63,16 +71,31 @@ function LiveServersPanel() {
         <p className="text-[10px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
           Live Servers
         </p>
-        {isScanning && (
-          <span className="text-[9px] text-[var(--color-text-disabled)] animate-pulse">
-            scanning…
-          </span>
-        )}
-        {!isScanning && lastScanAt && (
-          <span className="text-[9px] text-[var(--color-text-disabled)]">
-            {Math.round((Date.now() - lastScanAt) / 1000)}s ago
-          </span>
-        )}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => scan()}
+            disabled={isScanning}
+            title="Rescan ports"
+            className={cn(
+              "w-5 h-5 flex items-center justify-center rounded-[3px] transition-colors",
+              isScanning
+                ? "text-[var(--color-text-disabled)] cursor-not-allowed"
+                : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)] cursor-pointer",
+            )}
+          >
+            <RefreshCw size={11} className={isScanning ? "animate-spin" : ""} />
+          </button>
+          {isScanning && (
+            <span className="text-[9px] text-[var(--color-text-disabled)] animate-pulse">
+              scanning…
+            </span>
+          )}
+          {!isScanning && lastScanAt && (
+            <span className="text-[9px] text-[var(--color-text-disabled)]">
+              {Math.round((Date.now() - lastScanAt) / 1000)}s ago
+            </span>
+          )}
+        </div>
       </div>
 
       {visible.length === 0 ? (
@@ -192,22 +215,13 @@ export function Sidebar() {
         {activePanel === "servers" && <LiveServersPanel />}
         {activePanel === "bookmarks" && <BookmarksPanel />}
         {activePanel === "history" && <HistoryPanel />}
+        {activePanel === "network" && <NetworkPanel />}
+        {activePanel === "headers" && <HeadersPanel />}
+        {activePanel === "inspector" && <InspectorPanel />}
         {activePanel === "api" && <ApiTesterPanel />}
         {activePanel === "notes" && <NotesSidebarPanel />}
         {activePanel === "jwt" && <JwtDecoder />}
         {activePanel === "base64" && <Base64Tool />}
-        {activePanel !== "servers" &&
-          activePanel !== "bookmarks" &&
-          activePanel !== "history" &&
-          activePanel !== "api" &&
-          activePanel !== "notes" &&
-          activePanel !== "jwt" &&
-          activePanel !== "base64" &&
-          activePanel !== null && (
-            <div className="flex items-center justify-center h-24 text-[11px] text-[var(--color-text-disabled)]">
-              Coming soon
-            </div>
-          )}
       </div>
     </div>
   );

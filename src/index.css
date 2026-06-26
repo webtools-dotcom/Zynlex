@@ -323,7 +323,7 @@ input:focus, textarea:focus, select:focus {
   100% { width: 90%;  opacity: 1; }
 }
 @keyframes xevo-progress-done {
-  0%   { width: 90%;  opacity: 1; }
+  0%   { width: var(--loading-start-width, 90%);  opacity: 1; }
   100% { width: 100%; opacity: 0; }
 }
 

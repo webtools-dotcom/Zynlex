@@ -47,9 +47,9 @@ export function FindBar() {
     async (q: string) => {
       if (!IS_TAURI) return;
       if (q === lastQueriedRef.current) return;
-      lastQueriedRef.current = q;
       const tabId = getActiveTabId();
       if (!tabId) return;
+      lastQueriedRef.current = q;
       try {
         await webviewFind(tabId, q, true);
       } catch (e) {

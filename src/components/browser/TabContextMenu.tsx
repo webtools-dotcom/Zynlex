@@ -75,7 +75,7 @@ export function TabContextMenu({
   const pos = adjustPosition(x, y);
 
   function handleReload() {
-    if (bridge) bridge.reload();
+    if (bridge) bridge.reload(tabId);
     onClose();
   }
 

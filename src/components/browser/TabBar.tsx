@@ -197,17 +197,13 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
     reorderTabs(liveWsId, [...pinned, ...unpinned]);
   }, [reorderTabs]);
 
-  const handlePlusPointerOver = useCallback(() => {
-    if (isDragging.current) {
-      dropTargetRef.current = "__end__";
-      setDropTarget("__end__");
-    }
-  }, []);
-
   // ── Keyboard shortcuts ─────────────────────────────────────────────────
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key === "t") { e.preventDefault(); openNewTab(); }
       if (mod && e.key === "w") { e.preventDefault(); if (activeTabId) handleCloseTab(activeTabId); }
@@ -259,7 +255,6 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
         onClick={openNewTab}
         title="New tab (Ctrl+T)"
         aria-label="New tab"
-        onPointerOver={handlePlusPointerOver}
         className="flex-shrink-0 w-9 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors border-l"
         style={{
           borderColor: dropTarget === "__end__" ? "var(--color-accent)" : "var(--color-border)",

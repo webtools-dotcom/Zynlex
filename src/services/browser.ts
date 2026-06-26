@@ -222,3 +222,55 @@ export function onBookmarkRequest(
 ): Promise<UnlistenFn> {
   return listen("browser://bookmark-request", () => callback());
 }
+
+// ─── Network Log ──────────────────────────────────────────────────
+
+export function onNetworkEntry(
+  callback: (entry: import("@/types").NetworkLogEntry) => void
+): Promise<UnlistenFn> {
+  return listen<import("@/types").NetworkLogEntry>(
+    "xevo://network-entry",
+    (e) => callback(e.payload)
+  );
+}
+
+// ─── Header Injection ─────────────────────────────────────────────
+
+export async function updateHeaderRules(
+  rules: import("@/types").HeaderRule[]
+): Promise<void> {
+  await invoke<void>("browser_update_header_rules", {
+    rulesJson: JSON.stringify(rules),
+  });
+}
+
+// ─── Inspector ────────────────────────────────────────────────────
+
+export async function evalInspector(
+  tabId: string,
+  inspectorType: "meta" | "cookies" | "localStorage" | "sessionStorage"
+): Promise<void> {
+  await invoke<void>("browser_eval_inspector", { tabId, inspectorType });
+}
+
+export interface InspectorDataEvent {
+  tabId: string;
+  dataType: string;
+  data: string;
+}
+
+export function onInspectorData(
+  callback: (event: InspectorDataEvent) => void
+): Promise<UnlistenFn> {
+  return listen<InspectorDataEvent>("xevo://inspector-data", (e) =>
+    callback(e.payload)
+  );
+}
+
+export async function inspectorMutate(
+  tabId: string,
+  operation: string,
+  params: Record<string, string>
+): Promise<void> {
+  await invoke<void>("inspector_mutate", { tabId, operation, params });
+}

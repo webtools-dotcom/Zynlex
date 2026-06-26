@@ -81,6 +81,11 @@ pub fn run() {
             commands::browser::browser_set_theme,
             commands::browser::browser_hide_tab,
             commands::browser::browser_show_tab,
+            commands::browser::network_log_entry,
+            commands::browser::browser_update_header_rules,
+            commands::browser::browser_eval_inspector,
+            commands::browser::inspector_data,
+            commands::browser::inspector_mutate,
             commands::ports::scan_ports,
         ])
         .run(tauri::generate_context!())

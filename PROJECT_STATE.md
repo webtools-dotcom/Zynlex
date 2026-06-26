@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.12.2
-## Last Updated: 2026-06-25
-## Status: Session 36 complete — Added bookmark button (star icon) to the address bar in Toolbar.tsx. Button sits between the address input and settings button, toggles bookmark status via existing `toggleBookmarkForActiveTab()`, reactively shows filled/outline star based on current URL's bookmark state. `tsc --noEmit` clean.
+## Version: v1.13.1
+## Last Updated: 2026-06-26
+## Status: Session 38 complete — Added manual "rescan now" button to LiveServersPanel header. Wired the previously dead `scan` return from `usePortScanner` into a RefreshCw icon button with spin animation during scan. `pnpm build` clean.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -132,7 +132,7 @@
 - **Sidebar Toggle** (Session 14) — ☰ button in WorkspaceSwitcher icon strip collapses/expands the sidebar panel area. Ctrl+B keyboard shortcut. WorkspaceSwitcher icon strip always visible. Webview repositions via new `browser_reposition` Rust command when sidebar toggles.
 - **Keyboard Shortcut Forwarding from Webview** (Session 14) — `XEVO_SHORTCUT_FORWARD_SCRIPT` injected into every webview page intercepts Ctrl+D/K/T/W/R/B/,/Shift+T and calls new `forward_shortcut` Rust command which emits `xevo://shortcut` event to main window. `useKeyboardShortcuts.ts` listens for this event and handles each shortcut identically to the regular keydown handler.
 - **Modal Visibility Fix** (Session 14) — Command palette and shortcut help modals now hide the browser WebviewWindow when open and show it again (with 50ms delay) when closed. Prevents modals from appearing behind the OS-level webview window.
-- **Rust command count: 18** — browser_navigate, browser_set_bounds, browser_go_back, browser_go_forward, browser_reload, browser_close, browser_bookmark_request, browser_show, browser_hide, update_tab_info, browser_find, browser_find_next, browser_stop_find, browser_find_callback, browser_stop_loading, browser_reposition, forward_shortcut, scan_ports.
+- **Rust command count: 26** — browser_create_tab, browser_activate_tab, browser_close_tab, browser_navigate_tab, browser_set_bounds, browser_go_back, browser_go_forward, browser_reload, browser_stop_loading, browser_bookmark_request, forward_shortcut, update_tab_info, browser_find, browser_find_next, browser_stop_find, browser_find_callback, browser_reposition, browser_set_theme, browser_hide_tab, browser_show_tab, network_log_entry, browser_update_header_rules, browser_eval_inspector, inspector_data, inspector_mutate, scan_ports.
 
 ### XEVO_FRONTEND.md Design System (Sessions 28–30)
 - **Tailwind v4 @theme token system** — `src/index.css`: `@custom-variant dark` for Tailwind v4 dark mode via `data-theme` attribute. All design tokens wrapped in `@theme { ... }` block (colors, fonts, spacing, radius, motion). Tailwind now generates utility classes like `bg-base`, `text-text-primary`, `bg-elevated`, etc. `:root` retains shadcn/ui semantic mappings + legacy `--xevo-*` aliases + RTE theme variables.
@@ -166,17 +166,15 @@
 ## NOT DONE YET (next sessions)
 - Port scanner: HTTP title shown in sidebar tooltip
 - Port scanner: manual "add custom port" UI
-- Network log panel (sidebar — `activePanel === "network"`)
 - API tester: persist request history to localStorage
 - API tester: response body type detection (HTML preview, image preview, JSON tree)
 - API tester: saved collections / environments / duplicate
 - Find in page: case-sensitive toggle, whole-word toggle
 - Bookmarks: drag-to-reorder, folder support
 - Status bar: hovered URL detection (Task 63.3 — skipped, requires injected script)
-- **Option A (NOW):** GitHub push + README + v1.1 tag + CONTRIBUTING.md + LICENSE (MIT) + GitHub Actions CI
-- Runtime visual confirmation that main window drag works after maximize/restore (cargo check + tsc pass; a `pnpm tauri dev` GUI run is still required to fully verify the Session 32 fix)
-- Consider: WindowControls macOS/Linux positioning (currently always right-side; macOS needs left-side traffic lights)
-- Consider: Remove `tauri-plugin-os` from Cargo.toml if no longer needed (currently registered but unused)
+- README.md — hero screenshot/GIF, feature list with comparison table, install instructions
+- GitHub Actions release.yml — automated Windows build on git tag push
+- Optionally: color picker panel, meta tag preview card (og preview)
 
 ## KNOWN ISSUES
 - **Window-move following uses `onMoved` + `onResized` dual listeners** — `onMoved` fires reliably for user drags but is unreliable for maximize/unmaximize on Windows (SWP_NOMOVE). `onResized` is always reliable. The maximize-state detection resets `lastBoundsRef` on transitions. Residual risk: if the lib.rs repaint hack's `maximize() → unmaximize()` fires both events in a single frame, the `onResized` 50ms delay may race with `onMoved`. In practice this is invisible because both最终 call `syncBoundsRef.current()` which reads fresh DOM values. **Root cause is Tauri 2.x architectural:** `WebviewWindow::parent()` "doesn't seem to work in a Windows environment" per Tauri team's own Issue #10079 (closed as "not planned", June 2024). The frontend `onMoved` + `onResized` dual listener is the best available workaround.
@@ -191,6 +189,10 @@
 - **In-page link click records history via `onUrlChanged` from Rust** — if a page fires multiple `onUrlChanged` events in rapid succession (e.g. SPA internal routing), each one is treated as a navigation and pushed to the back stack. This can pollute history with intermediate URLs. Acceptable for now; can be filtered later by debouncing.
 - **Per-tab history is in-memory only** — Zustand `tabs` store is not persisted. On app restart, tabs and their history are lost. Acceptable for v1.0; persistence can be added by extending the tabs store with `persist` middleware in a follow-up.
 - **Global shortcuts fire even when XEVO is not focused** — `tauri-plugin-global-shortcut` registers OS-level hotkeys. If another app has the same shortcut (e.g. Ctrl+T in Chrome), both apps receive it. The plugin silently fails for shortcuts already taken by another app. This is the intended trade-off for making shortcuts work when the webview has focus.
+- **Network log captures fetch/XHR only** — document navigations, image/CSS/font/script asset loads, and Web Worker requests are not captured. By design — developers debugging API calls care about fetch/XHR, not assets.
+- **HttpOnly cookies not visible in Cookie inspector** — browser security restriction; JavaScript cannot read HttpOnly cookies. The inspector shows a warning banner about this.
+- **Header injection applies to fetch/XHR only** — navigation requests and asset loads are not intercepted. By design — no dev wants auth headers on images.
+- **Header rules pushed to existing tabs via eval; new tabs get rules from init script** — `browser_update_header_rules` evals `window.__XEVO_HEADER_RULES = [...]` in all open browser webviews. New tabs created after the rules are set will also have the rules injected via the init script's initial empty array (which is then updated by `browser_update_header_rules`). This two-step approach ensures rules work immediately on existing tabs without requiring a page reload.
 
 ## SESSION NOTE (2026-06-03 - live server + workspace audit)
 - Fixed Live Servers discovery so newly started localhost ports are picked up on the next scan even when the service binds on a different loopback family.
@@ -266,10 +268,14 @@ src\lib\utils.ts
 src\lib\workspaceTabs.ts
 src\services\browser.ts              ← per-tab IPC: createTab/activateTab/closeTabWebview/navigateTab
                                        + hideTabWebview/showTabWebview + tabId-aware events
+                                       + onNetworkEntry, updateHeaderRules, evalInspector, inspectorMutate
 src\stores\apiHistory.ts
 src\stores\bookmarks.ts
+src\stores\headers.ts                 ← NEW: workspace-scoped header injection rules (persisted)
 src\stores\history.ts
+src\stores\inspector.ts               ← NEW: inspector panel state (session-only)
 src\stores\notes.ts
+src\stores\network.ts                 ← NEW: network log entries per tab (session-only, 200 limit)
 src\stores\servers.ts
 src\stores\settings.ts
 src\stores\tabs.ts
@@ -296,8 +302,11 @@ src\components\browser\WindowControls.tsx
 src\components\overlay\OverlayPanel.tsx
 src\components\panels\ApiTester.tsx
 src\components\panels\Base64Tool.tsx
+src\components\panels\HeadersPanel.tsx    ← NEW: custom header injection rule management
 src\components\panels\HomePage.tsx
+src\components\panels\InspectorPanel.tsx  ← NEW: meta/cookies/storage inspector with auto-refresh
 src\components\panels\JwtDecoder.tsx
+src\components\panels\NetworkPanel.tsx    ← NEW: real-time network request log
 src\components\panels\NotesNotepad.tsx
 src\components\panels\SettingsPanel.tsx
 src\components\sidebar\ApiTesterPanel.tsx
@@ -319,14 +328,17 @@ src-tauri\build.rs
 src-tauri\capabilities\default.json
 src-tauri\icons\                     (18 icon files)
 src-tauri\src\main.rs
-src-tauri\src\lib.rs                 ← BrowserState { active_tab_label } + 20 invoke handlers
+src-tauri\src\lib.rs                 ← BrowserState { active_tab_label } + 26 invoke handlers
 src-tauri\src\commands\mod.rs
 src-tauri\src\commands\browser.rs    ← per-tab commands: create_tab, activate_tab, close_tab,
                                        navigate_tab, hide_tab, show_tab, set_bounds, go_back,
                                        go_forward, reload, stop_loading, find, find_next,
                                        stop_find, find_callback, set_theme, reposition,
-                                       update_tab_info, bookmark_request, forward_shortcut
-                                       + BROWSER_INIT_SCRIPT with __XEVO_TAB_ID injection
+                                       update_tab_info, bookmark_request, forward_shortcut,
+                                       network_log_entry, browser_update_header_rules,
+                                       browser_eval_inspector, inspector_data, inspector_mutate
+                                       + BROWSER_INIT_SCRIPT with fetch/XHR monkeypatching
+                                       + header injection + network monitoring
 src-tauri\src\commands\ports.rs
 src-tauri\gen\schemas\              (4 generated schema files)
 ```
@@ -1963,4 +1975,54 @@ When the user clicks minimize, `onMoved` and `onResized` fire in `useWebviewBrid
 ### Verification
 - `pnpm tsc —noEmit` — clean
 - No Rust changes, no new dependencies, no store changes
+
+## CHANGES THIS SESSION (Session 37 — v1.12.2 → v1.13.0)
+
+### Network Request Log
+- Extended `BROWSER_INIT_SCRIPT` in `src-tauri/src/commands/browser.rs` with fetch/XHR monkeypatching. Captures method, URL, status, headers, body, timing. Changed raw string delimiter from `r#"..."#` to `r##"..."##` for safety.
+- New `network_log_entry` Rust command receives entries from webview JS and emits `xevo://network-entry` events.
+- New `src/stores/network.ts` — session-only Zustand store, 200 entry limit per tab, newest-first.
+- New `src/components/panels/NetworkPanel.tsx` — real-time network log with method/URL filters, expandable rows with request/response headers + body, Copy as cURL, color-coded method badges and status codes.
+
+### Custom Header Injection
+- `BROWSER_INIT_SCRIPT` includes `__xevoUrlMatches` (glob-to-regex URL matcher) and `__xevoInjectHeaders` (applies matching rules to requests). Both fetch and XHR monkeypatches inject headers before sending.
+- New `browser_update_header_rules` Rust command evals `window.__XEVO_HEADER_RULES = [...]` in all open browser webviews.
+- New `src/stores/headers.ts` — workspace-scoped header rules, persisted to localStorage.
+- New `src/components/panels/HeadersPanel.tsx` — rule management with URL pattern input, quick-pick chips for common header names (Authorization, Content-Type, etc.), toggle/delete rules, debounced push to webviews.
+
+### Inspector Panel (Meta / Cookies / Storage)
+- New `browser_eval_inspector` Rust command evals JavaScript in a tab's webview to collect meta tags, cookies, or web storage data.
+- New `inspector_data` Rust command receives collected data and emits `xevo://inspector-data` events.
+- New `inspector_mutate` Rust command performs write operations (set/delete/clear cookies, set/delete/clear storage).
+- New `src/stores/inspector.ts` — session-only Zustand store for inspector state.
+- New `src/components/panels/InspectorPanel.tsx` — three sub-tabs: META (SEO checklist, grouped meta tags, og:image preview), COOKIES (read/edit/delete non-HttpOnly cookies, add new), STORAGE (localStorage + sessionStorage with inner toggle, edit/delete/clear). Auto-refreshes every 3 seconds.
+
+### Sidebar Expansion
+- PanelId extended with `"headers" | "inspector"` in `src/types/index.ts`.
+- `src/components/sidebar/Sidebar.tsx` — 10 panels now (was 8). Added Shield + FlaskConical icons. Network panel "Coming soon" placeholder replaced with actual NetworkPanel component.
+
+### Event Wiring
+- `src/hooks/useWebviewBridge.ts` — subscribes to `xevo://network-entry` and `xevo://inspector-data` events, routes to appropriate stores.
+- `src/services/browser.ts` — 5 new exports: `onNetworkEntry`, `updateHeaderRules`, `evalInspector`, `onInspectorData`, `inspectorMutate`.
+
+### New files
+- `src/stores/network.ts`
+- `src/stores/headers.ts`
+- `src/stores/inspector.ts`
+- `src/components/panels/NetworkPanel.tsx`
+- `src/components/panels/HeadersPanel.tsx`
+- `src/components/panels/InspectorPanel.tsx`
+
+### Verification
+- `cd src-tauri && cargo check` — clean
+- `pnpm tsc --noEmit` — clean
+- Rust command count: 26
+
+## Session 38 — Manual Rescan Button
+
+### LiveServersPanel rescan button
+- `src/components/sidebar/Sidebar.tsx`: imported `RefreshCw` (lucide) + `usePortScanner`, added `const { scan } = usePortScanner()` inside `LiveServersPanel`, added a 20px refresh button in the header row (next to scan status). Disabled + spinning while `isScanning`. Previously dead `scan` return value is now wired up.
+
+### Verification
+- `pnpm build` — clean
 
