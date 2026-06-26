@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.13.1
+## Version: v1.14.0
 ## Last Updated: 2026-06-26
-## Status: Session 38 complete — Added manual "rescan now" button to LiveServersPanel header. Wired the previously dead `scan` return from `usePortScanner` into a RefreshCw icon button with spin animation during scan. `pnpm build` clean.
+## Status: Session 39 complete — Bug-hunt batches 1-3 consolidated fix (7 items). `pnpm tsc --noEmit` clean, `cargo check` clean.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -2025,4 +2025,22 @@ When the user clicks minimize, `onMoved` and `onResized` fire in `useWebviewBrid
 
 ### Verification
 - `pnpm build` — clean
+
+## Bug-hunt batches 1-3 consolidated fix (Session 39)
+
+Six independent bugs fixed + one calibration pass applied. Fixes 1-5 were pre-applied in prior uncommitted work and committed as baseline (commit `110adda`). Fixes 6 and TASK 7 applied in this session (commit `88512f5`).
+
+### What was fixed
+- **FIX 1 — TabItem.tsx**: drop-target indicator now shows full 4-side accent border (`border-l-2 border-t-2` added, borderLeftColor/borderTopColor set unconditionally with transparent default)
+- **FIX 2 — FindBar.tsx**: dedup cache `lastQueriedRef.current = q` moved AFTER the `if (!tabId) return` guard so queries are not poisoned when no tab is active
+- **FIX 3 — LoadingBar.tsx + index.css**: snap-on-fast-load eliminated. Bar measures actual current width as percentage before transitioning to "done" animation. CSS uses `var(--loading-start-width, 90%)` instead of hardcoded 90%
+- **FIX 4 — TabBar.tsx**: Ctrl+T/Ctrl+W keyboard shortcut listener now guards against `input`/`textarea` focus targets
+- **FIX 5 — TabBar.tsx**: removed dead `handlePlusPointerOver` callback and `onPointerOver` prop from "+" button (setPointerCapture retargets all pointer events making the handler unreachable during drag)
+- **FIX 6 — useWebviewBridge.ts**: `isChromeOverlayOpen()` now includes `ui.apiTesterOpen` in its OR chain, matching the five-flag check used elsewhere in the file
+- **TASK 7 — useWebviewBridge.ts**: WEBVIEW_EDGE_INSET calibration first pass — top/right/left changed from +4 to -4 (bleed outward to close visible gaps), bottom stays +4. Pending visual reverification.
+
+### Verification
+- `pnpm tsc --noEmit` — clean
+- `cargo check` — clean
+- Runtime visual verification of TASK 7 per-edge status: pending human `pnpm tauri dev`
 
