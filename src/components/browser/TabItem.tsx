@@ -50,7 +50,7 @@ export function TabItem({
         "group relative flex items-center gap-1.5",
         "min-w-[80px] max-w-[180px] h-[36px] px-3",
         "cursor-grab select-none flex-shrink-0",
-        "border-b-2 border-r transition-colors",
+        "border-b-2 border-r border-l-2 border-t-2 transition-colors",
         isDragging && "opacity-40",
         isActive
           ? "bg-[var(--color-base)] text-[var(--color-text-primary)]"
@@ -63,9 +63,8 @@ export function TabItem({
             ? "var(--color-accent)"
             : "transparent",
         borderRightColor: "var(--color-border-subtle)",
-        ...(isDropTarget
-          ? { borderLeftColor: "var(--color-accent)", borderTopColor: "var(--color-accent)" }
-          : {}),
+        borderLeftColor: isDropTarget ? "var(--color-accent)" : "transparent",
+        borderTopColor: isDropTarget ? "var(--color-accent)" : "transparent",
       }}
     >
       {/* Favicon */}

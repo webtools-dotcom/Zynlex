@@ -324,8 +324,284 @@ const XEVO_SHORTCUT_FORWARD_SCRIPT: &str = r##"
 // BROWSER_INIT_SCRIPT — JSON viewer + tab info reporting.
 // Now reads window.__XEVO_TAB_ID (injected per-webview) to include
 // the tab ID in update_tab_info calls so events are routed correctly.
-const BROWSER_INIT_SCRIPT: &str = r#"
+const BROWSER_INIT_SCRIPT: &str = r##"
 (function() {
+
+// ── SECTION 1: HEADER INJECTION SETUP ────────────────────────────
+if (!window.__XEVO_HEADER_RULES) {
+  window.__XEVO_HEADER_RULES = [];
+}
+if (!window.__xevoNetMonInited) {
+  window.__xevoNetMonInited = true;
+}
+
+// ── SECTION 2: URL PATTERN MATCHING HELPER ───────────────────────
+window.__xevoUrlMatches = function(url, pattern) {
+  if (!pattern || pattern === '*') return true;
+  try {
+    var matchUrl = url;
+    if (!pattern.startsWith('http://') && !pattern.startsWith('https://')) {
+      matchUrl = url.replace(/^https?:\/\//, '');
+    }
+    var escaped = pattern.replace(/[-[\]{}()+?.,\\^$|#\s]/g, '\\$&');
+    var regexStr = '^' + escaped.replace(/\\\*/g, '.*') + '$';
+    return new RegExp(regexStr, 'i').test(matchUrl);
+  } catch(e) {
+    return url.toLowerCase().indexOf(pattern.toLowerCase()) !== -1;
+  }
+};
+
+// ── SECTION 3: HEADER INJECTION HELPER ───────────────────────────
+window.__xevoInjectHeaders = function(url, existingHeaders) {
+  var result = Object.assign({}, existingHeaders);
+  var rules = window.__XEVO_HEADER_RULES || [];
+  for (var i = 0; i < rules.length; i++) {
+    var rule = rules[i];
+    if (!rule.enabled) continue;
+    if (!rule.headerName || !rule.headerName.trim()) continue;
+    if (window.__xevoUrlMatches(url, rule.urlPattern)) {
+      result[rule.headerName] = rule.headerValue;
+    }
+  }
+  return result;
+};
+
+// ── SECTION 4: FETCH MONKEYPATCH ─────────────────────────────────
+if (!window.__xevoFetchPatched) {
+  window.__xevoFetchPatched = true;
+  var __originalFetch = window.fetch;
+
+  window.fetch = function(input, init) {
+    var url = '';
+    if (typeof input === 'string') {
+      url = input;
+    } else if (input instanceof URL) {
+      url = input.href;
+    } else if (input && typeof input.url === 'string') {
+      url = input.url;
+    }
+
+    init = init || {};
+    var method = (init.method || (input && input.method) || 'GET').toUpperCase();
+
+    var existingHeaders = {};
+    if (init.headers) {
+      if (init.headers instanceof Headers) {
+        init.headers.forEach(function(val, key) { existingHeaders[key] = val; });
+      } else if (Array.isArray(init.headers)) {
+        init.headers.forEach(function(pair) { existingHeaders[pair[0]] = pair[1]; });
+      } else {
+        existingHeaders = Object.assign({}, init.headers);
+      }
+    }
+
+    var injectedHeaders = window.__xevoInjectHeaders(url, existingHeaders);
+    if (Object.keys(injectedHeaders).length > Object.keys(existingHeaders).length ||
+        JSON.stringify(injectedHeaders) !== JSON.stringify(existingHeaders)) {
+      init = Object.assign({}, init, { headers: injectedHeaders });
+    }
+
+    var startTime = Date.now();
+    var reqId = Math.random().toString(36).slice(2, 10);
+    var tabId = window.__XEVO_TAB_ID || '';
+
+    var requestBodyLog = null;
+    if (init.body !== null && init.body !== undefined) {
+      if (typeof init.body === 'string') {
+        requestBodyLog = init.body.slice(0, 5000);
+      } else {
+        requestBodyLog = '[non-string body]';
+      }
+    }
+
+    var fetchPromise = __originalFetch(input, init);
+
+    return fetchPromise.then(function(response) {
+      var duration = Date.now() - startTime;
+      var status = response.status;
+      var statusText = response.statusText;
+
+      var responseHeaders = {};
+      response.headers.forEach(function(val, key) { responseHeaders[key] = val; });
+
+      var contentType = responseHeaders['content-type'] || '';
+      var shouldLogBody = (
+        contentType.indexOf('json') !== -1 ||
+        contentType.indexOf('text') !== -1 ||
+        contentType.indexOf('xml') !== -1 ||
+        contentType.indexOf('javascript') !== -1
+      );
+
+      if (shouldLogBody) {
+        var clone = response.clone();
+        clone.text().then(function(bodyText) {
+          if (window.__TAURI_INTERNALS__) {
+            window.__TAURI_INTERNALS__.invoke('network_log_entry', {
+              entry: {
+                id: reqId, method: method, url: url,
+                status: status, statusText: statusText, duration: duration,
+                requestHeaders: injectedHeaders, responseHeaders: responseHeaders,
+                requestBody: requestBodyLog, responseBody: bodyText.slice(0, 50000),
+                responseSize: bodyText.length, entryType: 'fetch',
+                timestamp: startTime, tabId: tabId
+              }
+            });
+          }
+        }).catch(function() {
+          if (window.__TAURI_INTERNALS__) {
+            window.__TAURI_INTERNALS__.invoke('network_log_entry', {
+              entry: {
+                id: reqId, method: method, url: url,
+                status: status, statusText: statusText, duration: duration,
+                requestHeaders: injectedHeaders, responseHeaders: responseHeaders,
+                requestBody: requestBodyLog, responseBody: '[body unreadable]',
+                responseSize: 0, entryType: 'fetch',
+                timestamp: startTime, tabId: tabId
+              }
+            });
+          }
+        });
+      } else {
+        if (window.__TAURI_INTERNALS__) {
+          window.__TAURI_INTERNALS__.invoke('network_log_entry', {
+            entry: {
+              id: reqId, method: method, url: url,
+              status: status, statusText: statusText, duration: duration,
+              requestHeaders: injectedHeaders, responseHeaders: responseHeaders,
+              requestBody: requestBodyLog, responseBody: '[binary content not shown]',
+              responseSize: parseInt(responseHeaders['content-length'] || '0', 10),
+              entryType: 'fetch', timestamp: startTime, tabId: tabId
+            }
+          });
+        }
+      }
+
+      return response;
+
+    }).catch(function(err) {
+      var duration = Date.now() - startTime;
+      if (window.__TAURI_INTERNALS__) {
+        window.__TAURI_INTERNALS__.invoke('network_log_entry', {
+          entry: {
+            id: reqId, method: method, url: url,
+            status: 0, statusText: 'Network Error',
+            duration: duration,
+            requestHeaders: injectedHeaders, responseHeaders: {},
+            requestBody: requestBodyLog, responseBody: String(err),
+            responseSize: 0, entryType: 'fetch',
+            timestamp: startTime, tabId: tabId
+          }
+        });
+      }
+      throw err;
+    });
+  };
+}
+
+// ── SECTION 5: XHR MONKEYPATCH ───────────────────────────────────
+if (!window.__xevoXhrPatched) {
+  window.__xevoXhrPatched = true;
+  var __OriginalXHR = window.XMLHttpRequest;
+
+  window.XMLHttpRequest = function() {
+    var xhr = new __OriginalXHR();
+    var xevoMeta = {
+      method: 'GET', url: '', requestHeaders: {}, startTime: 0,
+      reqId: Math.random().toString(36).slice(2, 10),
+      tabId: window.__XEVO_TAB_ID || '', requestBody: null
+    };
+
+    var originalOpen = xhr.open.bind(xhr);
+    xhr.open = function(method, url) {
+      xevoMeta.method = (method || 'GET').toUpperCase();
+      xevoMeta.url = String(url || '');
+      return originalOpen.apply(this, arguments);
+    };
+
+    var originalSetRequestHeader = xhr.setRequestHeader.bind(xhr);
+    xhr.setRequestHeader = function(name, value) {
+      xevoMeta.requestHeaders[name] = value;
+      return originalSetRequestHeader.call(this, name, value);
+    };
+
+    var originalSend = xhr.send.bind(xhr);
+    xhr.send = function(body) {
+      var injectedHeaders = window.__xevoInjectHeaders(xevoMeta.url, xevoMeta.requestHeaders);
+      var existing = xevoMeta.requestHeaders;
+      for (var hKey in injectedHeaders) {
+        if (!existing.hasOwnProperty(hKey)) {
+          originalSetRequestHeader.call(this, hKey, injectedHeaders[hKey]);
+        }
+      }
+      xevoMeta.requestHeaders = injectedHeaders;
+
+      if (body !== null && body !== undefined) {
+        if (typeof body === 'string') {
+          xevoMeta.requestBody = body.slice(0, 5000);
+        } else {
+          xevoMeta.requestBody = '[non-string body]';
+        }
+      }
+
+      xevoMeta.startTime = Date.now();
+
+      xhr.addEventListener('loadend', function() {
+        var duration = Date.now() - xevoMeta.startTime;
+
+        var responseHeaders = {};
+        var rawHeaders = xhr.getAllResponseHeaders() || '';
+        rawHeaders.trim().split('\r\n').forEach(function(line) {
+          var colonIdx = line.indexOf(':');
+          if (colonIdx > 0) {
+            var key = line.slice(0, colonIdx).trim();
+            var val = line.slice(colonIdx + 1).trim();
+            responseHeaders[key] = val;
+          }
+        });
+
+        var ct = responseHeaders['content-type'] || '';
+        var shouldLog = ct.indexOf('json') !== -1 || ct.indexOf('text') !== -1 ||
+                        ct.indexOf('xml') !== -1 || ct.indexOf('javascript') !== -1;
+
+        var responseBody = '[binary content not shown]';
+        if (shouldLog && xhr.responseText) {
+          responseBody = xhr.responseText.slice(0, 50000);
+        }
+
+        if (window.__TAURI_INTERNALS__) {
+          window.__TAURI_INTERNALS__.invoke('network_log_entry', {
+            entry: {
+              id: xevoMeta.reqId, method: xevoMeta.method, url: xevoMeta.url,
+              status: xhr.status || 0,
+              statusText: xhr.statusText || (xhr.status === 0 ? 'Network Error' : ''),
+              duration: duration,
+              requestHeaders: xevoMeta.requestHeaders,
+              responseHeaders: responseHeaders,
+              requestBody: xevoMeta.requestBody,
+              responseBody: responseBody,
+              responseSize: (xhr.responseText || '').length,
+              entryType: 'xhr', timestamp: xevoMeta.startTime,
+              tabId: xevoMeta.tabId
+            }
+          });
+        }
+      });
+
+      return originalSend.call(this, body);
+    };
+
+    return xhr;
+  };
+
+  window.XMLHttpRequest.UNSENT = 0;
+  window.XMLHttpRequest.OPENED = 1;
+  window.XMLHttpRequest.HEADERS_RECEIVED = 2;
+  window.XMLHttpRequest.LOADING = 3;
+  window.XMLHttpRequest.DONE = 4;
+}
+
+// ── SECTION 6: EXISTING SCRIPT CONTENT ───────────────────────────
+
   function xevoRenderJson() {
     try {
       var ct = (document.contentType || "").toLowerCase();
@@ -481,7 +757,7 @@ const BROWSER_INIT_SCRIPT: &str = r#"
     obs.observe(titleEl, { characterData: true, childList: true });
   }
 })();
-"#;
+"##;
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -1026,4 +1302,255 @@ pub async fn browser_show_tab(
         let _ = wv.show();
     }
     Ok(())
+}
+
+// ─── Network Log ──────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn network_log_entry(
+    app: AppHandle,
+    entry: serde_json::Value,
+) -> Result<(), String> {
+    app.emit("xevo://network-entry", entry)
+        .map_err(|e| e.to_string())
+}
+
+// ─── Header Injection ─────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn browser_update_header_rules(
+    app: AppHandle,
+    rules_json: String,
+) -> Result<(), String> {
+    let _: Vec<serde_json::Value> = serde_json::from_str(&rules_json)
+        .map_err(|e| format!("Invalid rules JSON: {}", e))?;
+
+    let script = format!("window.__XEVO_HEADER_RULES = {};", rules_json);
+
+    for (label, wv) in app.webview_windows() {
+        if label.starts_with("browser-") {
+            let _ = wv.eval(&script);
+        }
+    }
+
+    Ok(())
+}
+
+// ─── Inspector ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn browser_eval_inspector(
+    app: AppHandle,
+    tab_id: String,
+    inspector_type: String,
+) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    let wv = app
+        .get_webview_window(&label)
+        .ok_or_else(|| format!("No webview for tab {}", tab_id))?;
+
+    let script = match inspector_type.as_str() {
+        "meta" => format!(
+            r#"(function() {{
+  try {{
+    var metas = Array.from(document.querySelectorAll('meta')).map(function(m) {{
+      return {{
+        name: m.getAttribute('name') || m.getAttribute('property') || m.getAttribute('http-equiv') || '',
+        content: m.getAttribute('content') || '',
+        charset: m.getAttribute('charset'),
+        httpEquiv: m.getAttribute('http-equiv')
+      }};
+    }});
+    var canonical = (document.querySelector('link[rel="canonical"]') || {{}}).href || null;
+    var result = {{
+      metas: metas,
+      title: document.title,
+      canonical: canonical,
+      url: location.href
+    }};
+    if (window.__TAURI_INTERNALS__) {{
+      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
+        tabId: '{}',
+        dataType: 'meta',
+        data: JSON.stringify(result)
+      }});
+    }}
+  }} catch(e) {{
+    if (window.__TAURI_INTERNALS__) {{
+      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
+        tabId: '{}',
+        dataType: 'meta',
+        data: JSON.stringify({{ error: String(e), metas: [], title: '', canonical: null, url: location.href }})
+      }});
+    }}
+  }}
+}})();
+"#,
+            tab_id, tab_id
+        ),
+
+        "cookies" => format!(
+            r#"(function() {{
+  try {{
+    var cookieStr = document.cookie;
+    var cookies = [];
+    if (cookieStr.trim()) {{
+      cookies = cookieStr.split(';').map(function(c) {{
+        var eqIdx = c.indexOf('=');
+        if (eqIdx < 0) return null;
+        return {{
+          name: c.slice(0, eqIdx).trim(),
+          value: c.slice(eqIdx + 1).trim()
+        }};
+      }}).filter(Boolean);
+    }}
+    if (window.__TAURI_INTERNALS__) {{
+      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
+        tabId: '{}',
+        dataType: 'cookies',
+        data: JSON.stringify({{ cookies: cookies, url: location.href }})
+      }});
+    }}
+  }} catch(e) {{
+    if (window.__TAURI_INTERNALS__) {{
+      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
+        tabId: '{}',
+        dataType: 'cookies',
+        data: JSON.stringify({{ cookies: [], url: location.href, error: String(e) }})
+      }});
+    }}
+  }}
+}})();
+"#,
+            tab_id, tab_id
+        ),
+
+        "localStorage" | "sessionStorage" => {
+            let store = if inspector_type == "localStorage" {
+                "localStorage"
+            } else {
+                "sessionStorage"
+            };
+            format!(
+                r#"(function() {{
+  try {{
+    var store = window.{};
+    var items = [];
+    var totalSize = 0;
+    for (var i = 0; i < store.length; i++) {{
+      var key = store.key(i);
+      var value = store.getItem(key) || '';
+      totalSize += key.length + value.length;
+      items.push({{ key: key, value: value }});
+    }}
+    if (window.__TAURI_INTERNALS__) {{
+      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
+        tabId: '{}',
+        dataType: '{}',
+        data: JSON.stringify({{ items: items, totalSize: totalSize, url: location.href }})
+      }});
+    }}
+  }} catch(e) {{
+    if (window.__TAURI_INTERNALS__) {{
+      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
+        tabId: '{}',
+        dataType: '{}',
+        data: JSON.stringify({{ items: [], totalSize: 0, url: location.href, error: String(e) }})
+      }});
+    }}
+  }}
+}})();
+"#,
+                store, tab_id, inspector_type, tab_id, inspector_type
+            )
+        }
+
+        _ => return Err(format!("Unknown inspector type: {}", inspector_type)),
+    };
+
+    wv.eval(&script).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn inspector_data(
+    app: AppHandle,
+    tab_id: String,
+    data_type: String,
+    data: String,
+) -> Result<(), String> {
+    let payload = serde_json::json!({
+        "tabId": tab_id,
+        "dataType": data_type,
+        "data": data,
+    });
+    app.emit("xevo://inspector-data", payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn inspector_mutate(
+    app: AppHandle,
+    tab_id: String,
+    operation: String,
+    params: serde_json::Value,
+) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    let wv = app
+        .get_webview_window(&label)
+        .ok_or_else(|| format!("No webview for tab {}", tab_id))?;
+
+    let script = match operation.as_str() {
+        "set-cookie" => {
+            let name = params["name"].as_str().unwrap_or("").replace('`', "\\`");
+            let value = params["value"].as_str().unwrap_or("").replace('`', "\\`");
+            format!("document.cookie = `{}={}; path=/`;", name, value)
+        }
+        "delete-cookie" => {
+            let name = params["name"].as_str().unwrap_or("").replace('`', "\\`");
+            format!(
+                "document.cookie = `{}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;",
+                name
+            )
+        }
+        "clear-cookies" => {
+            r#"document.cookie.split(';').forEach(function(c) {
+  var name = c.split('=')[0].trim();
+  if (name) document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+});"#
+                .to_string()
+        }
+        "set-storage" => {
+            let store = params["storeType"].as_str().unwrap_or("localStorage");
+            let key = params["key"].as_str().unwrap_or("").replace('`', "\\`");
+            let value = params["value"].as_str().unwrap_or("").replace('`', "\\`");
+            let store_var = if store == "sessionStorage" {
+                "sessionStorage"
+            } else {
+                "localStorage"
+            };
+            format!("window.{}.setItem(`{}`, `{}`);", store_var, key, value)
+        }
+        "delete-storage" => {
+            let store = params["storeType"].as_str().unwrap_or("localStorage");
+            let key = params["key"].as_str().unwrap_or("").replace('`', "\\`");
+            let store_var = if store == "sessionStorage" {
+                "sessionStorage"
+            } else {
+                "localStorage"
+            };
+            format!("window.{}.removeItem(`{}`);", store_var, key)
+        }
+        "clear-storage" => {
+            let store = params["storeType"].as_str().unwrap_or("localStorage");
+            let store_var = if store == "sessionStorage" {
+                "sessionStorage"
+            } else {
+                "localStorage"
+            };
+            format!("window.{}.clear();", store_var)
+        }
+        _ => return Err(format!("Unknown mutation operation: {}", operation)),
+    };
+
+    wv.eval(&script).map_err(|e| e.to_string())
 }

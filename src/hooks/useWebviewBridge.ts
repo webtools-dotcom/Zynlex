@@ -33,10 +33,15 @@ import {
   onLoadingChanged,
   onTabInfoChanged,
   onBookmarkRequest,
+  onNetworkEntry,
+  onInspectorData,
   type BrowserBounds,
 } from "@/services/browser";
 import { useSettingsStore } from "@/stores/settings";
 import { useHistoryStore } from "@/stores/history";
+import { useNetworkStore } from "@/stores/network";
+import { useInspectorStore } from "@/stores/inspector";
+import type { MetaInfo, CookieEntry, StorageEntry } from "@/types";
 import {
   getLiveWorkspaceActiveTab,
   getLiveWorkspaceActiveTabId,
@@ -51,7 +56,47 @@ const IS_WINDOWS =
   /Windows|Win32|Win64|WOW64/i.test(
     `${navigator.userAgent} ${navigator.platform}`
   );
-const BROWSER_EDGE_INSET = 4;
+// Compensates for a known Tauri/WebView2 child-webview positioning bug:
+// the native webview's actual rendered position drifts from the CSS
+// bounds we compute, by a DIFFERENT amount on each edge. This is an
+// unresolved upstream issue (not something we can fix from here), so we
+// calibrate it empirically per edge instead of one symmetric number.
+//
+//   POSITIVE value = INSET  -> shrinks the webview inward.
+//                              Use this on an edge where the webview
+//                              currently overflows past the chrome.
+//   NEGATIVE value = BLEED  -> expands the webview outward.
+//                              Use this on an edge where there's a
+//                              visible gap between the webview and chrome.
+//
+// Change ONE value at a time, rebuild, and check only that edge.
+const WEBVIEW_EDGE_INSET = {
+  top: 4,
+  right: 4,
+  bottom: 4,
+  left: 4,
+};
+
+/**
+ * Computes the native webview's screen-space bounds from the content
+ * area's DOMRect, applying the per-edge calibration above. Every place
+ * that positions or resizes the webview goes through this single
+ * function — so tuning WEBVIEW_EDGE_INSET fixes the gap everywhere at
+ * once, instead of needing the same edit repeated in five places.
+ */
+function computeWebviewBounds(rect: DOMRect, overlayH: number): BrowserBounds {
+  const inset = IS_WINDOWS
+    ? WEBVIEW_EDGE_INSET
+    : { top: 0, right: 0, bottom: 0, left: 0 };
+  return {
+    x: Math.round(rect.left + window.screenX + inset.left),
+    y: Math.round(rect.top + window.screenY + overlayH + inset.top),
+    width: Math.round(Math.max(1, rect.width - inset.left - inset.right)),
+    height: Math.round(
+      Math.max(1, rect.height - overlayH - inset.top - inset.bottom)
+    ),
+  };
+}
 
 /** Any React chrome overlay that must sit above the OS-level browser webview. */
 function isChromeOverlayOpen(): boolean {
@@ -105,15 +150,7 @@ export function useWebviewBridge(
     const ui = useUIStore.getState();
     const overlayH =
       ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-    const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
-    const width = Math.max(1, rect.width - edgeInset * 2);
-    const height = Math.max(1, rect.height - overlayH - edgeInset * 2);
-    const bounds: BrowserBounds = {
-      x: Math.round(rect.left + window.screenX + edgeInset),
-      y: Math.round(rect.top + window.screenY + overlayH + edgeInset),
-      width: Math.round(width),
-      height: Math.round(height),
-    };
+    const bounds: BrowserBounds = computeWebviewBounds(rect, overlayH);
     const last = lastBoundsRef.current;
     if (
       last &&
@@ -150,13 +187,7 @@ export function useWebviewBridge(
       const ui = useUIStore.getState();
       const overlayH =
         ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-      const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
-      const bounds: BrowserBounds = {
-        x: Math.round(rect.left + window.screenX + edgeInset),
-        y: Math.round(rect.top + window.screenY + overlayH + edgeInset),
-        width: Math.round(Math.max(1, rect.width - edgeInset * 2)),
-        height: Math.round(Math.max(1, rect.height - overlayH - edgeInset * 2)),
-      };
+      const bounds: BrowserBounds = computeWebviewBounds(rect, overlayH);
       showTabWebview(tabId, bounds).catch(() => {});
     },
     [contentAreaRef]
@@ -178,13 +209,7 @@ export function useWebviewBridge(
       const ui = useUIStore.getState();
       const overlayH =
         ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-      const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
-      const bounds: BrowserBounds = {
-        x: Math.round(rect.left + window.screenX + edgeInset),
-        y: Math.round(rect.top + window.screenY + overlayH + edgeInset),
-        width: Math.round(Math.max(1, rect.width - edgeInset * 2)),
-        height: Math.round(Math.max(1, rect.height - overlayH - edgeInset * 2)),
-      };
+      const bounds: BrowserBounds = computeWebviewBounds(rect, overlayH);
       const displayTitle = url
         .replace(/^https?:\/\/(www\.)?/, "")
         .split("/")[0];
@@ -241,9 +266,9 @@ export function useWebviewBridge(
     await webviewGoForward(tabId);
   }, [activeTabId]);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (overrideTabId?: string) => {
     if (!IS_TAURI) return;
-    const tabId = activeTabId ?? getLiveWorkspaceActiveTabId(
+    const tabId = overrideTabId ?? activeTabId ?? getLiveWorkspaceActiveTabId(
       useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
       useTabsStore.getState().tabs
     );
@@ -268,6 +293,8 @@ export function useWebviewBridge(
     let unLoading: (() => void) | null = null;
     let unTabInfo: (() => void) | null = null;
     let unBookmark: (() => void) | null = null;
+    let unNetworkEntry: (() => void) | null = null;
+    let unInspectorData: (() => void) | null = null;
 
     onBookmarkRequest(() => {
       toggleBookmarkForActiveTab();
@@ -319,11 +346,53 @@ export function useWebviewBridge(
       unTabInfo = fn;
     });
 
+    // Network log entries from webview init script
+    onNetworkEntry((entry) => {
+      useNetworkStore.getState().addEntry(entry);
+    }).then((fn) => {
+      unNetworkEntry = fn;
+    });
+
+    // Inspector data from browser_eval_inspector
+    onInspectorData((event) => {
+      const store = useInspectorStore.getState();
+      store.setIsLoading(false);
+      try {
+        const parsed = JSON.parse(event.data);
+        if (parsed.error) {
+          store.setError(parsed.error);
+          return;
+        }
+        store.setError(null);
+
+        switch (event.dataType) {
+          case "meta":
+            store.setMeta(parsed as MetaInfo);
+            break;
+          case "cookies":
+            store.setCookies(parsed.cookies as CookieEntry[]);
+            break;
+          case "localStorage":
+            store.setLocalStorage(parsed.items as StorageEntry[]);
+            break;
+          case "sessionStorage":
+            store.setSessionStorage(parsed.items as StorageEntry[]);
+            break;
+        }
+      } catch {
+        store.setError("Failed to parse inspector data");
+      }
+    }).then((fn) => {
+      unInspectorData = fn;
+    });
+
     return () => {
       unUrl?.();
       unLoading?.();
       unTabInfo?.();
       unBookmark?.();
+      unNetworkEntry?.();
+      unInspectorData?.();
     };
   }, []);
 
@@ -354,13 +423,7 @@ export function useWebviewBridge(
     const ui = useUIStore.getState();
     const overlayH =
       ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-    const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
-    const bounds: BrowserBounds = {
-      x: Math.round(rect.left + window.screenX + edgeInset),
-      y: Math.round(rect.top + window.screenY + overlayH + edgeInset),
-      width: Math.round(Math.max(1, rect.width - edgeInset * 2)),
-      height: Math.round(Math.max(1, rect.height - overlayH - edgeInset * 2)),
-    };
+    const bounds: BrowserBounds = computeWebviewBounds(rect, overlayH);
 
     activateTab(activeTabId, tabUrl, bounds)
       .then(() => {
@@ -460,13 +523,13 @@ export function useWebviewBridge(
       const ui = useUIStore.getState();
       const overlayH =
         ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-      const edgeInset = IS_WINDOWS ? BROWSER_EDGE_INSET : 0;
+      const bounds = computeWebviewBounds(rect, overlayH);
       repositionWebview(
         tab.id,
-        Math.round(rect.left + window.screenX + edgeInset),
-        Math.round(rect.top + window.screenY + overlayH + edgeInset),
-        Math.round(Math.max(1, rect.width - edgeInset * 2)),
-        Math.round(Math.max(1, rect.height - overlayH - edgeInset * 2))
+        bounds.x,
+        bounds.y,
+        bounds.width,
+        bounds.height
       ).catch(() => {});
     }, 80);
     return () => clearTimeout(timer);

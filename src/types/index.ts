@@ -61,7 +61,9 @@ export type PanelId =
   | "api"
   | "notes"
   | "jwt"
-  | "base64";
+  | "base64"
+  | "headers"
+  | "inspector";
 
 export interface AppSettings {
   theme: ThemeMode;
@@ -160,4 +162,61 @@ export interface Note {
   color: NoteColor;
   createdAt: number;
   updatedAt: number;
+}
+
+// ─── Network Log ─────────────────────────────────────────────
+
+export interface NetworkLogEntry {
+  id: string;
+  method: string;
+  url: string;
+  status: number;
+  statusText: string;
+  duration: number;
+  requestHeaders: Record<string, string>;
+  responseHeaders: Record<string, string>;
+  requestBody: string | null;
+  responseBody: string;
+  responseSize: number;
+  entryType: "fetch" | "xhr";
+  timestamp: number;
+  tabId: string;
+}
+
+// ─── Header Injection ────────────────────────────────────────
+
+export interface HeaderRule {
+  id: string;
+  urlPattern: string;
+  headerName: string;
+  headerValue: string;
+  enabled: boolean;
+  workspaceId: string;
+  createdAt: number;
+}
+
+// ─── Inspector ────────────────────────────────────────────────
+
+export interface MetaTag {
+  name: string;
+  content: string;
+  charset: string | null;
+  httpEquiv: string | null;
+}
+
+export interface MetaInfo {
+  metas: MetaTag[];
+  title: string;
+  canonical: string | null;
+  url: string;
+}
+
+export interface CookieEntry {
+  name: string;
+  value: string;
+}
+
+export interface StorageEntry {
+  key: string;
+  value: string;
 }
