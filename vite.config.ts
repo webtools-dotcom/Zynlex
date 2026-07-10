@@ -15,6 +15,18 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom"],
+          "zustand-vendor": ["zustand"],
+          icons: ["lucide-react"],
+          "ui-lib": ["class-variance-authority", "clsx", "tailwind-merge"],
+        },
+      },
+    },
+  },
   clearScreen: false,
   server: {
     port: 1420,

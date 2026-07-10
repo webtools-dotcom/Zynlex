@@ -1,11 +1,13 @@
 import { useEffect } from "react";
 import { RootLayout } from "@/components/layout/RootLayout";
 import { useSettingsStore } from "@/stores/settings";
+import { setUserAgent } from "@/services/browser";
 import type { ThemeMode } from "@/types";
 
 function App() {
   const compactMode = useSettingsStore((s) => s.settings.compactMode);
   const theme = useSettingsStore((s) => s.settings.theme);
+  const userAgent = useSettingsStore((s) => s.settings.userAgent);
 
   useEffect(() => {
     if (compactMode) {
@@ -39,6 +41,11 @@ function App() {
 
     return apply(theme);
   }, [theme]);
+
+  useEffect(() => {
+    setUserAgent(userAgent ?? "").catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return <RootLayout />;
 }

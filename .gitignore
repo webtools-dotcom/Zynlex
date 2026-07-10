@@ -33,3 +33,12 @@ src-tauri/target/
 *.njsproj
 *.sln
 *.sw?
+
+# opencode dev config (local plugin hooks — not part of the project)
+.opencode/
+
+# graphify knowledge graph artifacts (dev tooling, not part of the project)
+graphify-out/
+
+# Playwright MCP artifacts (dev tooling)
+.playwright-mcp/

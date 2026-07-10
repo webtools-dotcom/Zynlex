@@ -17,6 +17,7 @@ interface Shortcut {
 const SHORTCUTS: Shortcut[] = [
   { keys: ["Ctrl", "T"],             description: "New Tab" },
   { keys: ["Ctrl", "W"],             description: "Close Tab" },
+  { keys: ["Ctrl", "Shift", "S"],    description: "Take Screenshot" },
   { keys: ["Ctrl", "Shift", "T"],    description: "Reopen Last Tab" },
   { keys: ["Ctrl", "L"],             description: "Focus Address Bar" },
   { keys: ["Ctrl", "R"],             description: "Reload" },

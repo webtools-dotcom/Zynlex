@@ -13,6 +13,7 @@ import { Search, Globe, Plus, Settings, X, Code2, Bookmark } from "lucide-react"
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useUIStore } from "@/stores/ui";
+import { closeTabWebview } from "@/services/browser";
 import {
   getLiveWorkspaceActiveTabId,
   getLiveWorkspaceTabIds,
@@ -95,6 +96,7 @@ export function CommandPalette() {
           if (activeTabId) {
             useTabsStore.getState().closeTab(activeTabId);
             wsState.removeTabFromWorkspace(activeWorkspaceId, activeTabId);
+            closeTabWebview(activeTabId).catch(() => {});
           }
           useUIStore.getState().closeCommandPalette();
         },
@@ -250,7 +252,7 @@ export function CommandPalette() {
 
                 {item.type === "tab" ? (
                   <span
-                    className="text-[9px] px-1 py-0.5 border rounded-[2px] shrink-0"
+                    className="text-[11px] px-1 py-0.5 border rounded-[2px] shrink-0"
                     style={{
                       background: "var(--color-elevated)",
                       borderColor: "var(--color-border)",

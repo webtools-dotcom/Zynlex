@@ -10,6 +10,20 @@ export interface Toast {
   kind: ToastKind;
 }
 
+export interface Viewport {
+  id: string;
+  url: string;
+  width: number;
+  height: number;
+  label: string;
+  deviceCategory: "mobile" | "tablet" | "laptop";
+  orientation: "portrait" | "landscape";
+  deviceScaleFactor: number;
+  mobile: boolean;
+  touch: boolean;
+  userAgent?: string;
+}
+
 interface UIStore {
   sidebarOpen: boolean;
   sidebarWidth: number;
@@ -26,6 +40,14 @@ interface UIStore {
   overlayPanel: OverlayPanelId;
   overlayHeight: number;
   toasts: Toast[];
+
+  viewportMode: boolean;
+  viewports: Viewport[];
+  selectedViewportId: string | null;
+  viewportZoom: number;
+  syncScroll: boolean;
+  syncClick: boolean;
+  syncInput: boolean;
 
   setSidebarOpen: (v: boolean) => void;
   toggleSidebar: () => void;
@@ -51,6 +73,18 @@ interface UIStore {
   setOverlayHeight: (h: number) => void;
   pushToast: (message: string, kind?: ToastKind) => void;
   dismissToast: (id: string) => void;
+
+  enterViewportMode: () => void;
+  exitViewportMode: () => void;
+  addViewport: (preset: { label: string; width: number; height: number; category: "mobile" | "tablet" | "laptop"; deviceScaleFactor: number; mobile: boolean; touch: boolean; userAgent?: string }) => void;
+  removeViewport: (id: string) => void;
+  selectViewport: (id: string | null) => void;
+  setViewportZoom: (zoom: number) => void;
+  rotateViewport: (id: string) => void;
+  resizeViewportDimensions: (id: string, width: number, height: number) => void;
+  toggleSyncScroll: () => void;
+  toggleSyncClick: () => void;
+  toggleSyncInput: () => void;
 }
 
 function genToastId(): string {
@@ -60,7 +94,7 @@ function genToastId(): string {
 export const useUIStore = create<UIStore>()(
   immer((set, get) => ({
     sidebarOpen: true,
-    sidebarWidth: 210,
+    sidebarWidth: 240,
     activePanel: "servers",
     commandPaletteOpen: false,
     settingsOpen: false,
@@ -74,10 +108,17 @@ export const useUIStore = create<UIStore>()(
     overlayPanel: "none",
     overlayHeight: 0.4,
     toasts: [],
+    viewportMode: false,
+    viewports: [],
+    selectedViewportId: null,
+    viewportZoom: 0.75,
+    syncScroll: true,
+    syncClick: false,
+    syncInput: false,
 
     setSidebarOpen: (v) => set((s) => { s.sidebarOpen = v; }),
     toggleSidebar: () => set((s) => { s.sidebarOpen = !s.sidebarOpen; }),
-    setSidebarWidth: (w) => set((s) => { s.sidebarWidth = Math.max(160, Math.min(380, w)); }),
+    setSidebarWidth: (w) => set((s) => { s.sidebarWidth = Math.max(180, Math.min(420, w)); }),
     setActivePanel: (p) => set((s) => { s.activePanel = p; }),
     togglePanel: (p) => set((s) => { s.activePanel = s.activePanel === p ? null : p; }),
     setCommandPaletteOpen: (v) => set((s) => { s.commandPaletteOpen = v; }),
@@ -95,6 +136,7 @@ export const useUIStore = create<UIStore>()(
     }),
     closeFind: () => set((s) => {
       s.findOpen = false;
+      s.findQuery = "";
       s.findActiveMatch = 0;
       s.findTotalMatches = 0;
     }),
@@ -123,5 +165,56 @@ export const useUIStore = create<UIStore>()(
     dismissToast: (id) => set((s) => {
       s.toasts = s.toasts.filter((t: Toast) => t.id !== id);
     }),
+
+    enterViewportMode: () => set((s) => { s.viewportMode = true; }),
+    exitViewportMode: () => set((s) => {
+      s.viewportMode = false;
+      s.viewports = [];
+      s.selectedViewportId = null;
+    }),
+    addViewport: (preset) => set((s) => {
+      const id = `vp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      s.viewports.push({
+        id,
+        url: "",
+        width: preset.width,
+        height: preset.height,
+        label: preset.label,
+        deviceCategory: preset.category,
+        orientation: "portrait",
+        deviceScaleFactor: preset.deviceScaleFactor,
+        mobile: preset.mobile,
+        touch: preset.touch,
+        userAgent: preset.userAgent,
+      });
+      s.selectedViewportId = id;
+    }),
+    removeViewport: (id) => set((s) => {
+      s.viewports = s.viewports.filter((v) => v.id !== id);
+      if (s.selectedViewportId === id) {
+        s.selectedViewportId = s.viewports.length > 0 ? s.viewports[0].id : null;
+      }
+    }),
+    selectViewport: (id) => set((s) => { s.selectedViewportId = id; }),
+    setViewportZoom: (zoom) => set((s) => { s.viewportZoom = Math.max(0.25, Math.min(1, zoom)); }),
+    rotateViewport: (id) => set((s) => {
+      const vp = s.viewports.find((v) => v.id === id);
+      if (vp) {
+        const tmp = vp.width;
+        vp.width = vp.height;
+        vp.height = tmp;
+        vp.orientation = vp.orientation === "portrait" ? "landscape" : "portrait";
+      }
+    }),
+    resizeViewportDimensions: (id, width, height) => set((s) => {
+      const vp = s.viewports.find((v) => v.id === id);
+      if (vp) {
+        vp.width = Math.max(120, Math.min(3840, width));
+        vp.height = Math.max(120, Math.min(3840, height));
+      }
+    }),
+    toggleSyncScroll: () => set((s) => { s.syncScroll = !s.syncScroll; }),
+    toggleSyncClick: () => set((s) => { s.syncClick = !s.syncClick; }),
+    toggleSyncInput: () => set((s) => { s.syncInput = !s.syncInput; }),
   }))
 );

@@ -21,7 +21,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   return (
     <button
       onClick={() => dismiss(toast.id)}
-      className="flex items-center gap-2 px-3 py-2 rounded-md border text-left max-w-[340px]"
+      className="flex items-center gap-2 px-3 py-2.5 rounded-md border text-left max-w-[360px]"
       style={{
         background: c.bg,
         borderColor: c.border,
@@ -29,8 +29,8 @@ function ToastItem({ toast }: { toast: Toast }) {
         animation: "toastIn 100ms cubic-bezier(0, 0, 0.2, 1)",
       }}
     >
-      <Icon size={13} className="flex-shrink-0" />
-      <span className="text-[11px] font-mono truncate">{toast.message}</span>
+      <Icon size={14} className="flex-shrink-0" />
+      <span className="text-[12px] font-mono truncate">{toast.message}</span>
     </button>
   );
 }

@@ -52,21 +52,6 @@ export async function createTab(
   });
 }
 
-export async function activateTab(
-  tabId: string,
-  url: string,
-  bounds: BrowserBounds
-): Promise<void> {
-  await invoke<void>("browser_activate_tab", {
-    tabId,
-    url,
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-  });
-}
-
 export async function closeTabWebview(tabId: string): Promise<void> {
   await invoke<void>("browser_close_tab", { tabId });
 }
@@ -97,7 +82,7 @@ export async function repositionWebview(
   width: number,
   height: number
 ): Promise<void> {
-  await invoke<void>("browser_reposition", {
+  await invoke<void>("browser_set_bounds", {
     tabId,
     x,
     y,
@@ -223,15 +208,33 @@ export function onBookmarkRequest(
   return listen("browser://bookmark-request", () => callback());
 }
 
-// ─── Network Log ──────────────────────────────────────────────────
-
-export function onNetworkEntry(
-  callback: (entry: import("@/types").NetworkLogEntry) => void
+export function onNewTabRequested(
+  callback: (url: string) => void
 ): Promise<UnlistenFn> {
-  return listen<import("@/types").NetworkLogEntry>(
-    "xevo://network-entry",
-    (e) => callback(e.payload)
-  );
+  return listen<{ url: string }>("browser://open-new-tab", (e) => callback(e.payload.url));
+}
+
+// ─── User Agent ─────────────────────────────────────────────────────
+
+export async function setUserAgent(userAgent: string): Promise<void> {
+  await invoke<void>("browser_set_user_agent", { userAgent });
+  window.dispatchEvent(new CustomEvent("xevo:ua-changed"));
+}
+
+// ─── Memory Target ────────────────────────────────────────────────
+
+export async function setMemoryTarget(tabId: string, low: boolean): Promise<void> {
+  await invoke<void>("browser_set_memory_target", { tabId, low });
+}
+
+// ─── Tab State Save/Restore ──────────────────────────────────────
+
+export async function saveTabState(tabId: string): Promise<void> {
+  await invoke<void>("browser_save_tab_state", { tabId });
+}
+
+export async function restoreTabState(tabId: string, stateJson: string): Promise<void> {
+  await invoke<void>("browser_restore_tab_state", { tabId, stateJson });
 }
 
 // ─── Header Injection ─────────────────────────────────────────────
@@ -274,3 +277,106 @@ export async function inspectorMutate(
 ): Promise<void> {
   await invoke<void>("inspector_mutate", { tabId, operation, params });
 }
+
+// ─── Multi-Viewport Mode ──────────────────────────────────────────
+
+export async function createViewport(
+  label: string,
+  url: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Promise<void> {
+  await invoke<void>("create_viewport", { label, url, x, y, width, height });
+}
+
+export async function destroyViewport(label: string): Promise<void> {
+  await invoke<void>("destroy_viewport", { label });
+}
+
+export async function resizeViewport(
+  label: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Promise<void> {
+  await invoke<void>("resize_viewport", { label, x, y, width, height });
+}
+
+export async function showViewport(label: string): Promise<void> {
+  await invoke<void>("show_viewport", { label });
+}
+
+export async function hideViewport(label: string): Promise<void> {
+  await invoke<void>("hide_viewport", { label });
+}
+
+export async function scrollViewport(
+  label: string,
+  percentX: number,
+  percentY: number,
+): Promise<void> {
+  await invoke<void>("scroll_viewport", { label, percentX, percentY });
+}
+
+export async function clickViewport(
+  label: string,
+  x: number,
+  y: number,
+): Promise<void> {
+  await invoke<void>("click_viewport", { label, x, y });
+}
+
+export async function evalRaw(label: string, script: string): Promise<void> {
+  await invoke<void>("browser_eval_raw", { label, script });
+}
+
+export interface ScreenshotResult {
+  bytes: number[];
+  path: string;
+}
+
+export async function takeScreenshot(): Promise<{ bytes: Uint8Array; path: string }> {
+  const result: ScreenshotResult = await invoke("browser_screenshot");
+  return { bytes: new Uint8Array(result.bytes), path: result.path };
+}
+
+export interface NetworkEntryPayload {
+  tabId: string;
+  method: string;
+  url: string;
+  statusCode: number;
+  reasonPhrase?: string;
+  resourceType?: string;
+  durationMs?: number;
+  contentLength?: number;
+  headers: Record<string, string>;
+  body: string;
+}
+
+export function onNetworkEntry(
+  callback: (payload: NetworkEntryPayload) => void,
+): Promise<UnlistenFn> {
+  return listen("browser://network-entry", (e: any) => callback(e.payload));
+}
+
+export function onViewportScroll(
+  callback: (payload: { sourceLabel: string; percentX: number; percentY: number }) => void,
+): Promise<UnlistenFn> {
+  return listen("viewport://scroll", (e: any) => callback(e.payload));
+}
+
+export function onViewportClick(
+  callback: (payload: { sourceLabel: string; x: number; y: number }) => void,
+): Promise<UnlistenFn> {
+  return listen("viewport://click", (e: any) => callback(e.payload));
+}
+
+export function onViewportInput(
+  callback: (payload: { sourceLabel: string; selector: string; value: string; checked: boolean | null; inputType: string }) => void,
+): Promise<UnlistenFn> {
+  return listen("viewport://input", (e: any) => callback(e.payload));
+}
+

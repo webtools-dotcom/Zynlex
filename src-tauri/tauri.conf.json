@@ -20,11 +20,12 @@
         "minHeight": 600,
         "resizable": true,
         "decorations": false,
-        "transparent": false
+        "transparent": false,
+        "backgroundColor": "#0f0f0f"
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: tauri: http://localhost:*; img-src 'self' data: https:; font-src 'self' data:"
     }
   },
   "bundle": {
