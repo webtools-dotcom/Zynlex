@@ -111,7 +111,7 @@ function isChromeOverlayOpen(): boolean {
     ui.commandPaletteOpen ||
     ui.shortcutHelpOpen ||
     ui.settingsPanelOpen ||
-    ui.apiTesterOpen ||
+    ui.overlayPanel !== "none" ||
     ui.findOpen
   );
 }
@@ -441,6 +441,15 @@ export function useWebviewBridge(
     onInspectorData((event) => {
       const store = useInspectorStore.getState();
       store.setIsLoading(false);
+
+      // Ignore data from tabs that are not currently active
+      const wsState = useWorkspacesStore.getState();
+      const activeTabId = getLiveWorkspaceActiveTabId(
+        wsState.workspaces[wsState.activeWorkspaceId],
+        useTabsStore.getState().tabs
+      );
+      if (event.tabId !== activeTabId) return;
+
       try {
         const parsed = JSON.parse(event.data);
         if (parsed.error) {
@@ -881,7 +890,6 @@ export function useWebviewBridge(
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
-  const apiTesterOpen = useUIStore((s) => s.apiTesterOpen);
   const findOpen = useUIStore((s) => s.findOpen);
   const overlayPanel = useUIStore((s) => s.overlayPanel);
   useEffect(() => {
@@ -890,7 +898,7 @@ export function useWebviewBridge(
       commandPaletteOpen ||
       shortcutHelpOpen ||
       settingsPanelOpen ||
-      apiTesterOpen ||
+      overlayPanel !== "none" ||
       findOpen;
     const wsState = useWorkspacesStore.getState();
     const ws = wsState.workspaces[wsState.activeWorkspaceId];
@@ -910,7 +918,7 @@ export function useWebviewBridge(
     commandPaletteOpen,
     shortcutHelpOpen,
     settingsPanelOpen,
-    apiTesterOpen,
+    overlayPanel,
     findOpen,
     activeTabId,
     ensureWebviewVisible,
