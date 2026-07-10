@@ -28,10 +28,7 @@ export const useNetworkStore = create<NetworkStore>()((set) => ({
   addEntry: (entry) =>
     set((s) => {
       const tab = s.entriesByTab[entry.tabId] ?? [];
-      const next = [...tab, entry];
-      if (next.length > MAX_ENTRIES_PER_TAB) {
-        next.splice(0, next.length - MAX_ENTRIES_PER_TAB);
-      }
+      const next = [...tab, entry].slice(-MAX_ENTRIES_PER_TAB);
       return {
         entriesByTab: {
           ...s.entriesByTab,

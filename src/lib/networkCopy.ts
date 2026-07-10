@@ -1,7 +1,7 @@
 import type { NetworkLogEntry } from "@/stores/network";
 
 export function entryToCurl(entry: NetworkLogEntry): string {
-  const parts: string[] = [`curl -X ${entry.method} "${entry.url}"`];
+  const parts: string[] = [`curl -X ${entry.method} "${entry.url.replace(/"/g, '\\"')}"`];
   for (const [k, v] of Object.entries(entry.headers)) {
     if (k.toLowerCase() !== "content-length") {
       parts.push(`-H "${k}: ${v.replace(/"/g, '\\"')}"`);
@@ -45,7 +45,11 @@ export function entryToFetch(entry: NetworkLogEntry): string {
     parts.push("    },");
   }
   if (entry.body && entry.body.length > 0 && entry.body.length < 10000) {
-    parts.push(`    body: ${JSON.stringify(entry.body)},`);
+    const bodyStr = (() => {
+      try { return JSON.stringify(JSON.parse(entry.body)); }
+      catch { return JSON.stringify(entry.body); }
+    })();
+    parts.push(`    body: ${bodyStr},`);
   }
   parts.push("  }");
   parts.push(");");
@@ -58,8 +62,10 @@ export async function copyToClipboard(text: string): Promise<void> {
   } catch {
     const ta = document.createElement("textarea");
     ta.value = text;
+    ta.setAttribute("aria-hidden", "true");
     ta.style.position = "fixed";
     ta.style.opacity = "0";
+    ta.style.left = "-9999px";
     document.body.appendChild(ta);
     ta.select();
     document.execCommand("copy");

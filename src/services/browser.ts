@@ -75,22 +75,6 @@ export async function setWebviewBounds(
   });
 }
 
-export async function repositionWebview(
-  tabId: string,
-  x: number,
-  y: number,
-  width: number,
-  height: number
-): Promise<void> {
-  await invoke<void>("browser_set_bounds", {
-    tabId,
-    x,
-    y,
-    width,
-    height,
-  });
-}
-
 // ─── Navigation (per-tab) ────────────────────────────────────────────
 
 export async function webviewGoBack(tabId: string): Promise<void> {
@@ -348,10 +332,10 @@ export interface NetworkEntryPayload {
   method: string;
   url: string;
   statusCode: number;
-  reasonPhrase?: string;
-  resourceType?: string;
-  durationMs?: number;
-  contentLength?: number;
+  reasonPhrase: string;
+  resourceType: string;
+  durationMs: number;
+  contentLength: number;
   headers: Record<string, string>;
   body: string;
 }
@@ -359,7 +343,7 @@ export interface NetworkEntryPayload {
 export function onNetworkEntry(
   callback: (payload: NetworkEntryPayload) => void,
 ): Promise<UnlistenFn> {
-  return listen("browser://network-entry", (e: any) => callback(e.payload));
+  return listen<NetworkEntryPayload>("browser://network-entry", (e) => callback(e.payload));
 }
 
 export function onViewportScroll(

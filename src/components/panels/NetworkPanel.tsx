@@ -38,9 +38,11 @@ function statusColor(code: number): string {
   return "text-gray-400";
 }
 
+const BODY_PREVIEW_MAX = 500;
+
 function bodyPreview(body: string): string {
   if (!body) return "";
-  if (body.length > 500) return body.slice(0, 500) + "...";
+  if (body.length > BODY_PREVIEW_MAX) return body.slice(0, BODY_PREVIEW_MAX) + "...";
   return body;
 }
 
@@ -176,7 +178,7 @@ function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSe
         {entry.method}
       </span>
       <span className={`w-8 shrink-0 text-right ${statusColor(entry.statusCode)}`}>
-        {entry.statusCode || "---"}
+        {entry.statusCode !== undefined ? entry.statusCode : "---"}
       </span>
       <span className={`text-[9px] px-1 rounded shrink-0 ${TYPE_COLORS[entry.resourceType] ?? "bg-gray-500/20 text-gray-400"}`}>
         {resourceTypeLabel(entry.resourceType)}
@@ -187,7 +189,7 @@ function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSe
       <span className="text-[10px] text-[var(--color-muted-foreground)] w-14 text-right shrink-0">
         {formatSize(entry.contentLength)}
       </span>
-      <span className={`text-[10px] w-10 text-right shrink-0 ${entry.durationMs > 1000 ? "text-yellow-400" : entry.durationMs > 0 ? "text-[var(--color-muted-foreground)]" : "text-[var(--color-muted-foreground)]"}`}>
+      <span className={`text-[10px] w-10 text-right shrink-0 ${entry.durationMs > 1000 ? "text-yellow-400" : "text-[var(--color-muted-foreground)]"}`}>
         {formatDuration(entry.durationMs)}
       </span>
       <button
@@ -215,7 +217,7 @@ export function NetworkPanel() {
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevLength = useRef(entries.length);
+  const prevLength = useRef(0);
 
   const filtered = useMemo(() => {
     switch (filter) {
@@ -265,7 +267,7 @@ export function NetworkPanel() {
           {apiCount > 0 && <span className="text-cyan-400">{apiCount} API</span>}
           {entries.length > 0 && activeTabId && (
             <button
-              onClick={() => { clearTab(activeTabId); setSelectedId(null); }}
+              onClick={() => { clearTab(activeTabId); setSelectedId(null); prevLength.current = 0; }}
               className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] px-1.5 py-0.5 rounded hover:bg-[var(--color-hover)]"
             >
               Clear
@@ -291,7 +293,7 @@ export function NetworkPanel() {
                   : "text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
               }`}
             >
-              {f.label}{count > 0 && count < entries.length ? ` (${count})` : ""}
+              {f.label}{count > 0 ? ` (${count})` : ""}
             </button>
           );
         })}
