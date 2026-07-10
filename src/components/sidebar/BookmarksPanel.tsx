@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useBookmarksStore } from "@/stores/bookmarks";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
+import { VirtualList } from "@/components/ui/VirtualList";
 
 function getHost(url: string): string {
   try {
@@ -66,10 +67,10 @@ export function BookmarksPanel() {
   }
 
   return (
-    <div className="p-2">
+    <div className="p-2 flex flex-col h-full">
       {/* Header row */}
-      <div className="flex items-center justify-between px-1 mb-2">
-        <p className="text-[10px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+      <div className="flex items-center justify-between px-1 mb-2 flex-shrink-0">
+        <p className="text-[12px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
           {wsName} Bookmarks
         </p>
         {wsBookmarks.length > 0 && (
@@ -84,7 +85,7 @@ export function BookmarksPanel() {
               }
             }}
             title="Clear all bookmarks in this workspace"
-            className="text-[10px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
+            className="text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
           >
             Clear all
           </button>
@@ -95,86 +96,91 @@ export function BookmarksPanel() {
       {wsBookmarks.length === 0 ? (
         <div className="text-center py-6">
           <Bookmark
-            size={20}
+            size={22}
             className="text-[var(--color-text-disabled)] mx-auto mb-2"
           />
-          <p className="text-[11px] text-[var(--color-text-disabled)]">
+          <p className="text-[13px] text-[var(--color-text-disabled)]">
             No bookmarks yet
           </p>
-          <p className="text-[10px] text-[var(--color-text-disabled)] mt-1">
-            Press <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-primary)] rounded text-[9px] font-mono">Ctrl+D</kbd> on a tab to save it
+          <p className="text-[12px] text-[var(--color-text-disabled)] mt-1">
+            Press <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-primary)] rounded text-[11px] font-mono">Ctrl+D</kbd> on a tab to save it
           </p>
         </div>
       ) : (
-        wsBookmarks.map((bookmark) => {
-          const isJustAdded = lastAddedId === bookmark.id;
-          return (
-            <div
-              key={bookmark.id}
-              className={cn(
-                "group flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-[var(--color-hover)] transition-colors mb-0.5",
-                isJustAdded && "ring-2 ring-[var(--color-live)] bg-[var(--color-live)]/10"
-              )}
-            >
-              {renamingId === bookmark.id ? (
-                <input
-                  value={renameDraft}
-                  onChange={(e) => setRenameDraft(e.target.value)}
-                  onBlur={commitRename}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitRename();
-                    if (e.key === "Escape") {
-                      setRenamingId(null);
-                      setRenameDraft("");
-                    }
-                  }}
-                  autoFocus
-                  className="flex-1 bg-[var(--color-elevated)] outline-none border border-[var(--color-accent)] rounded px-1.5 py-0.5 text-[11px] text-[var(--color-text-primary)]"
-                />
-              ) : (
-                <button
-                  onClick={() => openBookmark(bookmark.url)}
-                  onDoubleClick={() =>
-                    startRename(bookmark.id, bookmark.title)
-                  }
-                  title={`${bookmark.title}\n${bookmark.url}\n\nClick to open · Double-click to rename`}
-                  className="flex-1 min-w-0 text-left"
+        <div className="flex-1 min-h-0">
+          <VirtualList items={wsBookmarks} itemHeight={40}>
+            {({ style, item }) => {
+              const isJustAdded = lastAddedId === item.id;
+              return (
+                <div
+                  style={style}
+                  key={item.id}
+                  className={cn(
+                    "group flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-[var(--color-hover)] transition-colors mb-0.5",
+                    isJustAdded && "ring-2 ring-[var(--color-live)] bg-[var(--color-live)]/10"
+                  )}
                 >
-                  <div className="text-[11px] text-[var(--color-text-primary)] truncate">
-                    {bookmark.title}
-                  </div>
-                  <div className="text-[10px] text-[var(--color-text-disabled)] truncate">
-                    {getHost(bookmark.url)}
-                  </div>
-                </button>
-              )}
-              <button
-                onClick={() => openBookmark(bookmark.url)}
-                title="Open in new tab"
-                aria-label="Open bookmark in new tab"
-                className={cn(
-                  "w-5 h-5 flex items-center justify-center rounded",
-                  "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-border)]",
-                  "opacity-0 group-hover:opacity-100 transition-opacity"
-                )}
-              >
-                <ExternalLink size={10} />
-              </button>
-              <button
-                onClick={() => removeBookmark(bookmark.id)}
-                title="Remove bookmark"
-                aria-label="Remove bookmark"
-                className={cn(
-                  "w-5 h-5 flex items-center justify-center rounded",
-                  "text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] hover:bg-[var(--color-border)]",
-                  "opacity-0 group-hover:opacity-100 transition-opacity"
-                )}
-              >
-                <Trash2 size={10} />
-              </button>
-            </div>
-          );
-        })
+                  {renamingId === item.id ? (
+                    <input
+                      value={renameDraft}
+                      onChange={(e) => setRenameDraft(e.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitRename();
+                        if (e.key === "Escape") {
+                          setRenamingId(null);
+                          setRenameDraft("");
+                        }
+                      }}
+                      autoFocus
+                      className="flex-1 bg-[var(--color-elevated)] outline-none border border-[var(--color-accent)] rounded px-1.5 py-0.5 text-[13px] text-[var(--color-text-primary)]"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => openBookmark(item.url)}
+                      onDoubleClick={() =>
+                        startRename(item.id, item.title)
+                      }
+                      title={`${item.title}\n${item.url}\n\nClick to open · Double-click to rename`}
+                      className="flex-1 min-w-0 text-left"
+                    >
+                      <div className="text-[13px] text-[var(--color-text-primary)] truncate">
+                        {item.title}
+                      </div>
+                      <div className="text-[12px] text-[var(--color-text-disabled)] truncate">
+                        {getHost(item.url)}
+                      </div>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => openBookmark(item.url)}
+                    title="Open in new tab"
+                    aria-label="Open bookmark in new tab"
+                    className={cn(
+                      "w-6 h-6 flex items-center justify-center rounded",
+                      "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-border)]",
+                      "opacity-0 group-hover:opacity-100 transition-opacity"
+                    )}
+                  >
+                    <ExternalLink size={12} />
+                  </button>
+                  <button
+                    onClick={() => removeBookmark(item.id)}
+                    title="Remove bookmark"
+                    aria-label="Remove bookmark"
+                    className={cn(
+                      "w-6 h-6 flex items-center justify-center rounded",
+                      "text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] hover:bg-[var(--color-border)]",
+                      "opacity-0 group-hover:opacity-100 transition-opacity"
+                    )}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              );
+            }}
+          </VirtualList>
+        </div>
       )}
     </div>
   );

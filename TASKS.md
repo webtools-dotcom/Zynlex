@@ -145,6 +145,38 @@
   - [x] 52.4 — `cargo check` clean, `pnpm tsc --noEmit` clean
 - [x] Task 54: `PROJECT_STATE.md` updated to v1.0-feature-complete with new worktree snapshot, completed features list, known issues, and next-session priorities (Option A: GitHub push + README; Option B: per-tab WebviewWindow; Option C: API Tester panel)
 
+## Session 56 — UI Scaling (size increase) — DONE
+- [x] Scaled all UI elements (tab bar, toolbar, address bar, sidebar, workspace switcher, status bar, find bar, toast) for better readability
+- [x] Base font 13px → 14px, compact mode overrides updated
+- [x] `tsc --noEmit` and `cargo check` both clean
+- [x] No Rust backend, no store logic, no feature behavior changed
+
+## Session 19 (v1.32.0-dev — Network Health Monitor) — CURRENT
+- [x] Task 77: Rust backend — add resourceContext, timing, contentLength, reasonPhrase to network-entry event
+  - [x] 77.1 — Capture `COREWEBVIEW2_WEB_RESOURCE_CONTEXT` via `args.ResourceContext()` in WebResourceRequested handler — 17 resource types detected
+  - [x] 77.2 — Store `(Instant::now(), resourceType)` in shared static `HashMap<(tabId, url)>` for cross-handler communication
+  - [x] 77.3 — In response handler: look up stored metadata, compute durationMs, parse Content-Length from headers, capture ReasonPhrase
+  - [x] 77.4 — Emit new fields: resourceType, durationMs, contentLength, reasonPhrase in browser://network-entry
+  - [x] 77.5 — `cargo check` clean
+- [x] Task 78: Frontend types & store — update NetworkLogEntry, NetworkEntryPayload
+  - [x] 78.1 — Added: reasonPhrase, resourceType, durationMs, contentLength (removed unused timestamp)
+  - [x] 78.2 — New helper functions: formatSize, formatDuration, resourceTypeLabel, entryIsError, entryIsSlow, entryIsApi
+  - [x] 78.3 — `pnpm tsc --noEmit` clean
+- [x] Task 79: Copy utilities (src/lib/networkCopy.ts)
+  - [x] 79.1 — entryToCurl() — generates full cURL command with headers
+  - [x] 79.2 — entryToFetch() — generates fetch() call with method, headers, body
+  - [x] 79.3 — copyToClipboard() — clipboard API with fallback
+- [x] Task 80: NetworkPanel rewrite — lightweight Network Health Monitor
+  - [x] 80.1 — Summary bar: count, total size, error/slow/API counts, Clear button
+  - [x] 80.2 — Filter chips: All, Errors, API, Slow — dynamic counts
+  - [x] 80.3 — Column headers: Method, Status, Type, URL, Size, Time
+  - [x] 80.4 — Enhanced rows: method color, status color, type badge (colored), URL, size, time, hover cURL copy
+  - [x] 80.5 — Detail pane with tabs: Headers, Body, Copy (cURL + fetch)
+  - [x] 80.6 — Debounced auto-scroll, tab-specific scoping via key prop, Clear button
+  - [x] 80.7 — `pnpm tsc --noEmit` clean
+- [x] Task 81: Cleanup — removed all NET-DBG debug logging (Rust eprintln, frontend console.log)
+- [x] Task 82: Final integration — `cargo check` + `pnpm tsc --noEmit` both clean
+
 ## Backlog
 - [ ] Port scanner: HTTP title shown in sidebar tooltip
 - [ ] Port scanner: manual "add custom port" UI
@@ -595,4 +627,181 @@
     - Test 4: Double-click on tab bar → toggles maximize
     - Test 5: Maximize → restore → drag → works
     - Test 6: Normal drag → works
+
+## ENHANCED_BROWSER.md Phase 1: Tab Persistence — DONE
+
+- [x] Add `persist` middleware to `src/stores/tabs.ts` with `partialize` (strip transient fields: isLoading, loadTime, discardedAt, lastActiveAt, scrollPosition) and `merge` (hydrate with defaults)
+- [x] Fix `src/stores/workspaces.ts` `sanitizeWorkspace` to preserve `tabIds` and `activeTabId`
+- [x] Add hydration recovery `useEffect` in `useWebviewBridge.ts` — creates webview for active tab after `xevo:tabs-hydrated` event
+- [x] Orphaned tab cleanup: tabs not belonging to any workspace are removed on hydration
+- [x] `pnpm tsc --noEmit` — clean
+- [x] `cargo check` — clean
+- [ ] Runtime GUI verification: pending human-run `pnpm tauri dev`
+  - Open 3 tabs with different URLs → Pin one → Close app → Reopen → All 3 tabs restored with correct URLs, pinned tab shows pin icon, active tab preserved
+
+## ENHANCED_BROWSER.md Phase 4: Meta Tag Inspector — DONE
+- [x] Create MetaValidator.ts with validation rules
+- [x] Create SocialPreview.tsx component (Facebook, Twitter, LinkedIn, Discord cards)
+- [x] Add image diagnostics (fetch og:image, measure dimensions, validate aspect ratio/size)
+- [x] Update InspectorPanel MetaSubTab with validation + previews
+- [x] `pnpm tsc --noEmit` — clean
+
+## ENHANCED_BROWSER.md Phase 3: User Agent Switcher — DONE
+- [x] Create UA presets data file (UserAgentPresets.ts)
+- [x] Add browser_set_user_agent Rust command + BrowserState field
+- [x] Inject UA override script into webview init
+- [x] Create UserAgentPanel.tsx sidebar panel
+- [x] Register panel in Sidebar.tsx, add userAgent to settings
+- [x] `pnpm tsc --noEmit` — clean
+- [x] `cargo check` — clean
+
+## ENHANCED_BROWSER.md Phase 2: Performance Optimization — DONE
+- [x] 5A — React.lazy panels (all 9 panels, PanelSkeleton fallback)
+- [x] 5B — manualChunks in vite.config.ts
+- [x] 5C — Split Init Script (CORE_SCRIPT + HEADER_SCRIPT + NETWORK_SCRIPT)
+- [x] 5D — Lazy Webview Creation (already default, confirmed)
+- [x] 5E — Virtualize Long Lists (react-window v2, VirtualList wrapper, applied to BookmarksPanel)
+- [x] `pnpm tsc --noEmit` — clean
+- [x] `cargo check` — clean
+
+## ENHANCED_BROWSER.md Phase 5: Multi-Viewport Mode — DONE
+- [x] Create 7 Rust commands (create_viewport, destroy_viewport, resize_viewport, show_viewport, hide_viewport, scroll_viewport, click_viewport, notify_viewport_scroll, browser_eval_raw)
+- [x] Create ViewportPresets.ts (mobile/tablet/laptop presets)
+- [x] Extend ui.ts store with viewport state + actions
+- [x] Create browser.ts service functions
+- [x] Create useViewportSync.ts (scroll sync via event bus)
+- [x] Create ViewportPanel.tsx (CSS Grid layout, preset dropdown, sync toggles)
+- [x] Replace `__TAURI_INTERNALS__.invoke` with `evalRaw` from services/browser in ViewportPanel
+- [x] Add "viewport" to PanelId type
+- [x] Register ViewportPanel in Sidebar.tsx (lazy import + panel entry + rendering)
+- [x] Add viewport mode toggle button in Toolbar.tsx (Columns3 icon)
+- [x] Wire viewport overlay in RootLayout.tsx (replaces BrowserChrome when viewportMode on)
+- [x] Fix unused variables (resizeViewport, SCROLL_SYNC_SCRIPT, scrollLabelsRef)
+- [x] `pnpm tsc --noEmit` — clean
+- [x] `cargo check` — clean
+
+## Session 40 — Screenshot Bug Fix (WebView2 Content Black) — DONE
+- [x] Replace `PrintWindow` screenshot approach with DevTools Protocol (`Page.captureScreenshot`) via WebView2 COM API
+- [x] Add `webview2-com = "0.38"`, `base64 = "0.22"`, `windows-core = "0.61"` dependencies
+- [x] Use `CallDevToolsProtocolMethodCompletedHandler` pre-built handler from `webview2-com` crate
+- [x] Bridge COM callback to async Rust via `tokio::sync::oneshot`
+- [x] Refactor: split into orchestrator + `capture_browser_devtools` + `capture_main_window_printwindow`
+- [x] Keep `PrintWindow` as fallback when DevTools capture unavailable
+- [x] `cargo check` — clean
+- [x] `pnpm build` (includes tsc) — clean
+
+## ENHANCED_BROWSER.md Phase 6: Screenshot Tool — DONE
+- [x] Add `xcap` + `image` crates to Cargo.toml
+- [x] `browser_screenshot` Rust command (captures XEVO window, encodes to PNG, returns Vec<u8>)
+- [x] Register command in lib.rs invoke_handler
+- [x] Create `src/lib/screenshot.ts` (clipboard copy + download fallback)
+- [x] Add `takeScreenshot()` service function in browser.ts
+- [x] Add Ctrl+Shift+S shortcut in useKeyboardShortcuts.ts + forwarded handler
+- [x] Add Camera toolbar button in Toolbar.tsx (with toast feedback)
+- [x] Add screenshot entry to ShortcutHelp.tsx
+- [x] `pnpm tsc --noEmit` — clean
+- [x] `cargo check` — clean
+
+## Webview Stuck on Maximize Fix (v1.28.0) — DONE
+- [x] Merge duplicate `onResized` listeners into one (eliminated race between 50ms and 60ms handlers)
+- [x] Increase maximize sync delay: 60ms → 350ms (outlasts ~200-300ms Windows animation)
+- [x] Add `isMaximizingRef` to suppress ResizeObserver during maximize animation
+- [x] Add double-sync after maximize (350ms + 500ms) for defensive late-settle catch
+- [x] Remove duplicate `browser_reposition` command (identical to `browser_set_bounds`)
+- [x] `cargo check` — clean
+- [x] `pnpm build` — clean
+
+## Webview Stuck on Minimize-Restore (v1.28.0 follow-up) — DONE
+- [x] Replace single 80ms sync with triple-sync (rAF, 120ms, 350ms) on minimize-restore
+- [x] Clear `isMaximizingRef` in minimize-state listener so ResizeObserver can fire during restore
+- [x] Clear `lastBoundsRef` before each sync attempt to bypass 5px threshold
+- [x] `pnpm build` — clean
+
+## Comprehensive Webview Bounds Sync Rewrite (v1.29.0) — DONE
+- [x] Root cause found: async `getCurrentWindow().isMaximized()` IPC creates race window where `isMaximizingRef` isn't set before ResizeObserver fires, allowing an intermediate-bounds sync that can go uncorrected
+- [x] Fix 1a: Rewrite `onResized` to dual-timer approach (50ms fast + 500ms slow) — no async IPC, no conditional maximize detection
+- [x] Fix 1b: Remove `isMaximizingRef` guard from ResizeObserver — all sync paths fire freely
+- [x] Fix 1c: Bump minimize-restore delay 350ms → 500ms; remove `isMaximizingRef` clear (no longer exists)
+- [x] Fix 1d: Add `xevo://force-sync` frontend listener for Rust-driven immediate bounds sync
+- [x] Fix 1e: Remove unused refs (`wasMaximizedRef`, `isMaximizingRef`); add `resizeTimerRef`/`longResizeTimerRef`
+- [x] Fix 2: Emit `xevo://force-sync` from Rust `Focused(true)` restore handler in `lib.rs`
+- [x] `cargo check` — clean
+- [x] `pnpm build` — clean
+
+## Session 57 (v1.30.0 — Tab Memory Preservation) — DONE
+
+- [x] Task 100: Tab state save/restore on discard (not on switch)
+  - [x] 100.1 — Extended Tab interface with `savedScrollX`, `savedScrollY`, `savedFormState` fields
+  - [x] 100.2 — Updated tabs store: `saveTabState` action, `buildTab`/`stripTab`/`hydrateTab`/`StoredTab` with new fields
+  - [x] 100.3 — Added Rust commands: `browser_save_tab_state`, `browser_tab_state_saved`, `browser_restore_tab_state`
+  - [x] 100.4 — Registered 3 new commands in `lib.rs` invoke_handler (30 → 33)
+  - [x] 100.5 — Added IPC wrappers in `browser.ts`: `saveTabState()`, `restoreTabState()`, `onTabStateSaved()`
+  - [x] 100.6 — Fixed `useWebviewBridge.ts`: save on discard only (timer + cap paths), restore on recreate only, removed broken switch/onLoadingChanged logic
+  - [x] 100.7 — `cargo check` — clean
+  - [x] 100.8 — `pnpm tsc --noEmit` — clean
+  - [x] 100.9 — `pnpm build` — clean
+
+## Session 58 (Tab Memory Preservation — Fix) — DONE
+
+- [x] Task 100.10 — Fixed black screen + reload cycle caused by save/restore on every tab switch
+  - [x] Removed `saveTabState(prevId)` from tab switching effect (was triggering Rust eval → onLoadingChanged → restore cycle)
+  - [x] Removed `restoreTabState()` from `onLoadingChanged` (was firing on every page load, not just discard recovery)
+  - [x] Removed `onTabStateSaved` listener and `unTabStateSaved` cleanup
+  - [x] Added `saveTabState(tabId)` before `closeTabWebview(tabId)` in discard timer path
+  - [x] Added `saveTabState(tabId)` before `closeTabWebview(tabId)` in cap enforcement path
+  - [x] Added form state restore + clear after webview recreate in tab switching effect
+  - [x] Added `saveTabState(id)` in `recreateForUserAgent` before closing non-active webviews
+  - [x] Verified: `cargo check` + `pnpm tsc --noEmit` + `pnpm build` clean
+
+## Session — Header Injection Fix (fetch/XHR monkeypatch) — DONE (v2 follow-up fix applied 2026-07-10)
+- [x] Added fetch and XMLHttpRequest monkeypatching to HEADER_SCRIPT so `__xevoInjectHeaders` is actually called on real requests
+- [x] Verified: `cargo check` + `pnpm tsc --noEmit` clean
+
+- [x] Task 101.5 — Codebase cleanup after tab switching fix
+  - [x] Removed dead `browser_activate_tab` function (Rust + lib.rs registration + TS export)
+  - [x] Removed orphan exports: `onTabStateSaved`, `onViewportMetrics` from `browser.ts`
+  - [x] Removed persist middleware from `tabs.ts`: `StoredTab`, `stripTab`, `partialize`, `merge`, `version`, `onRehydrateStorage`, unused imports (`useUIStore`, `useWorkspacesStore`), `persist` import
+  - [x] Removed dead Tab fields: `scrollPosition`, `savedScrollX`, `savedScrollY` (kept `loadTime` — used by StatusBar)
+  - [x] Fixed `workspaces.ts` `onRehydrateStorage`: replaced direct state mutation with proper `resetAllWorkspaceTabs` store action using immer `set()`
+  - [x] Updated `saveTabState` store action signature (removed unused scrollX/scrollY params)
+  - [x] Verified: `cargo check` + `pnpm tsc --noEmit` + `pnpm build` clean
+
+## Session 60 — Network Log Rebuild (Native WebView2 COM) — DONE
+
+### Phase 0-4: Rust backend (DONE)
+- [x] Phase 0 — Version audit: `webview2-com 0.38.2` + `windows 0.61.3`, single resolved versions, no changes needed
+- [x] Phase 1 — Proof of concept: `register_webview_network_capture` with request handler via `.with_webview()` on main thread
+- [x] Phase 2 — Multi-tab: auto-handled (every `create_webview_for_tab` calls it)
+- [x] Phase 3 — Response handler: `ICoreWebView2_2` cast, `add_WebResourceResponseReceived`, status code + headers via `GetCurrentHeader`/`HasCurrentHeader`/`MoveNext`
+- [x] Phase 4 — Body reading: `GetContent` + `IStream::Read` in 8KB chunks capped at 64KB, `String::from_utf8_lossy`, event emission via `browser://network-entry`
+- [x] `cargo check` — clean
+
+### Phase 5: Frontend (DONE)
+- [x] Add `"network"` to `PanelId` type in `src/types/index.ts`
+- [x] Create `src/stores/network.ts` (Zustand, entriesByTab, 200-entry cap)
+- [x] Create `src/components/panels/NetworkPanel.tsx` (method colors, status colors, truncation)
+- [x] Add `onNetworkEntry()` listener in `src/services/browser.ts`
+- [x] Wire event listener in `src/hooks/useWebviewBridge.ts`
+- [x] Register `NetworkPanel` in `Sidebar.tsx` between History and Header Injection (Activity icon)
+- [x] `pnpm tsc --noEmit` — clean
+- [x] Runtime GUI verification — 4 requests captured for jsonplaceholder (was 0 for fast-loading URLs)
+
+## Session 61 — Network Capture Timing Fix (v1.32.1)
+
+- [x] **Root cause:** `register_webview_network_capture` called after `webview.build()` — navigation starts during `build()`, so fast-loading URLs respond before handlers are registered → 0 entries.
+- [x] **Fix:** Build with `about:blank`, register handlers, then navigate to real URL.
+- [x] Files changed: `src-tauri/src/commands/browser.rs` (3 edits: clone parsed URL, about:blank builder, navigate after handlers)
+- [x] Verified: `cargo check` clean; runtime verified with `https://jsonplaceholder.typicode.com/posts/1`
+
+## Session 59 (Tab Switching Fix + Remove Tab Persistence) — DONE
+
+- [x] Task 101 — Fixed tab recreation on every switch (root cause: `browser_activate_tab` destroyed webviews unconditionally)
+  - [x] Removed stale handle destruction from `browser_activate_tab` in `browser.rs` (lines 1016-1024) — the webview lookup at line 1037 now works correctly
+  - [x] Replaced `activateTab` with `hideTabWebview` + `showTabWebview` in the normal tab switching path in `useWebviewBridge.ts`
+  - [x] Removed unused `activateTab` import
+  - [x] Removed `TAB HYDRATION RECOVERY` section and `hydTimerRef` from `useWebviewBridge.ts`
+  - [x] Modified `tabs.ts` `merge` function to return empty tabs on startup (no restore)
+  - [x] Added `onRehydrateStorage` to `workspaces.ts` to clear `tabIds`/`activeTabId` on startup
+  - [x] Removed unused `hydrateTab` function from `tabs.ts`
+  - [x] Verified: `cargo check` + `pnpm tsc --noEmit` + `pnpm build` clean
 

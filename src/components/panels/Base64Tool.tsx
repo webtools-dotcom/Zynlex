@@ -73,11 +73,11 @@ export function Base64Tool() {
           <button
             key={m}
             onClick={() => setMode(m)}
-            className="flex-1 h-7 text-[11px] border rounded-[4px] capitalize transition-colors"
+            className="flex-1 h-8 text-[13px] border rounded-[4px] capitalize transition-colors"
             style={{
-              background: mode === m ? "var(--color-accent)20" : "transparent",
+              background: mode === m ? "color-mix(in srgb, var(--color-accent) 20%, transparent)" : "transparent",
               color: mode === m ? "var(--color-accent)" : "var(--color-text-muted)",
-              borderColor: mode === m ? "var(--color-accent)40" : "var(--color-border)",
+              borderColor: mode === m ? "color-mix(in srgb, var(--color-accent) 40%, transparent)" : "var(--color-border)",
             }}
           >
             {m}
@@ -93,17 +93,17 @@ export function Base64Tool() {
           onChange={(e) => setUrlSafe(e.target.checked)}
           className="accent-[var(--color-accent)]"
         />
-        <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+        <span className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>
           URL-safe (- and _)
         </span>
       </label>
 
       {/* Input label */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
+        <span className="text-[12px] uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
           Input
         </span>
-        <span className="text-[10px]" style={{ color: "var(--color-text-disabled)" }}>
+        <span className="text-[12px]" style={{ color: "var(--color-text-disabled)" }}>
           {input.length} chars
         </span>
       </div>
@@ -113,23 +113,23 @@ export function Base64Tool() {
         rows={4}
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        className="w-full resize-none font-mono text-[11px] p-2 rounded border outline-none"
+        className="w-full resize-none font-mono text-[13px] p-2 rounded border outline-none"
         style={textareaStyle}
       />
 
       {/* Output label */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
+        <span className="text-[12px] uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
           Output
         </span>
-        <span className="text-[10px]" style={{ color: "var(--color-text-disabled)" }}>
+        <span className="text-[12px]" style={{ color: "var(--color-text-disabled)" }}>
           {output.length} chars
         </span>
       </div>
 
       {/* Error or output */}
       {error !== null ? (
-        <p className="text-[11px]" style={{ color: "var(--color-dead)" }}>
+        <p className="text-[13px]" style={{ color: "var(--color-dead)" }}>
           {error}
         </p>
       ) : (
@@ -137,7 +137,7 @@ export function Base64Tool() {
           rows={4}
           readOnly
           value={output}
-          className="w-full resize-none font-mono text-[11px] p-2 rounded border outline-none"
+          className="w-full resize-none font-mono text-[13px] p-2 rounded border outline-none"
           style={{ ...textareaStyle, background: "var(--color-elevated)" }}
         />
       )}
@@ -147,7 +147,7 @@ export function Base64Tool() {
         <button
           onClick={handleCopy}
           disabled={!output}
-          className="text-[11px] px-2 py-0.5 rounded border transition-colors disabled:opacity-40"
+          className="text-[13px] px-2 py-0.5 rounded border transition-colors disabled:opacity-40"
           style={{
             borderColor: "var(--color-border)",
             color: copied ? "var(--color-live)" : "var(--color-text-muted)",

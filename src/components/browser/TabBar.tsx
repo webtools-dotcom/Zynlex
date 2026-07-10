@@ -218,7 +218,7 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
 
   return (
     <div
-      className="h-[36px] flex items-stretch flex-shrink-0 overflow-hidden"
+      className="h-[40px] flex items-stretch flex-shrink-0 overflow-hidden"
       data-tab-bar="true"
       data-tauri-drag-region="deep"
       onPointerMove={handlePointerMove}
@@ -255,13 +255,13 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
         onClick={openNewTab}
         title="New tab (Ctrl+T)"
         aria-label="New tab"
-        className="flex-shrink-0 w-9 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors border-l"
+        className="flex-shrink-0 w-10 flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors border-l"
         style={{
           borderColor: dropTarget === "__end__" ? "var(--color-accent)" : "var(--color-border)",
           borderLeftWidth: dropTarget === "__end__" ? 2 : 1,
         }}
       >
-        <Plus size={13} />
+        <Plus size={15} />
       </button>
 
       <div className="flex-shrink-0 flex items-stretch">

@@ -53,7 +53,9 @@ export function FindBar() {
       try {
         await webviewFind(tabId, q, true);
       } catch (e) {
-        console.error("[xevo] webviewFind failed:", e);
+        if (import.meta.env.DEV) {
+          console.error("[xevo] webviewFind failed:", e);
+        }
       }
     },
     [],
@@ -62,13 +64,16 @@ export function FindBar() {
   // Subscribe to find-result events (active/total match counts).
   useEffect(() => {
     if (!IS_TAURI) return;
+    let cancelled = false;
     let unlisten: (() => void) | null = null;
     onFindResult((result) => {
       setFindResult(result.active_match, result.total_matches);
     }).then((fn) => {
+      if (cancelled) { fn(); return; }
       unlisten = fn;
     });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [setFindResult]);
@@ -136,7 +141,7 @@ export function FindBar() {
 
   return (
     <div
-      className="absolute top-2 right-2 z-50 flex items-center gap-1 h-8 px-2 rounded-[4px] border"
+      className="absolute top-2 right-2 z-50 flex items-center gap-1 h-9 px-2.5 rounded-[4px] border"
       style={{
         background: "var(--color-elevated)",
         borderColor: "var(--color-border)",
@@ -147,7 +152,7 @@ export function FindBar() {
       }}
     >
       <Search
-        size={12}
+        size={14}
         className="text-[var(--color-text-disabled)] flex-shrink-0"
       />
       <input
@@ -160,11 +165,11 @@ export function FindBar() {
         spellCheck={false}
         autoCorrect="off"
         autoCapitalize="off"
-        className="w-[180px] bg-transparent outline-none text-[12px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] font-mono"
+        className="w-[200px] bg-transparent outline-none text-[13px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] font-mono"
       />
       {matchText && (
         <span
-          className="text-[10px] font-mono text-[var(--color-text-disabled)] min-w-[60px] text-right select-none tabular-nums"
+          className="text-[11px] font-mono text-[var(--color-text-disabled)] min-w-[60px] text-right select-none tabular-nums"
           aria-live="polite"
         >
           {matchText}
@@ -179,9 +184,9 @@ export function FindBar() {
         disabled={!hasQuery || findTotalMatches === 0}
         title="Previous match (Shift+Enter)"
         aria-label="Previous match"
-        className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+        className="w-6 h-6 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
       >
-        <ChevronUp size={12} />
+        <ChevronUp size={13} />
       </button>
       <button
         onClick={() => {
@@ -192,17 +197,17 @@ export function FindBar() {
         disabled={!hasQuery || findTotalMatches === 0}
         title="Next match (Enter)"
         aria-label="Next match"
-        className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+        className="w-6 h-6 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
       >
-        <ChevronDown size={12} />
+        <ChevronDown size={13} />
       </button>
       <button
         onClick={closeFind}
         title="Close (Esc)"
         aria-label="Close find bar"
-        className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
+        className="w-6 h-6 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
       >
-        <X size={12} />
+        <X size={13} />
       </button>
     </div>
   );

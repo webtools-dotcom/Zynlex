@@ -14,11 +14,15 @@ export interface Tab {
   isMuted: boolean;
   workspaceId: string;
   createdAt: number;
-  scrollPosition: number;
+  savedFormState: string | null;
   zoom: number;
   historyBack: string[];
   historyForward: string[];
   loadTime: number | null;
+  /** Timestamp when the tab's webview was destroyed to save memory. null = alive. */
+  discardedAt: number | null;
+  /** Timestamp when this tab was last the active (visible) tab. */
+  lastActiveAt: number;
 }
 
 export type NewTabOptions = Partial<Omit<Tab, "id" | "createdAt" | "workspaceId">>;
@@ -63,10 +67,13 @@ export type PanelId =
   | "jwt"
   | "base64"
   | "headers"
-  | "inspector";
+  | "inspector"
+  | "ua"
+  | "viewport";
 
 export interface AppSettings {
   theme: ThemeMode;
+  userAgent: string | null;
   searchEngine: SearchEngine;
   customSearchUrl: string;
   tabBarPosition: TabBarPosition;
@@ -76,6 +83,8 @@ export interface AppSettings {
   customPorts: number[];
   clearOnClose: boolean;
   compactMode: boolean;
+  /** Soft limit on concurrent webview processes (default 10). Oldest background tab is discarded when exceeded. */
+  maxConcurrentWebviews: number;
 }
 
 // ─── UI State ────────────────────────────────────────────────────
@@ -164,25 +173,6 @@ export interface Note {
   updatedAt: number;
 }
 
-// ─── Network Log ─────────────────────────────────────────────
-
-export interface NetworkLogEntry {
-  id: string;
-  method: string;
-  url: string;
-  status: number;
-  statusText: string;
-  duration: number;
-  requestHeaders: Record<string, string>;
-  responseHeaders: Record<string, string>;
-  requestBody: string | null;
-  responseBody: string;
-  responseSize: number;
-  entryType: "fetch" | "xhr";
-  timestamp: number;
-  tabId: string;
-}
-
 // ─── Header Injection ────────────────────────────────────────
 
 export interface HeaderRule {
@@ -209,6 +199,7 @@ export interface MetaInfo {
   title: string;
   canonical: string | null;
   url: string;
+  ldJson?: Record<string, unknown>[];
 }
 
 export interface CookieEntry {

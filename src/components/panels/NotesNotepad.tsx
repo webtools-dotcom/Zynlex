@@ -47,6 +47,7 @@ export function NotesNotepad() {
   const [showColorPicker, setShowColorPicker] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorRef = useRef<RichTextEditorHandle>(null);
+  const colorPickerRef = useRef<HTMLDivElement>(null);
 
   const selectedNote = wsNotes.find((n) => n.id === selectedId) ?? null;
 
@@ -98,6 +99,18 @@ export function NotesNotepad() {
     return countWords(stripHtml(selectedNote.content));
   }, [selectedNote?.content]);
 
+  // Close color picker on outside click
+  useEffect(() => {
+    if (!showColorPicker) return;
+    function handleClick(e: MouseEvent) {
+      if (colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) {
+        setShowColorPicker(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showColorPicker]);
+
   const charCount = useMemo(() => {
     if (!selectedNote?.content) return 0;
     return stripHtml(selectedNote.content).length;
@@ -135,12 +148,12 @@ export function NotesNotepad() {
         {/* Search + New */}
         <div className="flex items-center gap-1 p-1.5 border-b" style={{ borderColor: "var(--color-border-subtle)" }}>
           <div className="flex-1 flex items-center gap-1 px-1.5 py-1 rounded border" style={{ borderColor: "var(--color-border)" }}>
-            <Search size={10} className="text-[var(--color-text-disabled)]" />
+            <Search size={12} className="text-[var(--color-text-disabled)]" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
-              className="flex-1 text-[10px] bg-transparent outline-none text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
+              className="flex-1 text-[12px] bg-transparent outline-none text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
             />
           </div>
           <button
@@ -157,7 +170,7 @@ export function NotesNotepad() {
         <div className="flex-1 overflow-y-auto">
           {filteredNotes.length === 0 ? (
             <div className="px-2 py-4 text-center">
-              <p className="text-[10px] text-[var(--color-text-disabled)]">
+              <p className="text-[12px] text-[var(--color-text-disabled)]">
                 {searchQuery ? "No matches" : "No notes"}
               </p>
             </div>
@@ -181,7 +194,7 @@ export function NotesNotepad() {
                     />
                   )}
                   <span
-                    className={`text-[11px] font-medium truncate ${
+                    className={`text-[12px] font-medium truncate ${
                       selectedId === note.id
                         ? "text-[var(--color-accent)]"
                         : "text-[var(--color-text-muted)]"
@@ -190,10 +203,10 @@ export function NotesNotepad() {
                     {note.title || "Untitled"}
                   </span>
                   {note.isPinned && (
-                    <Pin size={8} className="text-[var(--color-text-disabled)] flex-shrink-0" />
+                    <Pin size={10} className="text-[var(--color-text-disabled)] flex-shrink-0" />
                   )}
                 </div>
-                <span className="text-[9px] text-[var(--color-text-disabled)]">
+                <span className="text-[12px] text-[var(--color-text-disabled)]">
                   {note.content
                     ? stripHtml(note.content).slice(0, 40) + (stripHtml(note.content).length > 40 ? "..." : "")
                     : "Empty"}
@@ -218,8 +231,8 @@ export function NotesNotepad() {
               />
               <div className="flex items-center gap-1.5">
                 {saveStatus && (
-                  <span className="text-[9px] text-[var(--color-text-disabled)] flex items-center gap-1">
-                    <Save size={9} />
+                  <span className="text-[12px] text-[var(--color-text-disabled)] flex items-center gap-1">
+                    <Save size={11} />
                     {saveStatus === "saving" ? "Saving..." : "Saved"}
                   </span>
                 )}
@@ -227,19 +240,19 @@ export function NotesNotepad() {
                   onClick={() => togglePin(selectedNote.id)}
                   title={selectedNote.isPinned ? "Unpin" : "Pin"}
                   aria-label={selectedNote.isPinned ? "Unpin note" : "Pin note"}
-                  className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
+                  className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
                     selectedNote.isPinned
                       ? "text-[var(--color-accent)]"
                       : "text-[var(--color-text-disabled)] hover:text-[var(--color-accent)]"
                   } hover:bg-[var(--color-hover)]`}
                 >
-                  <Pin size={10} />
+                  <Pin size={12} />
                 </button>
-                <div className="relative">
+                <div className="relative" ref={colorPickerRef}>
                   <button
                     onClick={() => setShowColorPicker(showColorPicker === selectedNote.id ? null : selectedNote.id)}
                     title="Note color"
-                    className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-accent)] hover:bg-[var(--color-hover)] transition-colors"
+                    className="w-6 h-6 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-accent)] hover:bg-[var(--color-hover)] transition-colors"
                   >
                     <span
                       className="w-2.5 h-2.5 rounded-full border"
@@ -267,7 +280,7 @@ export function NotesNotepad() {
                             setShowColorPicker(null);
                           }}
                           title={c.label}
-                          className="w-4 h-4 rounded-full border"
+                          className="w-5 h-5 rounded-full border"
                           style={{
                             background: c.hex || "transparent",
                             borderColor: "var(--color-border)",
@@ -281,9 +294,9 @@ export function NotesNotepad() {
                   onClick={handleExport}
                   title="Export as Markdown"
                   aria-label="Export as Markdown"
-                  className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-accent)] hover:bg-[var(--color-hover)] transition-colors"
+                  className="w-6 h-6 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-accent)] hover:bg-[var(--color-hover)] transition-colors"
                 >
-                  <Download size={10} />
+                  <Download size={12} />
                 </button>
                 <button
                   onClick={() => {
@@ -292,7 +305,7 @@ export function NotesNotepad() {
                       setSelectedId(null);
                     }
                   }}
-                  className="text-[9px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
+                  className="text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
                 >
                   Delete
                 </button>
@@ -320,7 +333,7 @@ export function NotesNotepad() {
 
             {/* Footer */}
             <div
-              className="flex items-center justify-between px-3 py-1 border-t text-[9px] text-[var(--color-text-disabled)]"
+              className="flex items-center justify-between px-3 py-1 border-t text-[12px] text-[var(--color-text-disabled)]"
               style={{ borderColor: "var(--color-border-subtle)" }}
             >
               <span>{charCount} chars</span>
@@ -332,7 +345,7 @@ export function NotesNotepad() {
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <FileText size={24} className="mx-auto mb-2 text-[var(--color-text-disabled)] opacity-30" />
-              <p className="text-[11px] text-[var(--color-text-disabled)]">
+              <p className="text-[12px] text-[var(--color-text-disabled)]">
                 Select a note or create a new one
               </p>
             </div>

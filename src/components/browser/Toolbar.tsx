@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, Search, X, MoreHorizontal, Star } from "lucide-react";
+import { ArrowLeft, ArrowRight, RotateCw, X, MoreHorizontal, Star, Columns3, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
@@ -8,23 +8,9 @@ import { useUIStore } from "@/stores/ui";
 import { useBookmarksStore } from "@/stores/bookmarks";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
-
-function resolveInput(raw: string, searchEngine: string, customSearchUrl: string): string {
-  const s = raw.trim();
-  if (!s) return "";
-  if (/^https?:\/\//i.test(s)) return s;
-  if (/^localhost(:\d+)?(\/.*)?$/i.test(s) || /^127\.0\.0\.1/.test(s))
-    return `http://${s}`;
-  if (/^[\w-]+\.[\w.-]+(\/.*)?$/.test(s) && !s.includes(" "))
-    return `https://${s}`;
-  if (searchEngine === "custom" && customSearchUrl) {
-    return customSearchUrl.replace("%s", encodeURIComponent(s));
-  }
-  const engine = searchEngine === "duckduckgo" ? "duckduckgo.com"
-    : searchEngine === "bing" ? "bing.com"
-    : "google.com";
-  return `https://${engine}/search?q=${encodeURIComponent(s)}`;
-}
+import { resolveInput } from "@/lib/url";
+import { takeScreenshot } from "@/services/browser";
+import { copyToClipboard } from "@/lib/screenshot";
 
 interface ToolbarProps {
   onNavigate: ((url: string) => Promise<void>) | null;
@@ -38,6 +24,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
   const { tabs } = useTabsStore();
   const { searchEngine, customSearchUrl } = useSettingsStore((s) => s.settings);
   const toggleSettingsPanel = useUIStore((s) => s.toggleSettingsPanel);
+  const viewportMode = useUIStore((s) => s.viewportMode);
 
   const ws = workspaces[activeWorkspaceId];
   const activeTab = getLiveWorkspaceActiveTab(ws, tabs);
@@ -69,7 +56,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
   );
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") handleNavigate(draft);
+    if (e.key === "Enter") handleNavigate(draft).catch(() => {});
     if (e.key === "Escape") {
       setDraft(activeTab?.url ?? "");
       inputRef.current?.blur();
@@ -96,18 +83,12 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
     };
   }, []);
 
-  const isHttps = activeTab?.url?.startsWith("https://") ?? false;
-  const isLocalhost =
-    activeTab?.url?.startsWith("http://localhost") ||
-    activeTab?.url?.startsWith("http://127") || false;
-  const isSecure = isHttps || isLocalhost;
-
   const canGoBack = (activeTab?.historyBack?.length ?? 0) > 0;
   const canGoForward = (activeTab?.historyForward?.length ?? 0) > 0;
 
   return (
     <div
-      className="h-[40px] flex items-center gap-2 px-3 flex-shrink-0"
+      className="h-[44px] flex items-center gap-2 px-3 flex-shrink-0"
       style={{
         background: "var(--color-surface)",
         borderBottom: "1px solid var(--color-border)",
@@ -120,13 +101,13 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
         title="Back (Alt+←)"
         aria-label="Go back"
         className={cn(
-          "w-7 h-7 flex items-center justify-center rounded-[4px] transition-colors",
+          "w-8 h-8 flex items-center justify-center rounded-[4px] transition-colors",
           canGoBack
             ? "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] cursor-pointer"
             : "text-[var(--color-text-disabled)] cursor-not-allowed opacity-40",
         )}
       >
-        <ArrowLeft size={14} />
+        <ArrowLeft size={15} />
       </button>
       <button
         disabled={!canGoForward}
@@ -134,13 +115,13 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
         title="Forward (Alt+→)"
         aria-label="Go forward"
         className={cn(
-          "w-7 h-7 flex items-center justify-center rounded-[4px] transition-colors",
+          "w-8 h-8 flex items-center justify-center rounded-[4px] transition-colors",
           canGoForward
             ? "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] cursor-pointer"
             : "text-[var(--color-text-disabled)] cursor-not-allowed opacity-40",
         )}
       >
-        <ArrowRight size={14} />
+        <ArrowRight size={15} />
       </button>
       <button
         disabled={!onReload}
@@ -148,32 +129,18 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
         title="Reload (Ctrl+R)"
         aria-label="Reload page"
         className={cn(
-          "w-7 h-7 flex items-center justify-center rounded-[4px] transition-colors",
+          "w-8 h-8 flex items-center justify-center rounded-[4px] transition-colors",
           onReload
             ? "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] cursor-pointer"
             : "text-[var(--color-text-disabled)] cursor-not-allowed opacity-40",
         )}
       >
-        <RotateCw size={14} />
+        <RotateCw size={15} />
       </button>
 
       {/* Address bar — centered, max-width constrained */}
       <div className="flex-1 flex justify-center">
         <div className="relative w-full max-w-[680px]">
-          <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] flex items-center pointer-events-none">
-            {focused ? (
-              <Search size={13} />
-            ) : activeTab?.url ? (
-              isSecure ? (
-                <Lock size={13} className="text-[var(--color-live)] opacity-70" />
-              ) : (
-                <Globe size={13} className="text-[var(--color-warn)] opacity-70" />
-              )
-            ) : (
-              <Search size={13} />
-            )}
-          </div>
-
           <input
             ref={inputRef}
             type="text"
@@ -188,12 +155,12 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
             onBlur={() => setFocused(false)}
             placeholder="Search or enter address (Ctrl+L)"
             className={cn(
-              "w-full h-[28px] bg-[var(--color-elevated)] rounded-[4px] border border-[var(--color-border)]",
-              "pl-8 pr-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]",
+              "w-full h-[30px] bg-[var(--color-elevated)] rounded-[4px] border border-[var(--color-border)]",
+              "px-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]",
               "focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]",
               focused
                 ? "font-[var(--font-ui)] text-[13px]"
-                : "font-[var(--font-mono)] text-[12px]",
+                : "font-[var(--font-mono)] text-[13px]",
             )}
             spellCheck={false}
             autoCorrect="off"
@@ -206,7 +173,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
               aria-label="Clear address bar"
               className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] transition-colors"
             >
-              <X size={13} />
+              <X size={14} />
             </button>
           )}
         </div>
@@ -219,7 +186,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
         aria-label={isCurrentBookmarked ? "Remove bookmark" : "Bookmark page"}
         disabled={!activeTab?.url}
         className={cn(
-          "w-7 h-7 flex items-center justify-center rounded-[4px] transition-colors",
+          "w-8 h-8 flex items-center justify-center rounded-[4px] transition-colors",
           activeTab?.url
             ? isCurrentBookmarked
               ? "text-[var(--color-accent)] hover:text-[var(--color-accent)] hover:bg-[var(--color-hover)] cursor-pointer"
@@ -227,7 +194,45 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
             : "text-[var(--color-text-disabled)] cursor-not-allowed opacity-40",
         )}
       >
-        <Star size={14} fill={isCurrentBookmarked ? "currentColor" : "none"} />
+        <Star size={15} fill={isCurrentBookmarked ? "currentColor" : "none"} />
+      </button>
+
+      {/* Viewport mode toggle */}
+      <button
+        onClick={() => {
+          const { enterViewportMode, exitViewportMode } = useUIStore.getState();
+          if (viewportMode) exitViewportMode();
+          else enterViewportMode();
+        }}
+        title="Viewport mode"
+        aria-label="Toggle viewport mode"
+        className={cn(
+          "w-8 h-8 flex items-center justify-center rounded-[4px] transition-colors",
+          viewportMode
+            ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
+            : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
+        )}
+      >
+        <Columns3 size={15} />
+      </button>
+
+      {/* Screenshot button — saves to disk + copies to clipboard */}
+      <button
+        onClick={() => {
+          takeScreenshot()
+            .then(({ bytes }) => copyToClipboard(bytes))
+            .catch((error) => {
+              useUIStore.getState().pushToast(
+                `Screenshot failed: ${String(error)}`,
+                "danger"
+              );
+            });
+        }}
+        title="Take screenshot (Ctrl+Shift+S)"
+        aria-label="Take screenshot"
+        className="w-8 h-8 flex items-center justify-center rounded-[4px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
+      >
+        <Camera size={15} />
       </button>
 
       {/* Right-side actions */}
@@ -235,9 +240,9 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
         onClick={toggleSettingsPanel}
         title="Settings"
         aria-label="Settings"
-        className="w-7 h-7 flex items-center justify-center rounded-[4px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
+        className="w-8 h-8 flex items-center justify-center rounded-[4px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
       >
-        <MoreHorizontal size={14} />
+        <MoreHorizontal size={15} />
       </button>
     </div>
   );

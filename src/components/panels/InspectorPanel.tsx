@@ -5,12 +5,17 @@ import {
   CheckCircle2,
   XCircle,
   ClipboardCheck,
+  AlertTriangle,
+  Info,
+  Code,
 } from "lucide-react";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useInspectorStore } from "@/stores/inspector";
 import { evalInspector, inspectorMutate } from "@/services/browser";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
+import { SocialPreviewCard } from "@/components/panels/SocialPreview";
+import { validateMetaTags, metaTagsToRecord } from "@/components/panels/MetaValidator";
 import type { InspectorSubTab } from "@/stores/inspector";
 
 function CopyIcon({ text }: { text: string }) {
@@ -28,9 +33,9 @@ function CopyIcon({ text }: { text: string }) {
       title="Copy"
     >
       {copied ? (
-        <ClipboardCheck size={10} className="text-[var(--color-success, #22c55e)]" />
+        <ClipboardCheck size={12} className="text-[var(--color-success, #22c55e)]" />
       ) : (
-        <span className="text-[9px]">copy</span>
+        <span className="text-[11px]">copy</span>
       )}
     </button>
   );
@@ -38,67 +43,38 @@ function CopyIcon({ text }: { text: string }) {
 
 // ─── META Sub-tab ──────────────────────────────────────────────────
 
-const SEO_CHECKS = [
-  { label: "Page title", test: (m: { title: string }) => !!m.title },
-  {
-    label: "Meta description",
-    test: (m: { metas: Array<{ name: string }> }) =>
-      m.metas.some((t) => t.name === "description"),
-  },
-  {
-    label: "og:title",
-    test: (m: { metas: Array<{ name: string }> }) =>
-      m.metas.some(
-        (t) => t.name === "og:title" || (t as unknown as Record<string, string>).property === "og:title"
-      ),
-  },
-  {
-    label: "og:description",
-    test: (m: { metas: Array<{ name: string }> }) =>
-      m.metas.some(
-        (t) =>
-          t.name === "og:description" ||
-          (t as unknown as Record<string, string>).property === "og:description"
-      ),
-  },
-  {
-    label: "og:image",
-    test: (m: { metas: Array<{ name: string }> }) =>
-      m.metas.some(
-        (t) =>
-          t.name === "og:image" ||
-          (t as unknown as Record<string, string>).property === "og:image"
-      ),
-  },
-  {
-    label: "twitter:card",
-    test: (m: { metas: Array<{ name: string }> }) =>
-      m.metas.some((t) => t.name === "twitter:card"),
-  },
-];
-
 function MetaSubTab() {
   const meta = useInspectorStore((s) => s.meta);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    new Set()
-  );
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [diagResult, setDiagResult] = useState<{
+    status: "loading" | "valid" | "warning" | "error";
+    message: string;
+    width?: number;
+    height?: number;
+    sizeKB?: number;
+  } | null>(null);
 
   if (!meta) return null;
 
-  const passed = SEO_CHECKS.filter((c) => c.test(meta)).length;
+  const record = metaTagsToRecord(meta.metas);
+  record.title = meta.title;
+  record.canonical = meta.canonical || "";
+
+  const validations = validateMetaTags(record);
+
+  const passCount = validations.filter((v) => v.status === "valid").length;
+  const warnCount = validations.filter((v) => v.status === "warning").length;
+  const errCount = validations.filter((v) => v.status === "error").length;
 
   const seoGroup = meta.metas.filter((m) =>
-    ["description", "keywords", "robots", "googlebot", "author"].includes(
-      m.name
-    )
+    ["description", "keywords", "robots", "googlebot", "author"].includes(m.name)
   );
   const ogGroup = meta.metas.filter(
     (m) => m.name.startsWith("og:") || (m as unknown as Record<string, string>).property?.startsWith("og:")
   );
   const twitterGroup = meta.metas.filter((m) => m.name.startsWith("twitter:"));
   const otherGroup = meta.metas.filter(
-    (m) =>
-      !seoGroup.includes(m) && !ogGroup.includes(m) && !twitterGroup.includes(m)
+    (m) => !seoGroup.includes(m) && !ogGroup.includes(m) && !twitterGroup.includes(m)
   );
 
   const groups = [
@@ -117,48 +93,185 @@ function MetaSubTab() {
     });
   };
 
+  // ── Image Diagnostics ────────────────────────────────────────────
+  const ogImage = record["og:image"] || record["twitter:image"] || "";
+
+  async function runImageDiag(url: string) {
+    setDiagResult({ status: "loading", message: "Loading…" });
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        setDiagResult({ status: "error", message: `HTTP ${resp.status}` });
+        return;
+      }
+      const ct = resp.headers.get("content-type");
+      if (!ct?.startsWith("image/")) {
+        setDiagResult({ status: "error", message: `Not an image (${ct})` });
+        return;
+      }
+      const blob = await resp.blob();
+      const sizeKB = blob.size / 1024;
+      const img = new Image();
+      img.src = URL.createObjectURL(blob);
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Failed to decode image"));
+      });
+      const issues: string[] = [];
+      if (img.width < 600 || img.height < 315) {
+        issues.push(`Too small (${img.width}×${img.height}, min 600×315)`);
+      }
+      if (img.width < 1200 || img.height < 630) {
+        issues.push(`Below recommended (${img.width}×${img.height}, recommended 1200×630)`);
+      }
+      if (sizeKB > 5000) {
+        issues.push(`Very large (${Math.round(sizeKB)}KB, recommended <500KB)`);
+      }
+      const ratio = img.width / img.height;
+      if (Math.abs(ratio - 1.91) > 0.1) {
+        issues.push(`Wrong aspect ratio (${ratio.toFixed(2)}, expected 1.91)`);
+      }
+      const declW = record["og:image:width"];
+      const declH = record["og:image:height"];
+      if (declW && parseInt(declW) !== img.width) {
+        issues.push(`Declared width ${declW}px but actual is ${img.width}px`);
+      }
+      if (declH && parseInt(declH) !== img.height) {
+        issues.push(`Declared height ${declH}px but actual is ${img.height}px`);
+      }
+      URL.revokeObjectURL(img.src);
+      setDiagResult({
+        status: issues.length > 0 ? "warning" : "valid",
+        message: issues.length > 0 ? issues.join("; ") : `${img.width}×${img.height}, ${Math.round(sizeKB)}KB`,
+        width: img.width,
+        height: img.height,
+        sizeKB,
+      });
+    } catch (e) {
+      setDiagResult({ status: "error", message: `Failed to load: ${e}` });
+    }
+  }
+
   return (
     <div className="px-2 py-1">
-      {/* SEO Score */}
-      <div className="mb-2">
-        <p className="text-[11px] text-[var(--color-text-muted)] mb-1">
-          {passed} / {SEO_CHECKS.length} checks passed
-        </p>
-        <div className="space-y-0.5">
-          {SEO_CHECKS.map((check) => {
-            const ok = check.test(meta);
-            return (
-              <div key={check.label} className="flex items-center gap-1.5">
-                {ok ? (
-                  <CheckCircle2
-                    size={12}
-                    className="text-[var(--color-success, #22c55e)] shrink-0"
-                  />
-                ) : (
-                  <XCircle
-                    size={12}
-                    className="text-[var(--color-danger, #ef4444)] shrink-0"
-                  />
-                )}
-                <span className="text-[11px] text-[var(--color-text-primary)]">
-                  {check.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+      {/* Score bar */}
+      <div className="flex items-center gap-2 mb-2 text-[12px] font-medium">
+        <span className="text-[var(--color-success, #22c55e)]">{passCount} pass</span>
+        {warnCount > 0 && <span className="text-[#f59e0b]">{warnCount} warn</span>}
+        {errCount > 0 && <span className="text-[var(--color-danger, #ef4444)]">{errCount} fail</span>}
+      </div>
+
+      {/* Validation list */}
+      <div className="space-y-0.5 mb-3">
+        {validations.map((v) => (
+          <div key={v.field} className="flex items-start gap-1.5" title={v.message}>
+            {v.status === "valid" ? (
+              <CheckCircle2 size={11} className="text-[var(--color-success, #22c55e)] shrink-0 mt-0.5" />
+            ) : v.status === "warning" ? (
+              <AlertTriangle size={11} className="text-[#f59e0b] shrink-0 mt-0.5" />
+            ) : (
+              <XCircle size={11} className="text-[var(--color-danger, #ef4444)] shrink-0 mt-0.5" />
+            )}
+            <span className="text-[12px] text-[var(--color-text-primary)]">
+              {v.field}
+            </span>
+            <span className="text-[11px] text-[var(--color-text-disabled)] ml-auto shrink-0">
+              {v.message}
+            </span>
+          </div>
+        ))}
       </div>
 
       {/* Canonical */}
       {meta.canonical && (
-        <div className="mb-2 text-[11px]">
+        <div className="mb-2 text-[13px]">
           <span className="text-[var(--color-text-muted)]">Canonical: </span>
           <a
             href={meta.canonical}
-            className="text-[var(--color-accent)] hover:underline font-mono text-[10px] break-all"
+            className="text-[var(--color-accent)] hover:underline font-mono text-[12px] break-all"
           >
             {meta.canonical}
           </a>
+        </div>
+      )}
+
+      {/* Image Diagnostics */}
+      {ogImage && (
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Info size={12} className="text-[var(--color-text-muted)]" />
+            <p className="text-[12px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+              Image Diagnostics
+            </p>
+          </div>
+          <div className="flex items-center gap-1 mb-1">
+            <button
+              onClick={() => runImageDiag(ogImage)}
+              disabled={diagResult?.status === "loading"}
+              className="text-[12px] bg-[var(--color-accent-dim)] text-[var(--color-accent)] px-1.5 py-0.5 rounded hover:bg-[var(--color-accent)] hover:text-white transition-colors disabled:opacity-50"
+            >
+              {diagResult?.status === "loading" ? "Checking…" : "Run diagnostics"}
+            </button>
+            {diagResult && diagResult.status !== "loading" && (
+              <span className={diagResult.status === "valid" ? "text-[#22c55e]" : diagResult.status === "warning" ? "text-[#f59e0b]" : "text-[#ef4444]"}>
+                <span className="text-[11px]">{diagResult.message}</span>
+              </span>
+            )}
+          </div>
+          {diagResult && diagResult.width && (
+            <p className="text-[11px] text-[var(--color-text-muted)] font-mono">
+              {diagResult.width}×{diagResult.height} · {Math.round(diagResult.sizeKB ?? 0)}KB
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Social Preview Cards */}
+      {ogImage && (
+        <div className="mb-2">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Globe size={12} className="text-[var(--color-text-muted)]" />
+            <p className="text-[12px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+              Social Previews
+            </p>
+          </div>
+          <div className="space-y-2">
+            {(["facebook", "twitter", "linkedin", "discord"] as const).map((p) => (
+              <SocialPreviewCard key={p} platform={p} meta={record} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* JSON-LD Structured Data */}
+      {meta.ldJson && meta.ldJson.length > 0 && (
+        <div className="mb-2">
+          <button
+            onClick={() => setCollapsedGroups((prev) => {
+              const next = new Set(prev);
+              if (next.has("ldjson")) next.delete("ldjson");
+              else next.add("ldjson");
+              return next;
+            })}
+            className="flex items-center gap-1 text-[12px] font-semibold uppercase tracking-widest text-[var(--color-text-muted)] cursor-pointer w-full text-left py-0.5"
+          >
+            <Code size={12} />
+            <span>Structured Data (JSON-LD)</span>
+            <span className="text-[var(--color-text-disabled)]">({meta.ldJson.length})</span>
+          </button>
+          {!collapsedGroups.has("ldjson") && (
+            <div className="ml-2 mt-1">
+              {meta.ldJson.map((item, i) => (
+                <pre
+                  key={i}
+                  className="text-[11px] font-mono text-[var(--color-text-muted)] whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto p-1 rounded"
+                  style={{ background: "var(--color-surface)" }}
+                >
+                  {JSON.stringify(item, null, 2)}
+                </pre>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -167,30 +280,22 @@ function MetaSubTab() {
         <div key={group.key} className="mb-2">
           <button
             onClick={() => toggleGroup(group.key)}
-            className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-text-muted)] cursor-pointer w-full text-left py-0.5"
+            className="flex items-center gap-1 text-[12px] font-semibold uppercase tracking-widest text-[var(--color-text-muted)] cursor-pointer w-full text-left py-0.5"
           >
             <span>{collapsedGroups.has(group.key) ? "▸" : "▾"}</span>
             <span>{group.label}</span>
-            <span className="text-[var(--color-text-disabled)]">
-              ({group.items.length})
-            </span>
+            <span className="text-[var(--color-text-disabled)]">({group.items.length})</span>
           </button>
           {!collapsedGroups.has(group.key) && (
             <div className="ml-2">
               {group.items.map((item, i) => {
-                const name =
-                  item.name ||
-                  (item as unknown as Record<string, string>).property ||
-                  "";
+                const name = item.name || (item as unknown as Record<string, string>).property || "";
                 return (
-                  <div
-                    key={`${group.key}-${i}`}
-                    className="group flex items-start gap-2 py-0.5"
-                  >
-                    <span className="w-[30%] shrink-0 text-[10px] font-mono text-[var(--color-text-muted)] truncate">
+                  <div key={`${group.key}-${i}`} className="group flex items-start gap-2 py-0.5">
+                    <span className="w-[30%] shrink-0 text-[12px] font-mono text-[var(--color-text-muted)] truncate">
                       {name}
                     </span>
-                    <span className="flex-1 min-w-0 text-[10px] font-mono text-[var(--color-text-primary)] break-all line-clamp-3">
+                    <span className="flex-1 min-w-0 text-[12px] font-mono text-[var(--color-text-primary)] break-all line-clamp-3">
                       {item.content}
                     </span>
                     <CopyIcon text={item.content} />
@@ -223,7 +328,7 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
     (name: string) => {
       inspectorMutate(tabId, "delete-cookie", { name }).then(() => {
         setTimeout(doRefresh, 300);
-      });
+      }).catch(() => {});
     },
     [tabId, doRefresh]
   );
@@ -233,7 +338,7 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
       inspectorMutate(tabId, "set-cookie", { name, value }).then(() => {
         setTimeout(doRefresh, 300);
         setExpandedIdx(null);
-      });
+      }).catch(() => {});
     },
     [tabId, doRefresh]
   );
@@ -248,39 +353,39 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
       setAddName("");
       setAddValue("");
       setShowAdd(false);
-    });
+    }).catch(() => {});
   }, [tabId, addName, addValue, doRefresh]);
 
   const handleClearAll = useCallback(() => {
     if (!window.confirm("Clear all non-HttpOnly cookies?")) return;
     inspectorMutate(tabId, "clear-cookies", {}).then(() => {
       setTimeout(doRefresh, 300);
-    });
+    }).catch(() => {});
   }, [tabId, doRefresh]);
 
   return (
     <div className="px-2 py-1">
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[11px] text-[var(--color-text-muted)]">
+        <span className="text-[13px] text-[var(--color-text-muted)]">
           {cookies.length} cookie{cookies.length !== 1 ? "s" : ""}
         </span>
         <button
           onClick={handleClearAll}
-          className="text-[10px] text-[var(--color-danger, #ef4444)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
+          className="text-[12px] text-[var(--color-danger, #ef4444)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
         >
           Clear All
         </button>
       </div>
 
       {/* Warning */}
-      <div className="text-[10px] text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded p-1.5 mb-2">
+      <div className="text-[12px] text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded p-1.5 mb-2">
         HttpOnly cookies are not shown — they are inaccessible to JavaScript for security reasons.
       </div>
 
       {/* Cookie list */}
       {cookies.length === 0 ? (
-        <p className="text-[11px] text-[var(--color-text-disabled)] italic text-center py-4">
+        <p className="text-[13px] text-[var(--color-text-disabled)] italic text-center py-4">
           No cookies on this page.
         </p>
       ) : (
@@ -300,10 +405,10 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
                 }
               }}
             >
-              <span className="text-[11px] font-mono font-medium text-[var(--color-text-primary)]">
+              <span className="text-[13px] font-mono font-medium text-[var(--color-text-primary)]">
                 {cookie.name}
               </span>
-              <span className="text-[10px] font-mono text-[var(--color-text-muted)] truncate max-w-[120px]">
+              <span className="text-[12px] font-mono text-[var(--color-text-muted)] truncate max-w-[120px]">
                 {cookie.value}
               </span>
               <CopyIcon text={`${cookie.name}=${cookie.value}`} />
@@ -312,7 +417,7 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
                   e.stopPropagation();
                   handleDelete(cookie.name);
                 }}
-                className="opacity-0 group-hover:opacity-100 text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-danger, #ef4444)] cursor-pointer transition-all"
+                className="opacity-0 group-hover:opacity-100 text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-danger, #ef4444)] cursor-pointer transition-all"
               >
                 del
               </button>
@@ -323,18 +428,18 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
                   rows={3}
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
-                  className="w-full mt-1 px-2 py-1 text-[10px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none"
+                  className="w-full mt-1 px-2 py-1 text-[12px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none"
                 />
                 <div className="flex gap-2 mt-1">
                   <button
                     onClick={() => handleSave(cookie.name, editValue)}
-                    className="text-[10px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white cursor-pointer"
+                    className="text-[12px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white cursor-pointer"
                   >
                     Save
                   </button>
                   <button
                     onClick={() => setExpandedIdx(null)}
-                    className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
+                    className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -349,7 +454,7 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
       {!showAdd ? (
         <button
           onClick={() => setShowAdd(true)}
-          className="mt-2 text-[10px] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
+          className="mt-2 text-[12px] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
         >
           + Add Cookie
         </button>
@@ -360,20 +465,20 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
             placeholder="Cookie name"
             value={addName}
             onChange={(e) => setAddName(e.target.value)}
-            className="w-full h-6 px-2 text-[10px] rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] mb-1"
+            className="w-full h-7 px-2 text-[12px] rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] mb-1"
           />
           <textarea
             rows={2}
             placeholder="Cookie value"
             value={addValue}
             onChange={(e) => setAddValue(e.target.value)}
-            className="w-full px-2 py-1 text-[10px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none mb-1"
+            className="w-full px-2 py-1 text-[12px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none mb-1"
           />
           <div className="flex gap-2">
             <button
               onClick={handleAdd}
               disabled={!addName.trim()}
-              className="text-[10px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white disabled:opacity-40 cursor-pointer"
+              className="text-[12px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white disabled:opacity-40 cursor-pointer"
             >
               Add
             </button>
@@ -383,7 +488,7 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
                 setAddName("");
                 setAddValue("");
               }}
-              className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
+              className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
             >
               Cancel
             </button>
@@ -437,7 +542,7 @@ function StorageSubTab({
         key,
       }).then(() => {
         setTimeout(doRefresh, 300);
-      });
+      }).catch(() => {});
     },
     [tabId, storageSubTab, doRefresh]
   );
@@ -451,7 +556,7 @@ function StorageSubTab({
       }).then(() => {
         setTimeout(doRefresh, 300);
         setExpandedIdx(null);
-      });
+      }).catch(() => {});
     },
     [tabId, storageSubTab, doRefresh]
   );
@@ -467,7 +572,7 @@ function StorageSubTab({
       setAddKey("");
       setAddValue("");
       setShowAdd(false);
-    });
+    }).catch(() => {});
   }, [tabId, storageSubTab, addKey, addValue, doRefresh]);
 
   const handleClear = useCallback(() => {
@@ -481,7 +586,7 @@ function StorageSubTab({
       storeType: storageSubTab,
     }).then(() => {
       setTimeout(doRefresh, 300);
-    });
+    }).catch(() => {});
   }, [tabId, storageSubTab, doRefresh]);
 
   const formatValue = (val: string) => {
@@ -500,7 +605,7 @@ function StorageSubTab({
         <div className="flex gap-2">
           <button
             onClick={() => setStorageSubTab("localStorage")}
-            className={`text-[10px] cursor-pointer transition-colors ${
+            className={`text-[12px] cursor-pointer transition-colors ${
               storageSubTab === "localStorage"
                 ? "text-[var(--color-text-primary)] border-b border-[var(--color-accent)]"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
@@ -510,7 +615,7 @@ function StorageSubTab({
           </button>
           <button
             onClick={() => setStorageSubTab("sessionStorage")}
-            className={`text-[10px] cursor-pointer transition-colors ${
+            className={`text-[12px] cursor-pointer transition-colors ${
               storageSubTab === "sessionStorage"
                 ? "text-[var(--color-text-primary)] border-b border-[var(--color-accent)]"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
@@ -519,14 +624,14 @@ function StorageSubTab({
             Session Storage
           </button>
         </div>
-        <span className="text-[10px] text-[var(--color-text-disabled)]">
+        <span className="text-[12px] text-[var(--color-text-disabled)]">
           Using {formatBytes(totalSize)}
         </span>
       </div>
 
       {/* Items */}
       {items.length === 0 ? (
-        <p className="text-[11px] text-[var(--color-text-disabled)] italic text-center py-4">
+        <p className="text-[13px] text-[var(--color-text-disabled)] italic text-center py-4">
           No items in {storageSubTab === "localStorage" ? "localStorage" : "sessionStorage"}.
         </p>
       ) : (
@@ -546,10 +651,10 @@ function StorageSubTab({
                 }
               }}
             >
-              <span className="text-[11px] font-mono font-medium text-[var(--color-text-primary)] truncate max-w-[100px]">
+              <span className="text-[13px] font-mono font-medium text-[var(--color-text-primary)] truncate max-w-[100px]">
                 {item.key}
               </span>
-              <span className="flex-1 min-w-0 text-[10px] font-mono text-[var(--color-text-muted)] truncate">
+              <span className="flex-1 min-w-0 text-[12px] font-mono text-[var(--color-text-muted)] truncate">
                 {formatValue(item.value).split("\n")[0]}
               </span>
               <CopyIcon text={item.value} />
@@ -558,7 +663,7 @@ function StorageSubTab({
                   e.stopPropagation();
                   handleDelete(item.key);
                 }}
-                className="opacity-0 group-hover:opacity-100 text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-danger, #ef4444)] cursor-pointer transition-all"
+                className="opacity-0 group-hover:opacity-100 text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-danger, #ef4444)] cursor-pointer transition-all"
               >
                 del
               </button>
@@ -569,18 +674,18 @@ function StorageSubTab({
                   rows={4}
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
-                  className="w-full mt-1 px-2 py-1 text-[10px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none"
+                  className="w-full mt-1 px-2 py-1 text-[12px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none"
                 />
                 <div className="flex gap-2 mt-1">
                   <button
                     onClick={() => handleSave(item.key, editValue)}
-                    className="text-[10px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white cursor-pointer"
+                    className="text-[12px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white cursor-pointer"
                   >
                     Save
                   </button>
                   <button
                     onClick={() => setExpandedIdx(null)}
-                    className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
+                    className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -595,7 +700,7 @@ function StorageSubTab({
       {!showAdd ? (
         <button
           onClick={() => setShowAdd(true)}
-          className="mt-2 text-[10px] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
+          className="mt-2 text-[12px] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
         >
           + Add Item
         </button>
@@ -606,20 +711,20 @@ function StorageSubTab({
             placeholder="Key"
             value={addKey}
             onChange={(e) => setAddKey(e.target.value)}
-            className="w-full h-6 px-2 text-[10px] rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] mb-1"
+            className="w-full h-7 px-2 text-[12px] rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] mb-1"
           />
           <textarea
             rows={3}
             placeholder="Value"
             value={addValue}
             onChange={(e) => setAddValue(e.target.value)}
-            className="w-full px-2 py-1 text-[10px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none mb-1"
+            className="w-full px-2 py-1 text-[12px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none mb-1"
           />
           <div className="flex gap-2">
             <button
               onClick={handleAdd}
               disabled={!addKey.trim()}
-              className="text-[10px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white disabled:opacity-40 cursor-pointer"
+              className="text-[12px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white disabled:opacity-40 cursor-pointer"
             >
               Add
             </button>
@@ -629,7 +734,7 @@ function StorageSubTab({
                 setAddKey("");
                 setAddValue("");
               }}
-              className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
+              className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
             >
               Cancel
             </button>
@@ -641,7 +746,7 @@ function StorageSubTab({
       {items.length > 0 && (
         <button
           onClick={handleClear}
-          className="mt-2 w-full text-[10px] text-[var(--color-danger, #ef4444)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors py-1"
+          className="mt-2 w-full text-[12px] text-[var(--color-danger, #ef4444)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors py-1"
         >
           Clear All
         </button>
@@ -659,7 +764,13 @@ export function InspectorPanel() {
   const activeTab = getLiveWorkspaceActiveTab(ws, tabs);
   const activeTabId = activeTab?.id ?? null;
 
-  const inspectorStore = useInspectorStore();
+  const activeSubTab = useInspectorStore((s) => s.activeSubTab);
+  const isLoading = useInspectorStore((s) => s.isLoading);
+  const error = useInspectorStore((s) => s.error);
+  const meta = useInspectorStore((s) => s.meta);
+  const cookies = useInspectorStore((s) => s.cookies);
+  const localStorageItems = useInspectorStore((s) => s.localStorageItems);
+
   const [storageSubTab, setStorageSubTab] = useState<
     "localStorage" | "sessionStorage"
   >("localStorage");
@@ -667,37 +778,58 @@ export function InspectorPanel() {
   const refresh = useCallback(
     (subTab: InspectorSubTab) => {
       if (!activeTabId) return;
+      const store = useInspectorStore.getState();
       const type =
         subTab === "storage"
           ? storageSubTab
           : subTab;
-      inspectorStore.setIsLoading(true);
+      store.setIsLoading(true);
       evalInspector(activeTabId, type as "meta" | "cookies" | "localStorage" | "sessionStorage").catch(
         (e) => {
-          inspectorStore.setError(String(e));
-          inspectorStore.setIsLoading(false);
+          const s = useInspectorStore.getState();
+          s.setError(String(e));
+          s.setIsLoading(false);
         }
       );
     },
-    [activeTabId, storageSubTab, inspectorStore]
+    [activeTabId, storageSubTab]
   );
 
-  // Refresh on active tab or subtab change
+  // Refresh on active tab or subtab change — clear stale data on tab switch
   useEffect(() => {
     if (!activeTabId || !activeTab?.url) return;
-    refresh(inspectorStore.activeSubTab);
+    const store = useInspectorStore.getState();
+    if (store.lastTabId !== activeTabId) {
+      store.clearAll();
+      store.setIsLoading(true);
+      store.setLastTabId(activeTabId);
+    }
+    refresh(activeSubTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTabId, inspectorStore.activeSubTab]);
+  }, [activeTabId, activeSubTab, storageSubTab]);
 
   // Auto-refresh every 3 seconds
   useEffect(() => {
     if (!activeTabId || !activeTab?.url) return;
     const id = setInterval(() => {
-      refresh(inspectorStore.activeSubTab);
+      refresh(activeSubTab);
     }, 3000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTabId, activeTab?.url, inspectorStore.activeSubTab]);
+  }, [activeTabId, activeTab?.url, activeSubTab, storageSubTab]);
+
+  // Safety net: force isLoading false after 5 seconds if stuck
+  useEffect(() => {
+    if (!isLoading) return;
+    const timeout = setTimeout(() => {
+      const s = useInspectorStore.getState();
+      if (s.isLoading) {
+        s.setIsLoading(false);
+        s.setError("Inspector request timed out");
+      }
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, [isLoading]);
 
   if (!activeTabId || !activeTab?.url) {
     return (
@@ -729,9 +861,9 @@ export function InspectorPanel() {
           {subTabs.map((st) => (
             <button
               key={st.key}
-              onClick={() => inspectorStore.setActiveSubTab(st.key)}
-              className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1.5 cursor-pointer transition-colors ${
-                inspectorStore.activeSubTab === st.key
+              onClick={() => useInspectorStore.getState().setActiveSubTab(st.key)}
+              className={`text-[12px] font-semibold uppercase tracking-wide px-2 py-1.5 cursor-pointer transition-colors ${
+                activeSubTab === st.key
                   ? "text-[var(--color-text-primary)] border-b-2 border-[var(--color-accent)]"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
               }`}
@@ -741,24 +873,24 @@ export function InspectorPanel() {
           ))}
         </div>
         <button
-          onClick={() => refresh(inspectorStore.activeSubTab)}
+          onClick={() => refresh(activeSubTab)}
           title="Refresh inspector data"
           className="px-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
         >
           <RotateCw
             size={12}
-            className={inspectorStore.isLoading ? "animate-spin" : ""}
+            className={isLoading ? "animate-spin" : ""}
           />
         </button>
       </div>
 
       {/* Error banner */}
-      {inspectorStore.error && (
-        <div className="px-2 py-1 text-[10px] text-[#f59e0b] bg-[#f59e0b]/10 border-b border-[#f59e0b]/30 flex items-center gap-2">
+      {error && (
+        <div className="px-2 py-1 text-[12px] text-[#f59e0b] bg-[#f59e0b]/10 border-b border-[#f59e0b]/30 flex items-center gap-2">
           <span className="shrink-0">⚠</span>
-          <span className="flex-1 truncate">{inspectorStore.error}</span>
+          <span className="flex-1 truncate">{error}</span>
           <button
-            onClick={() => refresh(inspectorStore.activeSubTab)}
+            onClick={() => refresh(activeSubTab)}
             className="text-[var(--color-accent)] hover:text-[var(--color-text-primary)] cursor-pointer shrink-0"
           >
             Retry
@@ -769,10 +901,10 @@ export function InspectorPanel() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {/* Loading state (first load) */}
-        {inspectorStore.isLoading &&
-          !inspectorStore.meta &&
-          inspectorStore.cookies.length === 0 &&
-          inspectorStore.localStorageItems.length === 0 && (
+        {isLoading &&
+          !meta &&
+          cookies.length === 0 &&
+          localStorageItems.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <RotateCw
                 size={20}
@@ -782,15 +914,15 @@ export function InspectorPanel() {
           )}
 
         {/* Meta sub-tab */}
-        {inspectorStore.activeSubTab === "meta" && <MetaSubTab />}
+        {activeSubTab === "meta" && <MetaSubTab />}
 
         {/* Cookies sub-tab */}
-        {inspectorStore.activeSubTab === "cookies" && (
+        {activeSubTab === "cookies" && (
           <CookiesSubTab tabId={activeTabId} />
         )}
 
         {/* Storage sub-tab */}
-        {inspectorStore.activeSubTab === "storage" && (
+        {activeSubTab === "storage" && (
           <StorageSubTab
             tabId={activeTabId}
             storageSubTab={storageSubTab}

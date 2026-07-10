@@ -13,6 +13,8 @@ const DEFAULTS: AppSettings = {
   customPorts: [],
   clearOnClose: false,
   compactMode: false,
+  maxConcurrentWebviews: 10,
+  userAgent: null,
 };
 
 interface SettingsStore {
@@ -40,6 +42,20 @@ export const useSettingsStore = create<SettingsStore>()(
       setCompactMode: (v) => { set((s) => { s.settings.compactMode = v; }); },
       reset: () => { set((s) => { s.settings = DEFAULTS; }); },
     })),
-    { name: "xevo-settings" }
+    {
+      name: "xevo-settings",
+      version: 2,
+      migrate: (persistedState, version) => {
+        if (version === 0) {
+          const state = persistedState as any;
+          return { settings: { ...DEFAULTS, ...(state.settings || {}) } };
+        }
+        if (version === 1) {
+          const state = persistedState as any;
+          return { settings: { ...DEFAULTS, ...(state.settings || {}) } };
+        }
+        return persistedState;
+      },
+    }
   )
 );

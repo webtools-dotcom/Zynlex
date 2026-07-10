@@ -39,12 +39,12 @@ export function StatusBar({ isLoading, loadTime, url, hoveredUrl }: StatusBarPro
 
   return (
     <div
-      className="flex items-center h-6 px-3 gap-4 shrink-0"
+      className="flex items-center h-7 px-3 gap-4 shrink-0"
       style={{
         background: "var(--color-base)",
         borderTop: "1px solid var(--color-border)",
         color: "var(--color-text-disabled)",
-        fontSize: "10px",
+        fontSize: "11px",
       }}
     >
       {leftContent}

@@ -8,41 +8,20 @@ import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
-import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
+import { resolveInput } from "@/lib/url";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 interface HomePageProps {
   onNavigate?: ReturnType<typeof useWebviewBridge>["navigate"] | null;
 }
 
-function resolveInput(raw: string, searchEngine: string, customSearchUrl: string): string {
-  const s = raw.trim();
-  if (!s) return "";
-  if (/^https?:\/\//i.test(s)) return s;
-  if (/^localhost(:\d+)?(\/.*)?$/i.test(s) || /^127\.0\.0\.1/.test(s))
-    return `http://${s}`;
-  if (/^[\w-]+\.[\w.-]+(\/.*)?$/.test(s) && !s.includes(" "))
-    return `https://${s}`;
-  if (searchEngine === "custom" && customSearchUrl) {
-    return customSearchUrl.replace("%s", encodeURIComponent(s));
-  }
-  const engine = searchEngine === "duckduckgo" ? "duckduckgo.com"
-    : searchEngine === "bing" ? "bing.com"
-    : "google.com";
-  return `https://${engine}/search?q=${encodeURIComponent(s)}`;
-}
-
 export function HomePage({ onNavigate = null }: HomePageProps) {
   const { servers } = useServersStore();
   const { bookmarks } = useBookmarksStore();
-  const { workspaces, activeWorkspaceId, addTabToWorkspace, setActiveTab } = useWorkspacesStore();
-  const { tabs, addTab } = useTabsStore();
+  const { activeWorkspaceId, addTabToWorkspace, setActiveTab } = useWorkspacesStore();
+  const { addTab } = useTabsStore();
   const { settings } = useSettingsStore();
   const setActivePanel = useUIStore((s) => s.setActivePanel);
-
-  const ws = workspaces[activeWorkspaceId];
-  const activeTab = getLiveWorkspaceActiveTab(ws, tabs);
-  const activeTabId = activeTab?.id ?? null;
 
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -83,8 +62,6 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
     if (!url) return;
     if (onNavigate) {
       onNavigate(url);
-    } else if (activeTabId) {
-      addTab(activeWorkspaceId, { url });
     } else {
       const id = addTab(activeWorkspaceId, { url });
       addTabToWorkspace(activeWorkspaceId, id);
@@ -163,8 +140,8 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
               </button>
             )}
           </form>
-          <p className="text-[10px] text-[var(--color-text-disabled)] mt-2">
-            <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded text-[9px] font-mono">Ctrl+L</kbd>{" "}
+          <p className="text-[12px] text-[var(--color-text-disabled)] mt-2">
+            <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded text-[11px] font-mono">Ctrl+L</kbd>{" "}
             focuses the address bar
           </p>
         </div>
@@ -191,14 +168,14 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
           <div className="flex items-center justify-between mb-3 relative">
             <div className="flex items-center gap-1.5">
               <Server size={12} className="text-[var(--color-text-disabled)]" />
-              <h2 className="text-[10px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
+              <h2 className="text-[12px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
                 Live Servers
               </h2>
             </div>
             {liveServers.length > 0 && (
               <button
                 onClick={() => setActivePanel("servers")}
-                className="text-[10px] text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
+                className="text-[12px] text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
               >
                 View all
               </button>
@@ -265,13 +242,13 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5">
                 <Bookmark size={12} className="text-[var(--color-text-disabled)]" />
-                <h2 className="text-[10px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
+                <h2 className="text-[12px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
                   Bookmarks
                 </h2>
               </div>
               <button
                 onClick={() => setActivePanel("bookmarks")}
-                className="text-[10px] text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
+                className="text-[12px] text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
               >
                 View all
               </button>
@@ -295,7 +272,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
                     <span className="text-[12px] text-[var(--color-text-primary)] truncate">
                       {bookmark.title}
                     </span>
-                    <span className="text-[10px] text-[var(--color-text-muted)] truncate font-mono">
+                    <span className="text-[12px] text-[var(--color-text-muted)] truncate font-mono">
                       {bookmark.url}
                     </span>
                   </div>

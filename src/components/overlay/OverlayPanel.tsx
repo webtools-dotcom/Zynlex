@@ -111,7 +111,7 @@ export function OverlayPanel({ apiTesterContent, notesContent }: OverlayPanelPro
       {/* Drag handle */}
       <div
         onMouseDown={handleDragStart}
-        className="h-1.5 flex items-center justify-center cursor-ns-resize flex-shrink-0 hover:bg-[var(--color-hover)] transition-colors"
+        className="h-2.5 flex items-center justify-center cursor-ns-resize flex-shrink-0 hover:bg-[var(--color-hover)] transition-colors"
         style={{ borderTop: "1px solid var(--color-border-subtle)" }}
       >
         <GripHorizontal

@@ -24,6 +24,7 @@
  *   Ctrl/Cmd+T             → new tab
  *   Ctrl/Cmd+W             → close tab
  *   Ctrl/Cmd+Shift+T       → reopen last closed tab
+ *   Ctrl/Cmd+Shift+S       → take screenshot
  *   Ctrl/Cmd+L             → focus address bar
  *   Alt+ArrowLeft          → back
  *   Alt+ArrowRight         → forward
@@ -42,7 +43,8 @@ import {
   getLiveWorkspaceTabIds,
 } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
-import { closeTabWebview } from "@/services/browser";
+import { closeTabWebview, takeScreenshot } from "@/services/browser";
+import { copyToClipboard } from "@/lib/screenshot";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
@@ -108,6 +110,18 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     useWorkspacesStore.getState().addTabToWorkspace(wsId, newId);
     useWorkspacesStore.getState().setActiveTab(wsId, newId);
     useTabsStore.getState().clearLastClosedTab();
+    return;
+  }
+
+  if (shortcut === "ctrl+shift+s") {
+    takeScreenshot()
+      .then(({ bytes }) => copyToClipboard(bytes))
+      .catch((error) => {
+        useUIStore.getState().pushToast(
+          `Screenshot failed: ${String(error)}`,
+          "danger"
+        );
+      });
     return;
   }
 
@@ -414,6 +428,20 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         useTabsStore.getState().clearLastClosedTab();
         return;
       }
+
+      // ── Ctrl+Shift+S → take screenshot ─────────────────────────────
+      if (mod && e.shiftKey && !e.altKey && e.key === "S") {
+        e.preventDefault();
+        takeScreenshot()
+          .then(({ bytes }) => copyToClipboard(bytes))
+          .catch((error) => {
+            useUIStore.getState().pushToast(
+              `Screenshot failed: ${String(error)}`,
+              "danger"
+            );
+          });
+        return;
+      }
     }
 
     window.addEventListener("keydown", onKey);
@@ -425,6 +453,8 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
   // keydown listener that forwards shortcuts to Rust, which re-emits
   // them here as xevo://shortcut events.
   useEffect(() => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+
     let cancelled = false;
     let unlisten: UnlistenFn | null = null;
 

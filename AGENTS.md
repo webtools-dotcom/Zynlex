@@ -73,6 +73,18 @@ At the start of every session, in this exact order:
 
 Do not open any other file speculatively.
 
+### graphify knowledge graph
+
+This repo has a knowledge graph at `graphify-out/graph.json` (735 nodes, 1627 edges, 46 communities — code-only, 100% extracted via tree-sitter AST, no LLM cost). **Query it before grepping/reading multiple files:**
+
+- `graphify query "<question>"` — BFS traversal for plain-language questions
+- `graphify path "A" "B"` — shortest path between two symbols
+- `graphify explain "X"` — all connections of a node (calls, imports, references)
+- `graphify affected "X"` — reverse impact analysis
+- `graphify-out/GRAPH_REPORT.md` — god nodes, community structure, surprising connections
+
+After significant code changes, run `graphify update .` (AST-only, no API cost) to keep the graph fresh.
+
 ### Session end rule
 
 After every completed task, in this exact order:

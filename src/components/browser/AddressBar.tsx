@@ -9,27 +9,7 @@ import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useSettingsStore } from "@/stores/settings";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
-
-function resolveInput(
-  raw: string,
-  searchEngine: string,
-  customSearchUrl: string
-): string {
-  const s = raw.trim();
-  if (!s) return "";
-  if (/^https?:\/\//i.test(s)) return s;
-  if (/^localhost(:\d+)?(\/.*)?$/i.test(s) || /^127\.0\.0\.1/.test(s))
-    return `http://${s}`;
-  if (/^[\w-]+\.[\w.-]+(\/.*)?$/.test(s) && !s.includes(" "))
-    return `https://${s}`;
-  if (searchEngine === "custom" && customSearchUrl) {
-    return customSearchUrl.replace("%s", encodeURIComponent(s));
-  }
-  const engine = searchEngine === "duckduckgo" ? "duckduckgo.com"
-    : searchEngine === "bing" ? "bing.com"
-    : "google.com";
-  return `https://${engine}/search?q=${encodeURIComponent(s)}`;
-}
+import { resolveInput } from "@/lib/url";
 
 interface AddressBarProps {
   onNavigate: ((url: string) => Promise<void>) | null;
@@ -73,7 +53,7 @@ export function AddressBar({
   );
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") handleNavigate(draft);
+    if (e.key === "Enter") handleNavigate(draft).catch(() => {});
     if (e.key === "Escape") {
       setDraft(activeTab?.url ?? "");
       inputRef.current?.blur();
@@ -114,7 +94,7 @@ export function AddressBar({
 
   return (
     <div
-      className="h-11 flex items-center gap-1 px-2 flex-shrink-0"
+      className="h-12 flex items-center gap-1 px-2 flex-shrink-0"
       style={{
         background: "var(--xevo-address-bar)",
         borderBottom: "1px solid var(--xevo-border)",
@@ -125,13 +105,13 @@ export function AddressBar({
         onClick={() => onBack?.()}
         title="Back (Alt+←)"
         className={cn(
-          "w-[26px] h-[26px] flex items-center justify-center rounded-[5px] transition-colors",
+          "w-[30px] h-[30px] flex items-center justify-center rounded-[5px] transition-colors",
           canGoBack
-            ? "text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] hover:bg-[rgba(255,255,255,0.06)] cursor-pointer"
+            ? "text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] hover:bg-[rgba(255,255,255,0.10)] cursor-pointer"
             : "text-[var(--xevo-text-faint)] cursor-not-allowed opacity-25",
         )}
       >
-        <ArrowLeft size={14} />
+        <ArrowLeft size={15} />
       </button>
 
       <button
@@ -139,13 +119,13 @@ export function AddressBar({
         onClick={() => onForward?.()}
         title="Forward (Alt+→)"
         className={cn(
-          "w-[26px] h-[26px] flex items-center justify-center rounded-[5px] transition-colors",
+          "w-[30px] h-[30px] flex items-center justify-center rounded-[5px] transition-colors",
           canGoForward
-            ? "text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] hover:bg-[rgba(255,255,255,0.06)] cursor-pointer"
+            ? "text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] hover:bg-[rgba(255,255,255,0.10)] cursor-pointer"
             : "text-[var(--xevo-text-faint)] cursor-not-allowed opacity-25",
         )}
       >
-        <ArrowRight size={14} />
+        <ArrowRight size={15} />
       </button>
 
       <button
@@ -153,13 +133,13 @@ export function AddressBar({
         onClick={() => onReload?.()}
         title="Reload (Ctrl+R)"
         className={cn(
-          "w-[26px] h-[26px] flex items-center justify-center rounded-[5px] transition-colors",
+          "w-[30px] h-[30px] flex items-center justify-center rounded-[5px] transition-colors",
           onReload
-            ? "text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] hover:bg-[rgba(255,255,255,0.06)] cursor-pointer"
+            ? "text-[var(--xevo-text-muted)] hover:text-[var(--xevo-text)] hover:bg-[rgba(255,255,255,0.10)] cursor-pointer"
             : "text-[var(--xevo-text-faint)] cursor-not-allowed opacity-25",
         )}
       >
-        <RotateCw size={13} />
+        <RotateCw size={14} />
       </button>
 
       {/*
@@ -173,7 +153,7 @@ export function AddressBar({
       */}
       <div
         className={cn(
-          "flex-1 flex items-center gap-2 h-7 px-2 rounded-[7px] border transition-all duration-150",
+          "flex-1 flex items-center gap-2 h-8 px-2 rounded-[7px] border transition-all duration-150",
           focused
             ? "border-[var(--xevo-accent-border)] bg-[var(--xevo-content-bg)]"
             : "border-[var(--xevo-border)] bg-[var(--xevo-content-bg)] hover:border-[var(--xevo-text-faint)]",
@@ -181,15 +161,15 @@ export function AddressBar({
       >
         <div className="flex-shrink-0 w-4 h-4 text-[var(--xevo-text-faint)] flex items-center justify-center">
           {focused ? (
-            <Search size={11} />
+            <Search size={12} />
           ) : activeTab?.url ? (
             isSecure ? (
-              <Lock size={11} className="text-[color:var(--xevo-success)]/70" />
+              <Lock size={12} className="text-[color:var(--xevo-success)]/70" />
             ) : (
-              <Globe size={11} className="text-[color:var(--xevo-warning)]/70" />
+              <Globe size={12} className="text-[color:var(--xevo-warning)]/70" />
             )
           ) : (
-            <Search size={11} />
+            <Search size={12} />
           )}
         </div>
 
@@ -208,7 +188,7 @@ export function AddressBar({
             setFocused(false);
           }}
           placeholder="Search or enter address (Ctrl+L)"
-          className="flex-1 bg-transparent outline-none text-[11px] font-mono text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)]"
+          className="flex-1 bg-transparent outline-none text-[12px] font-mono text-[var(--xevo-text)] placeholder:text-[var(--xevo-text-faint)]"
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
@@ -222,7 +202,7 @@ export function AddressBar({
             }}
             className="flex-shrink-0 text-[var(--xevo-text-faint)] hover:text-[var(--xevo-text-muted)] transition-colors"
           >
-            <X size={11} />
+            <X size={12} />
           </button>
         )}
       </div>

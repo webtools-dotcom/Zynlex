@@ -17,7 +17,7 @@ export function getLiveWorkspaceTabIds(
     liveTabIds.push(tabId);
   }
 
-  if (dups > 0) {
+  if (dups > 0 && import.meta.env.DEV) {
     console.warn(`[workspaceTabs] ${dups} duplicate tabId(s) in workspace; ignored`);
   }
 
