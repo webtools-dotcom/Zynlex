@@ -20,7 +20,6 @@ import {
   createTab,
   navigateTab,
   setWebviewBounds,
-  repositionWebview,
   hideTabWebview,
   showTabWebview,
   closeTabWebview,
@@ -39,6 +38,7 @@ import {
   setMemoryTarget,
   saveTabState,
   restoreTabState,
+  onNetworkEntry,
   type BrowserBounds,
 } from "@/services/browser";
 import { useSettingsStore } from "@/stores/settings";
@@ -53,7 +53,6 @@ import {
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { onNetworkEntry } from "@/services/browser";
 import { useNetworkStore } from "@/stores/network";
 
 let _netEntryId = 0;
@@ -820,18 +819,17 @@ export function useWebviewBridge(
   // ── Network entry listener ────────────────────────────────────────
   useEffect(() => {
     if (!IS_TAURI) return;
+    let cancelled = false;
     const addEntry = useNetworkStore.getState().addEntry;
     const unlisten = onNetworkEntry((payload) => {
+      if (cancelled) return;
       addEntry({
         id: `net-${++_netEntryId}`,
-        reasonPhrase: "",
-        resourceType: "other",
-        durationMs: 0,
-        contentLength: -1,
         ...payload,
       });
     });
     return () => {
+      cancelled = true;
       unlisten.then((fn) => fn());
     };
   }, []);
@@ -866,13 +864,12 @@ export function useWebviewBridge(
         ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
       const bounds = computeWebviewBounds(rect, overlayH);
       console.log("[XEVO-BOUNDS] SYNC (sidebarToggle) computed:", bounds);
-      repositionWebview(
-        tab.id,
-        bounds.x,
-        bounds.y,
-        bounds.width,
-        bounds.height
-      ).catch((err) => {
+      setWebviewBounds(tab.id, {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+      }).catch((err) => {
         console.error("[XEVO-BOUNDS] sidebarToggle Rust ERROR:", err, "for bounds:", bounds);
       });
     }, 80);

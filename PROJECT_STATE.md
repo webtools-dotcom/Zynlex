@@ -28,63 +28,26 @@
 - **4 files changed:** `browser.rs`, `lib.rs`, `browser.ts`, `useWebviewBridge.ts`
 - Verified: `cargo check` + `tsc --noEmit` clean
 
-### Network Log Feature — REMOVED (v1.31.1)
-- **Problem:** The network log feature (capturing fetch/XHR from external URL webviews) never worked because no reliable IPC bridge could be established from external URL contexts to the Tauri backend.
-- **Attempts:**
-  - **Phase 1 (Tauri capability):** `__TAURI_INTERNALS__` blocked by Tauri 2 security for external URLs — failed.
-  - **Phase 2 (COM WebMessageReceivedEventHandler):** Registered a COM handler on `ICoreWebView2` via `webview2-com`. Handler registered successfully (`token=23`) but `window.chrome.webview.postMessage()` NEVER triggered it — failed.
-  - **Phase 3 (diagnostics):** Extensive `console.error` tracing confirmed buffer init, fetch monkeypatch, entry push all work. COM handler registers but never fires. Root cause unknown — possible WebView2 runtime quirk, security boundary, or COM interface delegation issue.
-- **Removal:** All network log code fully extracted — `webview_ipc.rs`, `NetworkPanel.tsx`, `network.ts` deleted; `NETWORK_SCRIPT`, `register_webview_ipc`, `browser_set_network_capturing`, `onNetworkEntry`, `setNetworkCapturing`, `is_capturing` state removed.
-- **Documentation:** See `networklog_issues.md` for full postmortem.
+### Network Panel (v1.32.x)
 
-### Network Log Feature — Rebuilt with Native WebView2 COM (v1.32.0-dev)
+All requests from browser webviews are captured via native WebView2 COM handlers (`ICoreWebView2::add_WebResourceRequested` + `ICoreWebView2_2::add_WebResourceResponseReceived`), registered from Tauri's `.with_webview()` on the main UI thread. The network capture is registered AFTER the webview is built (with `about:blank`) but BEFORE navigating to the real URL, ensuring no requests are missed.
 
-New approach (replaces the failed JS-monkeypatch + chrome.webview.postMessage approach):
+**Rust backend** (`register_webview_network_capture` in `browser.rs`):
+- Captures method/URL, status code, reason phrase, response headers, body (via `IStream`, 8KB chunks, 64KB cap)
+- Resource type detection via `COREWEBVIEW2_WEB_RESOURCE_CONTEXT` (17 types: document, stylesheet, image, script, xhr, fetch, font, etc.)
+- Request timing via `Instant` in shared `HashMap`, skipping `http://ipc.localhost` / `tauri://localhost` internal traffic
 
-- **Architecture:** Uses native `ICoreWebView2::add_WebResourceRequested` + `ICoreWebView2_2::add_WebResourceResponseReceived` COM handlers, registered from Tauri's `.with_webview()` (executes on the main UI thread).
-- **Why it works:** The previous attempt failed because handlers were registered from a Tokio async worker thread. The root cause is documented in `networklog_issues.md`. The correct fix is to route ALL WebView2 COM interaction through `.with_webview()` — proven working by the existing `apply_memory_target()` function.
-- **Phase 0:** Cargo dependency audit — `webview2-com = "0.38"` → `0.38.2`, `windows = "0.61"` → `0.61.3`. Single resolved versions each. Already pinned correctly.
-- **Phase 1 (Proof of concept):** Added `register_webview_network_capture()` in `browser.rs:1245`. Registers `AddWebResourceRequestedFilter("*", ALL)` + `add_WebResourceRequested` handler that emits `browser://network-request` events. Called from `create_webview_for_tab` at line 703.
-- **Phase 2 (Multi-tab):** Automatically handled — every tab calls `create_webview_for_tab` which registers independently.
-- **Phase 3+4 (Response + body reading):** Extended `register_webview_network_capture` to QI for `ICoreWebView2_2`, register `WebResourceResponseReceivedEventHandler`, extract status code + headers via `ICoreWebView2HttpHeadersCollectionIterator`, read body via `ICoreWebView2WebResourceResponseView::GetContent` with `WebResourceResponseViewGetContentCompletedHandler`, iterate `IStream` in 8KB chunks capped at 64KB, emit `browser://network-entry` Tauri event with method/url/statusCode/headers/body/tabId.
-
-### Network Health Monitor Enhancement (v1.32.0-dev continued)
-
-**Rust backend enhancements:**
-- Added `ResourceContext()` capture (`COREWEBVIEW2_WEB_RESOURCE_CONTEXT` enum) — detects resource type: document, stylesheet, image, script, xhr, fetch, font, media, websocket, manifest, ping, etc. (17 values)
-- Added request timing via `std::time::Instant` stored in a shared `HashMap<(tabId, url), (Instant, resourceType)>` — computes `durationMs` per request
-- Added `Content-Length` parsing from response headers — `contentLength` field
-- Added `ReasonPhrase()` capture — `reasonPhrase` field ("OK", "Not Found", etc.)
-- Removed debug `eprintln!` logging
-- All new fields emitted in `browser://network-entry` event
-
-**Frontend enhancements:**
-- Updated `NetworkLogEntry` interface with: `reasonPhrase`, `resourceType`, `durationMs`, `contentLength` (replaced unused `timestamp`)
-- New helper functions: `formatSize()`, `formatDuration()`, `resourceTypeLabel()`, `entryIsError()`, `entryIsSlow()`, `entryIsApi()`
-- New `src/lib/networkCopy.ts` — `entryToCurl()`, `entryToFetch()`, `copyToClipboard()` utilities
-- Removed all `[NET-DBG]` debug logging from frontend
-
-**NetworkPanel rewrite:**
-- **Summary bar:** request count with total transferred size, error count (red), slow count (yellow), API count (cyan), Clear button
-- **Filter chips:** All, Errors (4xx/5xx), API (XHR/Fetch), Slow (>1s) — with dynamic counts
-- **Column headers:** Method, Status, Type, URL, Size, Time
-- **Enhanced rows:** Method (color-coded), Status (color-coded), Type badge (colored by resource type), URL (truncated), Size (B/KB/MB), Time (ms/s), hover-revealed cURL copy button
-- **Detail pane tabs:** Headers (URL, status, reason phrase, type, size, time, response headers), Body (response preview), Copy (cURL + fetch() with copy buttons)
-- All existing behavior preserved: auto-scroll, Clear button, tab-specific scoping, DetailPane expand/collapse
-
-### Timing Fix (v1.32.1)
-- **Root cause:** `register_webview_network_capture` was called after `webview.build()` — since the builder's URL starts navigation during `build()`, fast-loading URLs (like `jsonplaceholder.typicode.com`) responded before handlers were registered → 0 entries.
-- **Fix:** Build the webview with `about:blank`, register network capture handlers, then navigate to the real URL. This ensures handlers are in place before any real request is made.
-- **Changed:** `src-tauri/src/commands/browser.rs:631-708` — cloned `parsed` URL, changed builder URL to `about:blank`, added `webview.navigate(target_url)` after handler registration
-- **Verified:** `cargo check` — clean; runtime: 4 requests captured for jsonplaceholder (was 0)
-
-### Files changed
-- `src-tauri/src/commands/browser.rs` — Extended function signature, added response handler + body reading + event emission, updated call site; timing fix
-- `cargo check` — clean
+**Frontend** (`NetworkPanel.tsx`, `stores/network.ts`, `lib/networkCopy.ts`):
+- Summary bar: request count, total size, error/slow/API counts, Clear button
+- Filter chips: All, Errors (4xx/5xx), API (XHR/Fetch), Slow (>1s)
+- Color-coded rows: method, status, type badge, URL, size, time, hover cURL copy
+- Detail pane: Headers (URL, status, type, size, time, response headers), Body (preview), Copy (cURL + fetch())
+- Zustand store with per-tab scoping, 500-entry cap
+- `networklog_issues.md` documents the failed earlier approaches for reference
 
 ### Earlier sessions (v0.9–v1.24.1)
 
-Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zustand v5. Early sessions (v0.9–v0.9.11) went through multiple architectural iterations for the browser webview — started with `Window::add_child` child webviews, then pivoted to persistent `WebviewWindow` with `parent` (v0.9.6) after discovering Tauri 2's child-webview limitations on Windows (Issue #10079, "not planned"). This became the **tab-per-WebviewWindow architecture**: each tab gets its own `WebviewWindow` (label `browser-{tabId}`), created lazily on first navigation, hidden/shown on switch with full state preservation. **29 Rust commands** were built: browser_create_tab/activate_tab/close_tab/navigate_tab, show/hide/set_bounds, go_back/forward/reload/stop_loading, find/find_next/stop_find/find_callback, reposition, set_theme, forward_shortcut, update_tab_info, scan_ports, network_log_entry, browser_set_network_capturing, browser_update_header_rules, browser_eval_inspector, inspector_data/mutate, browser_set_user_agent, browser_screenshot, browser_set_memory_target, open_external_url. The frontend has **10 sidebar panels**: Live Servers (auto-scan 10s intervals), Bookmarks (workspace-scoped, persisted), History (grouped by date, persisted), Network Log (real-time fetch/XHR capture with method/URL filters), API Tester (Postman-style with cURL import, fetch-based, 6 methods, response viewer, request history), Notes (Rich Text Editor via @tolipovjs/rich-text with pin/color/export/Markdown), JWT Decoder (base64url, expiry countdown), Base64 Tool (encode/decode, URL-safe toggle, Unicode), Headers Panel (custom header injection rules with URL pattern matching), and Inspector Panel (meta tags with SEO/OpenGraph validation and social preview cards, cookies read/edit/delete, localStorage/sessionStorage). The browser chrome includes a tab system with pointer-based drag-to-reorder, address bar with URL resolution and search engine support, find-in-page (Ctrl+F via injected JS), loading bar, status bar with load-time tracking, command palette (Ctrl+K with fuzzy search), shortcut help (Ctrl+?), and overlay panel system (split-view webview resize for API Tester and Notes). Keyboard shortcuts work in the browser webview via `XEVO_SHORTCUT_FORWARD_SCRIPT` injected into every page. The app has Dark/Light/System theme via `data-theme` attributes and the **XEVO_FRONTEND.md design system** (Tailwind v4 `@theme` token block, `@custom-variant dark`, 34 aria-labels, custom window controls via `tauri-plugin-os`, `prefers-reduced-motion`, all cosmetic shadows removed, tabular-nums on numeric columns, custom DM Sans + JetBrains Mono fonts). A JSON auto-formatter viewer is injected into the webview for API responses. Performance optimizations include: tab discarding after 10min inactivity, concurrent webview cap of 10, shared WebView2 `data_directory`, pre-warm about:blank webview at startup, split init scripts (CORE_SCRIPT, HEADER_SCRIPT, NETWORK_SCRIPT, CHROME_FEATURES_SCRIPT, JSON_VIEWER_SCRIPT), React.lazy panels, Vite manualChunks, and network log memory leak fixes (batching, 5KB body truncation, off-by-default capturing). Workspaces are persisted via Zustand middleware with per-tab history stacks. Key bugs resolved: DPI scaling (PhysicalSize→LogicalSize after discovering `getBoundingClientRect()` returns CSS pixels, not DPI-scaled), title-bar double-counting (window.screenY already returns viewport top-left), 5px oscillation threshold (infinite close-and-recreate loop from WebView2 re-layer shifts), unique webview labels eliminating close-vs-add races, onMoved+onResized dual listener for window drag following, minimize hide/show cycle (hide all browser webviews when main window minimizes), `data-tauri-drag-region="deep"` for window drag from tab bar, and a comprehensive 30-bug sweep (Mutex poison recovery, CSP hardening, async race conditions, webview leaks on tab close/workspace deletion, async listener cancellation flags).
+Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zustand v5. Early sessions (v0.9–v0.9.11) went through multiple architectural iterations for the browser webview — started with `Window::add_child` child webviews, then pivoted to persistent `WebviewWindow` with `parent` (v0.9.6) after discovering Tauri 2's child-webview limitations on Windows (Issue #10079, "not planned"). This became the **tab-per-WebviewWindow architecture**: each tab gets its own `WebviewWindow` (label `browser-{tabId}`), created lazily on first navigation, hidden/shown on switch with full state preservation. **30+ Rust commands** were built: browser_create_tab/navigate_tab/close_tab, show/hide/set_bounds, go_back/forward/reload/stop_loading, find/find_next/stop_find/find_callback, reposition, set_theme, forward_shortcut, update_tab_info, scan_ports, browser_update_header_rules, browser_eval_inspector, inspector_data/mutate, browser_set_user_agent, browser_screenshot, browser_set_memory_target, open_external_url, create_viewport/destroy_viewport/resize_viewport, browser_save_tab_state/restore_tab_state, etc. The frontend has **12+ sidebar panels**: Live Servers, Bookmarks, History, Network (COM-based capture, color-coded rows, filter chips, detail pane), API Tester (Postman-style with cURL import, response viewer, history), Notes (rich text with pin/color/export), JWT Decoder, Base64 Tool, Headers Panel (custom header injection), Inspector Panel (meta/SEO/cookies/storage), Viewport Panel, User Agent Panel (presets), Social Preview. The browser chrome includes a tab system with pointer-based drag-to-reorder, address bar with URL resolution and search engine support, find-in-page (Ctrl+F via injected JS), loading bar, status bar with load-time tracking, command palette (Ctrl+K with fuzzy search), shortcut help (Ctrl+?), and overlay panel system (split-view webview resize for API Tester and Notes). Keyboard shortcuts work in the browser webview via `XEVO_SHORTCUT_FORWARD_SCRIPT` injected into every page. The app has Dark/Light/System theme via `data-theme` attributes and the **XEVO_FRONTEND.md design system** (Tailwind v4 `@theme` token block, `@custom-variant dark`, 34 aria-labels, custom window controls via `tauri-plugin-os`, `prefers-reduced-motion`, all cosmetic shadows removed, tabular-nums on numeric columns, custom DM Sans + JetBrains Mono fonts). A JSON auto-formatter viewer is injected into the webview for API responses. Performance optimizations include: tab discarding after 10min inactivity, concurrent webview cap of 10, shared WebView2 `data_directory`, pre-warm about:blank webview at startup, split init scripts (CORE_SCRIPT, HEADER_SCRIPT, NETWORK_SCRIPT, CHROME_FEATURES_SCRIPT, JSON_VIEWER_SCRIPT), React.lazy panels, Vite manualChunks, and network log memory leak fixes (batching, 5KB body truncation, off-by-default capturing). Workspaces are persisted via Zustand middleware with per-tab history stacks. Key bugs resolved: DPI scaling (PhysicalSize→LogicalSize after discovering `getBoundingClientRect()` returns CSS pixels, not DPI-scaled), title-bar double-counting (window.screenY already returns viewport top-left), 5px oscillation threshold (infinite close-and-recreate loop from WebView2 re-layer shifts), unique webview labels eliminating close-vs-add races, onMoved+onResized dual listener for window drag following, minimize hide/show cycle (hide all browser webviews when main window minimizes), `data-tauri-drag-region="deep"` for window drag from tab bar, and a comprehensive 30-bug sweep (Mutex poison recovery, CSP hardening, async race conditions, webview leaks on tab close/workspace deletion, async listener cancellation flags).
 
 ## ARCHITECTURE NOTE (CURRENT)
 - **Tab-per-WebviewWindow architecture:** Each tab gets its own `WebviewWindow` (label `browser-{tabId}`), created lazily on first navigation via `browser_create_tab`. Tab switching calls `browser_activate_tab` which hides the old webview and shows the new one — no navigation, no reload, full state preservation.

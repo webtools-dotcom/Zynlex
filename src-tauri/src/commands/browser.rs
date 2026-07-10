@@ -59,39 +59,6 @@ const CHROME_FEATURES_SCRIPT: &str = r##"
     if (document.body) document.body.normalize();
   }
 
-  function countMatches(text, query) {
-    if (!query) return 0;
-    var q = query.toLowerCase();
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-      acceptNode: function(node) {
-        var p = node.parentNode;
-        if (!p) return NodeFilter.FILTER_REJECT;
-        var tag = p.nodeName ? p.nodeName.toLowerCase() : "";
-        if (tag === "script" || tag === "style" || tag === "noscript") {
-          return NodeFilter.FILTER_REJECT;
-        }
-        if (p.closest && p.closest("mark.xevo-find-hit")) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        if (!node.nodeValue || node.nodeValue.indexOf(query) === -1) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    });
-    var count = 0;
-    var n;
-    while ((n = walker.nextNode())) {
-      var t = n.nodeValue.toLowerCase();
-      var idx = 0;
-      while ((idx = t.indexOf(q, idx)) !== -1) {
-        count++;
-        idx += q.length;
-      }
-    }
-    return count;
-  }
-
   function findAll(query) {
     if (!query) return [];
     var q = query.toLowerCase();
@@ -235,7 +202,10 @@ const CHROME_FEATURES_SCRIPT: &str = r##"
     } catch (err) {}
   }
 
-  document.addEventListener("keydown", onKeyDown, true);
+  if (!window.__xevoBookmarkReady) {
+    window.__xevoBookmarkReady = true;
+    document.addEventListener("keydown", onKeyDown, true);
+  }
 })();
 "##;
 
@@ -976,13 +946,6 @@ pub fn update_tab_info(
 
 // ─── Find in Page (per-tab) ──────────────────────────────────────────
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct FindResultPayload {
-    pub active_match: u32,
-    pub total_matches: u32,
-    pub final_update: bool,
-}
-
 fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<(), String> {
     let label = webview_label_for_tab(tab_id);
     let wv = app
@@ -1072,11 +1035,11 @@ pub fn browser_find_callback(
     total_matches: u32,
     final_update: Option<bool>,
 ) -> Result<(), String> {
-    let payload = FindResultPayload {
-        active_match,
-        total_matches,
-        final_update: final_update.unwrap_or(true),
-    };
+    let payload = serde_json::json!({
+        "active_match": active_match,
+        "total_matches": total_matches,
+        "final_update": final_update.unwrap_or(true),
+    });
     app.emit("browser://find-result", payload)
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -1995,7 +1958,7 @@ pub async fn browser_screenshot(
 async fn capture_browser_devtools(
     wv: &tauri::WebviewWindow,
 ) -> Result<Vec<u8>, String> {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use tokio::sync::oneshot;
     use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
     use base64::Engine;
