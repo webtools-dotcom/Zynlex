@@ -185,6 +185,9 @@ export function CommandPalette() {
       onClick={() => useUIStore.getState().closeCommandPalette()}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         className="w-[560px] flex flex-col overflow-hidden rounded-[6px] border"
         style={{
           background: "var(--color-elevated)",
@@ -222,7 +225,7 @@ export function CommandPalette() {
           )}
         </div>
 
-        <div ref={listRef} className="max-h-[320px] overflow-y-auto">
+        <div ref={listRef} role="listbox" className="max-h-[320px] overflow-y-auto">
           {results.length === 0 ? (
             <div className="py-8 text-center text-[13px] text-[var(--color-text-disabled)]">
               {query ? `No results for "${query}"` : "Start typing to search..."}
@@ -231,6 +234,8 @@ export function CommandPalette() {
             results.map((item, index) => (
               <div
                 key={item.id}
+                role="option"
+                aria-selected={index === selectedIndex}
                 onClick={item.action}
                 className={`flex items-center h-8 px-3 gap-3 cursor-pointer transition-colors duration-0 ${
                   index === selectedIndex

@@ -177,6 +177,73 @@
 - [x] Task 81: Cleanup — removed all NET-DBG debug logging (Rust eprintln, frontend console.log)
 - [x] Task 82: Final integration — `cargo check` + `pnpm tsc --noEmit` both clean
 
+## PONYTAIL Review (2026-07-16) — Full codebase audit — DONE
+- [x] Phase 1: Rust Backend (5 subagents) — TabLifecycle, NetworkCapture, ScreenshotDevTools, Viewport, RustUtils
+- [x] Phase 2: Frontend Stores (4 subagents) — CoreStores, FeatureStores, ToolStores, TypesLib
+- [x] Phase 3: Browser Chrome (4 subagents) — TabSystem, Navigation, WebviewBridge, OverlayFind
+- [x] Phase 4: Side Panels (6 subagents) — NetworkPanel, Inspector, ApiTester, Notes, DevTools, SettingsViewport
+- [x] Phase 5: Sidebar + UI Kit (3 subagents) — SidebarChrome, SidebarPanels, UiKit
+- [x] Phase 6: Infrastructure (3 subagents) — ServicesHooks, TauriConfig, BuildTooling
+- [x] Consolidation: Merge all 25 reports, cross-reference graph communities, write `PONYTAIL-REVIEW.md`
+- [x] **Results: 122 findings (17 critical, 47 high, 38 medium, 20 low), overall score 5.2/10**
+- [x] Post-review: Implement top 5 critical fixes (see PONYTAIL-REVIEW.md Recommendations) — 8 batches completed, remaining findings filtered as YAGNI under ponytail ULTRA
+
+### PONYTAIL Batch 4 — Dead Code Cleanup (ponytail ULTRA) — DONE
+- [x] Delete `AddressBar.tsx` (211 lines, never imported — confirmed via grep)
+- [x] Fix `package.json` name: `xevo-temp` → `xevo`
+- [x] Add `typecheck` script (`tsc --noEmit`) to package.json
+- [x] `pnpm typecheck` — clean
+- [x] `pnpm build` — clean (no AddressBar chunk in output)
+- [x] `ponytail:` comment added to Cargo.toml for cosmetic metadata (no functional change)
+
+### PONYTAIL Batch 1 — Network Timing Fix (ponytail ULTRA) — DONE
+- [x] Change `NETWORK_REQUEST_META.get()` → `get_or_init(|| Mutex::new(HashMap::new()))` — OnceLock now initialized, network timing works
+- [x] Remove `if map.len() > 2000 { map.clear(); }` — entries removed on response, cap destroyed all in-flight data
+- [x] `cargo check` — clean
+
+### PONYTAIL Batch 2 — Rust Data Corruption (ponytail ULTRA) — DONE
+- [x] Fix `restore_tab_state` double-JSON-escaping — embed state_json directly as JS expression
+- [x] Fix GDI `SelectObject` leak — save/restore old bitmap handle before `DeleteObject`
+- [x] Fix `eval_find_script` double backslash escaping — remove redundant `replace('\\', "\\\\")`
+- [x] Fix `extract_title` UTF-8 byte slicing — use `char_indices()` instead of byte index on lowercased string
+- [x] `cargo check` — clean
+
+### PONYTAIL Batch 3 — Accessibility (ponytail ULTRA) — DONE
+- [x] CommandPalette: `role="dialog"`, `aria-modal`, `role="listbox"`, `role="option"`/`aria-selected`
+- [x] ShortcutHelp: `role="dialog"`, `aria-modal`, `aria-label`
+- [x] TabItem: `tabIndex={0}`, `onKeyDown` Enter/Space handler
+- [x] SettingsPanel: `role="radiogroup"` on theme selector, `role="radio"`/`aria-checked` on buttons
+- [x] `pnpm typecheck` — clean
+- [x] `pnpm build` — clean
+
+### PONYTAIL Batch 5 — IPC Type Safety (ponytail ULTRA) — DONE
+- [x] `invoke("browser_screenshot")` → `invoke<ScreenshotResult>("browser_screenshot")`
+- [x] Three `listen("viewport://...", (e: any) => ...)` → typed `listen<T>(...)` generic
+
+### PONYTAIL Batch 6 — Housekeeping (ponytail ULTRA) — DONE
+- [x] Removed dead `getTabsByWorkspace` from tabs store (zero callers)
+- [x] Skipped: browser.rs splitting (YAGNI — no functional bug)
+- [x] Skipped: useWebviewBridge.ts hook extraction (YAGNI — no functional bug)
+- [x] Skipped: Event prefix unification (cosmetic, works correctly)
+- [x] `cargo check` — clean
+- [x] `pnpm typecheck` — clean
+
+### PONYTAIL Batch 7 — JSON Double-Serialization (ponytail ULTRA) — DONE
+- [x] Removed `JSON.stringify()` from 6 `inspector_data` JS calls in `browser.rs` — pass object directly to Tauri IPC
+- [x] Changed `data: String` → `data: serde_json::Value` in Rust `inspector_data` command
+- [x] `pnpm typecheck` — clean
+
+### PONYTAIL Batch 8 — Accessibility Sweep (ponytail ULTRA) — DONE
+- [x] `NetworkPanel.tsx` EntryRow: added `role="button"`, `tabIndex={0}`, `onKeyDown` Enter/Space
+- [x] `tooltip.tsx` TooltipProvider: `delayDuration` 0 → 500 (WCAG)
+- [x] `NotesNotepad.tsx` color swatch buttons: added `aria-label={c.label}`
+- [x] `pnpm typecheck` — clean
+
+### PONYTAIL Batch 10 — Viewport Sync Throttle (ponytail ULTRA) — DONE
+- [x] `useViewportSync.ts` scroll handler: added rAF throttle to coalesce 60fps scroll events
+- [x] Skipped: click/input handlers (rare event types, YAGNI)
+- [x] `pnpm typecheck` — clean
+
 ## Backlog
 - [ ] Port scanner: HTTP title shown in sidebar tooltip
 - [ ] Port scanner: manual "add custom port" UI

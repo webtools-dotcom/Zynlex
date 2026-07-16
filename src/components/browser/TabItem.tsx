@@ -44,6 +44,8 @@ export function TabItem({
       data-tab-id={tab.id}
       onClick={handleClick}
       onMouseDown={handleMouseDown}
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
       className={cn(

@@ -173,18 +173,6 @@ export interface Note {
   updatedAt: number;
 }
 
-// ─── Header Injection ────────────────────────────────────────
-
-export interface HeaderRule {
-  id: string;
-  urlPattern: string;
-  headerName: string;
-  headerValue: string;
-  enabled: boolean;
-  workspaceId: string;
-  createdAt: number;
-}
-
 // ─── Inspector ────────────────────────────────────────────────
 
 export interface MetaTag {

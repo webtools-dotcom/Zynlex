@@ -221,16 +221,6 @@ export async function restoreTabState(tabId: string, stateJson: string): Promise
   await invoke<void>("browser_restore_tab_state", { tabId, stateJson });
 }
 
-// ─── Header Injection ─────────────────────────────────────────────
-
-export async function updateHeaderRules(
-  rules: import("@/types").HeaderRule[]
-): Promise<void> {
-  await invoke<void>("browser_update_header_rules", {
-    rulesJson: JSON.stringify(rules),
-  });
-}
-
 // ─── Inspector ────────────────────────────────────────────────────
 
 export async function evalInspector(
@@ -323,7 +313,7 @@ export interface ScreenshotResult {
 }
 
 export async function takeScreenshot(): Promise<{ bytes: Uint8Array; path: string }> {
-  const result: ScreenshotResult = await invoke("browser_screenshot");
+  const result = await invoke<ScreenshotResult>("browser_screenshot");
   return { bytes: new Uint8Array(result.bytes), path: result.path };
 }
 
@@ -346,21 +336,39 @@ export function onNetworkEntry(
   return listen<NetworkEntryPayload>("browser://network-entry", (e) => callback(e.payload));
 }
 
+// ─── Header Injection ────────────────────────────────────────────────
+
+export interface HeaderRulePayload {
+  id: string;
+  pattern: string;
+  name: string;
+  value: string;
+  enabled: boolean;
+}
+
+export async function setHeaderRules(rules: HeaderRulePayload[]): Promise<void> {
+  await invoke<void>("set_header_rules", { rules });
+}
+
+export async function getHeaderRules(): Promise<HeaderRulePayload[]> {
+  return await invoke<HeaderRulePayload[]>("get_header_rules");
+}
+
 export function onViewportScroll(
   callback: (payload: { sourceLabel: string; percentX: number; percentY: number }) => void,
 ): Promise<UnlistenFn> {
-  return listen("viewport://scroll", (e: any) => callback(e.payload));
+  return listen<{ sourceLabel: string; percentX: number; percentY: number }>("viewport://scroll", (e) => callback(e.payload));
 }
 
 export function onViewportClick(
   callback: (payload: { sourceLabel: string; x: number; y: number }) => void,
 ): Promise<UnlistenFn> {
-  return listen("viewport://click", (e: any) => callback(e.payload));
+  return listen<{ sourceLabel: string; x: number; y: number }>("viewport://click", (e) => callback(e.payload));
 }
 
 export function onViewportInput(
   callback: (payload: { sourceLabel: string; selector: string; value: string; checked: boolean | null; inputType: string }) => void,
 ): Promise<UnlistenFn> {
-  return listen("viewport://input", (e: any) => callback(e.payload));
+  return listen<{ sourceLabel: string; selector: string; value: string; checked: boolean | null; inputType: string }>("viewport://input", (e) => callback(e.payload));
 }
 

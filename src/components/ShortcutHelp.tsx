@@ -75,6 +75,9 @@ export function ShortcutHelp() {
       onClick={() => useUIStore.getState().closeShortcutHelp()}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Keyboard shortcuts"
         className="w-[480px] max-h-[80vh] flex flex-col overflow-hidden rounded-[6px] border"
         style={{
           background: "var(--color-elevated)",
