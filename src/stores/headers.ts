@@ -1,86 +1,69 @@
 import { create } from "zustand";
-import { immer } from "zustand/middleware/immer";
 import { persist } from "zustand/middleware";
-import type { HeaderRule } from "@/types";
 
-function genId(): string {
-  return `rule-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+export interface HeaderRule {
+  id: string;
+  pattern: string;
+  name: string;
+  value: string;
+  enabled: boolean;
 }
 
 interface HeadersStore {
-  rules: HeaderRule[];
-
-  addRule: (
-    workspaceId: string,
-    urlPattern: string,
-    headerName: string,
-    headerValue: string
-  ) => HeaderRule;
-  removeRule: (id: string) => void;
-  toggleRule: (id: string) => void;
-  updateRule: (
-    id: string,
-    changes: Partial<
-      Pick<HeaderRule, "urlPattern" | "headerName" | "headerValue" | "enabled">
-    >
-  ) => void;
-  getRulesForWorkspace: (workspaceId: string) => HeaderRule[];
+  rulesByWs: Record<string, HeaderRule[]>;
+  setRules: (wsId: string, rules: HeaderRule[]) => void;
+  addRule: (wsId: string, rule: HeaderRule) => void;
+  updateRule: (wsId: string, id: string, patch: Partial<HeaderRule>) => void;
+  removeRule: (wsId: string, id: string) => void;
+  getRules: (wsId: string) => HeaderRule[];
 }
+
+function genId(): string {
+  return `hr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export { genId as genHeaderRuleId };
 
 export const useHeadersStore = create<HeadersStore>()(
   persist(
-    immer((set, get) => ({
-      rules: [],
-
-      addRule: (workspaceId, urlPattern, headerName, headerValue) => {
-        const id = genId();
-        const rule: HeaderRule = {
-          id,
-          urlPattern: urlPattern.trim(),
-          headerName: headerName.trim(),
-          headerValue,
-          enabled: true,
-          workspaceId,
-          createdAt: Date.now(),
-        };
+    (set, get) => ({
+      rulesByWs: {},
+      setRules: (wsId, rules) =>
+        set((s) => ({ rulesByWs: { ...s.rulesByWs, [wsId]: rules } })),
+      addRule: (wsId, rule) =>
         set((s) => {
-          s.rules.push(rule);
-        });
-        return rule;
-      },
-
-      removeRule: (id) =>
-        set((s) => {
-          s.rules = s.rules.filter((r) => r.id !== id);
+          const existing = s.rulesByWs[wsId] ?? [];
+          return {
+            rulesByWs: { ...s.rulesByWs, [wsId]: [...existing, rule] },
+          };
         }),
-
-      toggleRule: (id) =>
+      updateRule: (wsId, id, patch) =>
         set((s) => {
-          const rule = s.rules.find((r) => r.id === id);
-          if (rule) rule.enabled = !rule.enabled;
+          const existing = s.rulesByWs[wsId] ?? [];
+          return {
+            rulesByWs: {
+              ...s.rulesByWs,
+              [wsId]: existing.map((r) =>
+                r.id === id ? { ...r, ...patch } : r
+              ),
+            },
+          };
         }),
-
-      updateRule: (id, changes) =>
+      removeRule: (wsId, id) =>
         set((s) => {
-          const rule = s.rules.find((r) => r.id === id);
-          if (rule) {
-            if (changes.urlPattern !== undefined)
-              rule.urlPattern = changes.urlPattern;
-            if (changes.headerName !== undefined)
-              rule.headerName = changes.headerName;
-            if (changes.headerValue !== undefined)
-              rule.headerValue = changes.headerValue;
-            if (changes.enabled !== undefined)
-              rule.enabled = changes.enabled;
-          }
+          const existing = s.rulesByWs[wsId] ?? [];
+          return {
+            rulesByWs: {
+              ...s.rulesByWs,
+              [wsId]: existing.filter((r) => r.id !== id),
+            },
+          };
         }),
-
-      getRulesForWorkspace: (workspaceId) =>
-        get().rules.filter((r) => r.workspaceId === workspaceId),
-    })),
+      getRules: (wsId) => get().rulesByWs[wsId] ?? [],
+    }),
     {
       name: "xevo-header-rules",
-      partialize: (state) => ({ rules: state.rules }),
+      version: 1,
     }
   )
 );

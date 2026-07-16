@@ -21,14 +21,18 @@ export function useViewportSync() {
 
   useEffect(() => {
     if (!syncScroll) return;
+    let rafId: number;
     const unsub = onViewportScroll(({ sourceLabel, percentX, percentY }) => {
-      for (const vp of viewports) {
-        const label = `viewport-${vp.id}`;
-        if (label === sourceLabel) continue;
-        scrollViewport(label, percentX, percentY).catch(() => {});
-      }
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        for (const vp of viewports) {
+          const label = `viewport-${vp.id}`;
+          if (label === sourceLabel) continue;
+          scrollViewport(label, percentX, percentY).catch(() => {});
+        }
+      });
     });
-    return () => { unsub.then((fn) => fn()).catch(() => {}); };
+    return () => { cancelAnimationFrame(rafId); unsub.then((fn) => fn()).catch(() => {}); };
   }, [viewports, syncScroll]);
 
   useEffect(() => {

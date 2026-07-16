@@ -171,7 +171,10 @@ function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSe
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-mono hover:bg-[var(--color-hover)] cursor-pointer border-b border-[var(--color-border)] group ${isSelected ? "bg-[var(--color-hover)]" : ""}`}
     >
       <span className={`font-semibold w-12 shrink-0 ${METHOD_COLORS[entry.method] ?? "text-gray-400"}`}>

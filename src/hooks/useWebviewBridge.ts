@@ -34,7 +34,6 @@ import {
   onBookmarkRequest,
   onNewTabRequested,
   onInspectorData,
-  updateHeaderRules,
   setMemoryTarget,
   saveTabState,
   restoreTabState,
@@ -43,7 +42,6 @@ import {
 } from "@/services/browser";
 import { useSettingsStore } from "@/stores/settings";
 import { useHistoryStore } from "@/stores/history";
-import { useHeadersStore } from "@/stores/headers";
 import { useInspectorStore } from "@/stores/inspector";
 import type { MetaInfo, CookieEntry, StorageEntry } from "@/types";
 import {
@@ -54,6 +52,8 @@ import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { useNetworkStore } from "@/stores/network";
+import { useHeadersStore } from "@/stores/headers";
+import { setHeaderRules } from "@/services/browser";
 
 let _netEntryId = 0;
 
@@ -111,7 +111,7 @@ function isChromeOverlayOpen(): boolean {
     ui.commandPaletteOpen ||
     ui.shortcutHelpOpen ||
     ui.settingsPanelOpen ||
-    ui.overlayPanel !== "none" ||
+    ui.apiTesterOpen ||
     ui.findOpen
   );
 }
@@ -405,10 +405,6 @@ export function useWebviewBridge(
       if (loading) {
         loadStartRef.current = Date.now();
         useTabsStore.getState().updateTab(tabId, { isLoading: true });
-        const allRules = useHeadersStore.getState().rules;
-        if (allRules.length > 0) {
-          updateHeaderRules(allRules).catch(() => {});
-        }
       } else {
         const elapsed = loadStartRef.current !== null
           ? Date.now() - loadStartRef.current
@@ -843,6 +839,21 @@ export function useWebviewBridge(
     };
   }, []);
 
+  // ── Header rules sync: push current workspace's rules to Rust on any change ────
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const wsId = activeWorkspaceId;
+    const sync = () => {
+      const rules = useHeadersStore.getState().rulesByWs[wsId] ?? [];
+      setHeaderRules(rules).catch((err) =>
+        console.error("[XEVO-HEADERS] sync failed:", err)
+      );
+    };
+    sync();
+    const unsub = useHeadersStore.subscribe(sync);
+    return () => unsub();
+  }, [activeWorkspaceId]);
+
   // ── Force-sync from Rust (e.g. after Focused(true) restore) ──────
   useEffect(() => {
     if (!IS_TAURI) return;
@@ -890,6 +901,7 @@ export function useWebviewBridge(
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
+  const apiTesterOpen = useUIStore((s) => s.apiTesterOpen);
   const findOpen = useUIStore((s) => s.findOpen);
   const overlayPanel = useUIStore((s) => s.overlayPanel);
   useEffect(() => {
@@ -898,7 +910,7 @@ export function useWebviewBridge(
       commandPaletteOpen ||
       shortcutHelpOpen ||
       settingsPanelOpen ||
-      overlayPanel !== "none" ||
+      apiTesterOpen ||
       findOpen;
     const wsState = useWorkspacesStore.getState();
     const ws = wsState.workspaces[wsState.activeWorkspaceId];
@@ -918,7 +930,7 @@ export function useWebviewBridge(
     commandPaletteOpen,
     shortcutHelpOpen,
     settingsPanelOpen,
-    overlayPanel,
+    apiTesterOpen,
     findOpen,
     activeTabId,
     ensureWebviewVisible,

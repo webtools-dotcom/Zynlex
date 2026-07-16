@@ -3,6 +3,7 @@ name = "xevo"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
+# ponytail: description/authors are default template values — cosmetic, no functional impact
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -31,7 +32,7 @@ image = "0.25"
 base64 = "0.22"
 webview2-com = "0.38"
 windows-core = "0.61"
-windows = { version = "0.61", features = ["Win32_System_Com"] }
+windows = { version = "0.61", features = [] }
 
 [profile.release]
 lto = true

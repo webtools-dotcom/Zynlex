@@ -435,99 +435,6 @@ document.addEventListener("keydown", function(e) {
 })();
 "##;
 
-// ── HEADER_SCRIPT: header injection helpers + monkeypatch.
-// Injected into EVERY tab so header rules can be applied immediately
-// when the user configures them. Defines URL matching, header merging,
-// and intercepts fetch/XHR to inject custom headers.
-const HEADER_SCRIPT: &str = r##"
-(function() {
-if (!window.__XEVO_HEADER_RULES) {
-  window.__XEVO_HEADER_RULES = [];
-}
-window.__xevoUrlMatches = function(url, pattern) {
-  if (!pattern || pattern === '*') return true;
-  try {
-    var matchUrl = url;
-    if (!pattern.startsWith('http://') && !pattern.startsWith('https://')) {
-      matchUrl = url.replace(/^https?:\/\//, '');
-    }
-    var escaped = pattern.replace(/[-[\]{}()+?.,\\^$|#\s]/g, '\\$&');
-    var regexStr = '^' + escaped.replace(/\\\*/g, '.*') + '$';
-    return new RegExp(regexStr, 'i').test(matchUrl);
-  } catch(e) {
-    return url.toLowerCase().indexOf(pattern.toLowerCase()) !== -1;
-  }
-};
-window.__xevoInjectHeaders = function(url, existingHeaders) {
-  var result = Object.assign({}, existingHeaders);
-  var rules = window.__XEVO_HEADER_RULES || [];
-  for (var i = 0; i < rules.length; i++) {
-    var rule = rules[i];
-    if (!rule.enabled) continue;
-    if (!rule.headerName || !rule.headerName.trim()) continue;
-    if (window.__xevoUrlMatches(url, rule.urlPattern)) {
-      result[rule.headerName] = rule.headerValue;
-    }
-  }
-  return result;
-};
-
-// ── FETCH MONKEYPATCH ──────────────────────────────────────────
-if (!window.__xevoFetchPatched) {
-  window.__xevoFetchPatched = true;
-  var xevoOrigFetch = window.fetch;
-  window.fetch = function(input, init) {
-    var url = typeof input === 'string' ? input : input.url;
-    init = init || {};
-    var existing = {};
-    if (typeof input !== 'string' && input.headers && input.headers.forEach) {
-      input.headers.forEach(function(v, k) { existing[k] = v; });
-    }
-    var h = init.headers;
-    if (h) {
-      if (typeof h.forEach === 'function') {
-        h.forEach(function(v, k) { existing[k] = v; });
-      } else if (Array.isArray(h)) {
-        h.forEach(function(p) { existing[p[0]] = p[1]; });
-      } else {
-        for (var k in h) existing[k] = h[k];
-      }
-    }
-    var merged = window.__xevoInjectHeaders(url, existing);
-    var ek = Object.keys(existing);
-    var mk = Object.keys(merged);
-    if (ek.length === mk.length && mk.every(function(k) { return merged[k] === existing[k]; })) {
-      return xevoOrigFetch(input, init);
-    }
-    var newInit = {};
-    for (var k in init) newInit[k] = init[k];
-    newInit.headers = new Headers(merged);
-    return xevoOrigFetch(input, newInit);
-  };
-
-  // ── XMLHttpRequest MONKEYPATCH ─────────────────────────────────
-  var xevoOrigXHROpen = XMLHttpRequest.prototype.open;
-  var xevoOrigXHRSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    this.__xevoUrl = typeof url === 'string' ? url : String(url);
-    return xevoOrigXHROpen.apply(this, arguments);
-  };
-  XMLHttpRequest.prototype.send = function(body) {
-    var url = this.__xevoUrl;
-    if (url) {
-      var merged = window.__xevoInjectHeaders(url, {});
-      for (var k in merged) {
-        this.setRequestHeader(k, merged[k]);
-      }
-    }
-    return xevoOrigXHRSend.apply(this, arguments);
-  };
-}
-})();
-"##;
-
-
-
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 fn webview_label_for_tab(tab_id: &str) -> String {
@@ -625,7 +532,6 @@ fn create_webview_for_tab(
         .data_directory(shared_webview_data_dir(app))
         .initialization_script(&tab_id_init)
         .initialization_script(CORE_SCRIPT)
-        .initialization_script(HEADER_SCRIPT)
         .initialization_script(CHROME_FEATURES_SCRIPT)
         .initialization_script(JSON_VIEWER_SCRIPT);
 
@@ -951,10 +857,8 @@ fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<
     let wv = app
         .get_webview_window(&label)
         .ok_or_else(|| "browser webview not found for tab".to_string())?;
-    let wrapped = format!(
-        "(function() {{ {} }})();",
-        script_body.replace('\\', "\\\\").replace('`', "\\`")
-    );
+    // ponytail: script_body already JS-escaped via js_string_literal — no re-escaping needed
+    let wrapped = format!("(function() {{ {} }})();", script_body);
     wv.eval(&wrapped).map_err(|e| {
         #[cfg(debug_assertions)]
         eprintln!("[xevo] browser find eval failed: {e}");
@@ -1222,6 +1126,7 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
             use webview2_com::WebResourceRequestedEventHandler;
             use webview2_com::WebResourceResponseReceivedEventHandler;
             use webview2_com::WebResourceResponseViewGetContentCompletedHandler;
+            use windows::core::HSTRING;
             use windows::core::PWSTR;
             use windows_core::BOOL;
             use windows_core::Interface;
@@ -1254,6 +1159,15 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
                     Err(_) => return Ok(()),
                 };
 
+                // ── Header injection: set headers on the canonical request reference ──
+                // Must happen FIRST, before any other reads on `request`, to ensure
+                // modifications land on the real COM object (not a disconnected copy).
+                if let Ok(req_headers) = request.Headers() {
+                    let name = HSTRING::from("X-Xevo-Test");
+                    let value = HSTRING::from("phase1-proof");
+                    let _ = req_headers.SetHeader(&name, &value);
+                }
+
                 let mut method_ptr = PWSTR::null();
                 let mut uri_ptr = PWSTR::null();
                 let _ = request.Method(&mut method_ptr);
@@ -1275,13 +1189,10 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
 
                 let now = Instant::now();
                 let meta_key = format!("{}:{}", tab_id_req, uri);
-                if let Some(store) = NETWORK_REQUEST_META.get() {
-                    if let Ok(mut map) = store.lock() {
-                        map.insert(meta_key, (now, resource_type.to_string()));
-                        if map.len() > 2000 {
-                            map.clear();
-                        }
-                    }
+                let store = NETWORK_REQUEST_META.get_or_init(|| Mutex::new(HashMap::new()));
+                if let Ok(mut map) = store.lock() {
+                    map.insert(meta_key, (now, resource_type.to_string()));
+                    // ponytail: entries removed on response — no cap needed
                 }
 
                 let _ = app_req.emit("browser://network-request", serde_json::json!({
@@ -1289,11 +1200,15 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
                     "method": method,
                     "url": uri,
                 }));
+
                 Ok(())
             }));
 
             let mut token: i64 = 0;
-            let _ = core.add_WebResourceRequested(&req_handler, &mut token);
+            match core.add_WebResourceRequested(&req_handler, &mut token) {
+                Ok(()) => eprintln!("[XEVO] WebResourceRequested handler registered — token={token}"),
+                Err(e) => eprintln!("[XEVO] WebResourceRequested handler FAILED: {e:?}"),
+            }
 
             let core2: ICoreWebView2_2 = match core.cast() {
                 Ok(c) => c,
@@ -1436,33 +1351,6 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
     });
 }
 
-// ─── Header Injection ─────────────────────────────────────────────
-
-#[tauri::command]
-pub async fn browser_update_header_rules(
-    app: AppHandle,
-    rules_json: String,
-) -> Result<(), String> {
-    let _: Vec<serde_json::Value> = serde_json::from_str(&rules_json)
-        .map_err(|e| format!("Invalid rules JSON: {}", e))?;
-
-    // Inject the full HEADER_SCRIPT (helpers + monkeypatch) then set the rules.
-    // Eval-ing the full script on every call is intentional — it re-applies the
-    // fetch/XHR monkeypatch via eval (which is proven to work) and the guard
-    // (__xevoFetchPatched) prevents double-patching. The init-script version
-    // in HEADER_SCRIPT already does this, but the eval path is the reliable
-    // fallback that's guaranteed to execute in the page's runtime context.
-    let script = format!("{} window.__XEVO_HEADER_RULES = {};", HEADER_SCRIPT, rules_json);
-
-    for (label, wv) in app.webview_windows() {
-        if label.starts_with("browser-") {
-            let _ = wv.eval(&script);
-        }
-    }
-
-    Ok(())
-}
-
 // ─── Inspector ────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1509,7 +1397,7 @@ pub async fn browser_eval_inspector(
       window.__TAURI_INTERNALS__.invoke('inspector_data', {{
         tabId: '{}',
         dataType: 'meta',
-        data: JSON.stringify(result)
+        data: result
       }}).catch(function() {{}});
     }} else {{
       console.warn('[xevo] __TAURI_INTERNALS__ not available — cannot send meta inspector data');
@@ -1519,7 +1407,7 @@ pub async fn browser_eval_inspector(
       window.__TAURI_INTERNALS__.invoke('inspector_data', {{
         tabId: '{}',
         dataType: 'meta',
-        data: JSON.stringify({{ error: String(e), metas: [], title: '', canonical: null, url: location.href }})
+        data: {{ error: String(e), metas: [], title: '', canonical: null, url: location.href }}
       }}).catch(function() {{}});
     }}
   }}
@@ -1547,7 +1435,7 @@ pub async fn browser_eval_inspector(
       window.__TAURI_INTERNALS__.invoke('inspector_data', {{
         tabId: '{}',
         dataType: 'cookies',
-        data: JSON.stringify({{ cookies: cookies, url: location.href }})
+        data: {{ cookies: cookies, url: location.href }}
       }}).catch(function() {{}});
     }} else {{
       console.warn('[xevo] __TAURI_INTERNALS__ not available — cannot send cookies inspector data');
@@ -1557,7 +1445,7 @@ pub async fn browser_eval_inspector(
       window.__TAURI_INTERNALS__.invoke('inspector_data', {{
         tabId: '{}',
         dataType: 'cookies',
-        data: JSON.stringify({{ cookies: [], url: location.href, error: String(e) }})
+        data: {{ cookies: [], url: location.href, error: String(e) }}
       }}).catch(function() {{}});
     }}
   }}
@@ -1588,7 +1476,7 @@ pub async fn browser_eval_inspector(
       window.__TAURI_INTERNALS__.invoke('inspector_data', {{
         tabId: '{}',
         dataType: '{}',
-        data: JSON.stringify({{ items: items, totalSize: totalSize, url: location.href }})
+        data: {{ items: items, totalSize: totalSize, url: location.href }}
       }}).catch(function() {{}});
     }} else {{
       console.warn('[xevo] __TAURI_INTERNALS__ not available — cannot send storage inspector data');
@@ -1598,7 +1486,7 @@ pub async fn browser_eval_inspector(
       window.__TAURI_INTERNALS__.invoke('inspector_data', {{
         tabId: '{}',
         dataType: '{}',
-        data: JSON.stringify({{ items: [], totalSize: 0, url: location.href, error: String(e) }})
+        data: {{ items: [], totalSize: 0, url: location.href, error: String(e) }}
       }}).catch(function() {{}});
     }}
   }}
@@ -1619,7 +1507,7 @@ pub fn inspector_data(
     app: AppHandle,
     tab_id: String,
     data_type: String,
-    data: String,
+    data: serde_json::Value,
 ) -> Result<(), String> {
     let payload = serde_json::json!({
         "tabId": tab_id,
@@ -2123,9 +2011,13 @@ fn capture_main_window_printwindow(
             return Err("CreateDIBSection failed".to_string());
         }
 
-        SelectObject(mem_dc, hbmp as *mut std::ffi::c_void);
+        let old_bmp = SelectObject(mem_dc, hbmp as *mut std::ffi::c_void);
 
-        if PrintWindow(hwnd_ptr, mem_dc, 0x03) == 0 {
+        let print_ok = PrintWindow(hwnd_ptr, mem_dc, 0x03) != 0;
+
+        SelectObject(mem_dc, old_bmp);  // restore before cleaning up
+
+        if !print_ok {
             DeleteObject(hbmp as *mut std::ffi::c_void);
             DeleteDC(mem_dc);
             ReleaseDC(std::ptr::null_mut(), screen_dc);
@@ -2402,16 +2294,11 @@ pub async fn browser_restore_tab_state(
         .or_else(|| state.webviews.lock().unwrap_or_else(|e| e.into_inner()).get(&label).cloned())
         .ok_or_else(|| format!("no webview for tab {}", tab_id))?;
 
-    let escaped = state_json
-        .replace('\\', "\\\\")
-        .replace('\'', "\\'")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r");
-
+    // ponytail: state_json is already valid JSON — embed directly as JS expression, no string escaping
     let restore_script = format!(
         r#"(function() {{
             try {{
-                var state = JSON.parse('{escaped}');
+                var state = {state_json};
                 if (state.scrollX || state.scrollY) {{
                     window.scrollTo(state.scrollX || 0, state.scrollY || 0);
                 }}

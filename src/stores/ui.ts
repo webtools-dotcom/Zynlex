@@ -36,6 +36,7 @@ interface UIStore {
   findQuery: string;
   findActiveMatch: number;
   findTotalMatches: number;
+  apiTesterOpen: boolean;
   overlayPanel: OverlayPanelId;
   overlayHeight: number;
   toasts: Toast[];
@@ -65,6 +66,8 @@ interface UIStore {
   closeFind: () => void;
   setFindQuery: (q: string) => void;
   setFindResult: (active: number, total: number) => void;
+  openApiTester: () => void;
+  closeApiTester: () => void;
   openOverlay: (panel: OverlayPanelId, height?: number) => void;
   closeOverlay: () => void;
   setOverlayHeight: (h: number) => void;
@@ -101,6 +104,7 @@ export const useUIStore = create<UIStore>()(
     findQuery: "",
     findActiveMatch: 0,
     findTotalMatches: 0,
+    apiTesterOpen: false,
     overlayPanel: "none",
     overlayHeight: 0.4,
     toasts: [],
@@ -141,6 +145,8 @@ export const useUIStore = create<UIStore>()(
       s.findActiveMatch = active;
       s.findTotalMatches = total;
     }),
+    openApiTester: () => set((s) => { s.apiTesterOpen = true; }),
+    closeApiTester: () => set((s) => { s.apiTesterOpen = false; }),
     openOverlay: (panel, height) => set((s) => {
       s.overlayPanel = panel;
       if (height !== undefined) s.overlayHeight = height;

@@ -275,6 +275,7 @@ export function NotesNotepad() {
                       {COLOR_OPTIONS.map((c) => (
                         <button
                           key={c.value}
+                          aria-label={c.label}
                           onClick={() => {
                             setColor(selectedNote.id, c.value);
                             setShowColorPicker(null);

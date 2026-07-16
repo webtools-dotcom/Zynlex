@@ -141,7 +141,7 @@ export function SettingsPanel() {
       {/* ── Appearance ──────────────────────────────────────────────── */}
       <SectionHeader>Appearance</SectionHeader>
 
-      <div className="flex gap-1">
+      <div className="flex gap-1" role="radiogroup" aria-label="Theme">
         <ThemeButton
           label="Dark"
           value="dark"

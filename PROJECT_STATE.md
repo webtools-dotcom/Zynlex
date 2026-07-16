@@ -866,6 +866,20 @@ Tab-per-webview architecture: normal tab switching = hide/show (zero state loss)
 - `pnpm tsc --noEmit` — clean
 - `pnpm build` — clean
 
+## PONYTAIL Session — 25-agent audit + fixes applied
+
+- **PONYTAIL audit:** 25 subagents, 122 findings (17 critical), overall score 5.2/10
+- **Batch 1 (Network Timing):** Initialized `NETWORK_REQUEST_META` OnceLock so `durationMs` works; removed `map.clear()` that destroyed in-flight timing data
+- **Batch 2 (Data Corruption):** Fixed `restore_tab_state` double-JSON-escaping (embed JSON directly as JS expression); fixed GDI `SelectObject` leak (save/restore old bitmap); fixed `eval_find_script` redundant backslash escape; fixed `extract_title` UTF-8 byte slicing in `ports.rs`
+- **Batch 3 (Accessibility):** Added `role="dialog"`/`aria-modal` to CommandPalette + ShortcutHelp; `role="listbox"`/`option`/`aria-selected` to palette results; `tabIndex`/`onKeyDown` Enter/Space on TabItem; `role="radiogroup"`/`radio`/`aria-checked` to SettingsPanel theme selector
+- **Batch 4 (Dead Code):** Deleted `AddressBar.tsx` (never imported); `package.json` name `xevo-temp`→`xevo`; added `typecheck` script
+- **Batch 5 (Type Safety):** `invoke<ScreenshotResult>` generic; typed `listen<T>` for three viewport events (was `any`)
+- **Batch 6 (Housekeeping):** Removed dead `getTabsByWorkspace` store method (zero callers); skipped YAGNI refactors
+- **Batch 7 (JSON double-serialization):** Removed `JSON.stringify()` from 6 `inspector_data` calls in Rust JS + changed `data: String` → `data: serde_json::Value` in Rust command — frontend no longer needs `JSON.parse(JSON.parse(...))`
+- **Batch 8 (Accessibility sweep):** `EntryRow` in NetworkPanel gets `role="button"`/`tabIndex`/`onKeyDown` Enter/Space; Tooltip `delayDuration` 0→500ms for WCAG; color swatch buttons get `aria-label`
+- **Batch 10 (Viewport sync throttle):** `useViewportSync.ts` scroll handler now rAF-throttled — drops 59/60 frames of IPC chatter
+- **YAGNI skipped:** `HeaderRules` feature gap (stored but not applied — harmless, frontend wired up); dead emulation fields `deviceScaleFactor`/`mobile`/`touch`/`userAgent` (never read but diff cost > value)
+
 ## Repository Structure Worktree
 
 ```text
@@ -902,7 +916,6 @@ Xevo/
 │  ├─ vite-env.d.ts
 │  ├─ components/
 │  │  ├─ browser/
-│  │  │  ├─ AddressBar.tsx
 │  │  │  ├─ BrowserChrome.tsx
 │  │  │  ├─ ContentArea.tsx
 │  │  │  ├─ FindBar.tsx

@@ -40,7 +40,6 @@ interface TabsStore {
   recordNavigation: (tabId: string, fromUrl: string) => void;
   popBack: (tabId: string) => string | null;
   popForward: (tabId: string) => string | null;
-  getTabsByWorkspace: (workspaceId: string) => Tab[];
   clearLastClosedTab: () => void;
   discardTab: (tabId: string) => void;
   restoreTab: (tabId: string) => void;
@@ -150,9 +149,6 @@ export const useTabsStore = create<TabsStore>()(
         });
         return nextUrl;
       },
-
-      getTabsByWorkspace: (workspaceId) =>
-        Object.values(get().tabs).filter((t) => t.workspaceId === workspaceId),
 
       clearLastClosedTab: () => set((s) => { s.lastClosedTab = null; }),
 

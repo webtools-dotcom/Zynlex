@@ -19,6 +19,7 @@ pub struct BrowserState {
     /// function's local variable goes out of scope (Tauri #14843).
     /// Key = label (e.g. "browser-tab-123"), value = cloneable handle.
     pub webviews: Mutex<HashMap<String, tauri::WebviewWindow>>,
+
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -212,7 +213,6 @@ pub fn run() {
             commands::browser::browser_set_theme,
             commands::browser::browser_hide_tab,
             commands::browser::browser_show_tab,
-            commands::browser::browser_update_header_rules,
             commands::browser::browser_set_user_agent,
             commands::browser::browser_set_memory_target,
             commands::browser::browser_eval_inspector,
@@ -234,6 +234,8 @@ pub fn run() {
             commands::browser::browser_save_tab_state,
             commands::browser::browser_tab_state_saved,
             commands::browser::browser_restore_tab_state,
+            commands::headers::set_header_rules,
+            commands::headers::get_header_rules,
             commands::ports::scan_ports,
         ])
         .run(tauri::generate_context!())
