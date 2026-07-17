@@ -876,7 +876,8 @@
 
 - [x] Read `header_issue-report.md`
 - [x] Replaced broken COM `SetHeader` approach with page-level `window.fetch` / `XMLHttpRequest` monkeypatch in `HEADER_INJECTION_SCRIPT`
-- [x] Wired `headers.rs` to inline current rules into each tab's init script and push live updates via `set_header_rules`
-- [x] Fixed `headers.rs` to import `tauri::Manager` for `webview_windows()`
+- [x] Wired `headers.rs` to inline current rules into each tab's init script and push live updates via `set_header_rules` (now also reaches `BrowserState.webviews` missed by Tauri's registry)
+- [x] Fixed `headers.rs` to import `tauri::Manager` for `webview_windows()` / `try_state()`
+- [x] Guarded `HEADER_INJECTION_SCRIPT` against `tauri://localhost` and `http://ipc.localhost` so user rules don't leak into Tauri IPC
 - [x] Verified `pnpm tsc --noEmit` clean; `cargo check --target x86_64-pc-windows-msvc` clean
 

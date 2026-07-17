@@ -13,8 +13,9 @@
 - Removed the broken COM `SetHeader` block from the `WebResourceRequested` handler.
 - Added `HEADER_INJECTION_SCRIPT` init script that monkeypatches `window.fetch` and `XMLHttpRequest` to inject matching header rules before each request.
 - `headers::current_rules_json()` exposes the Rust static rules as JSON so each new tab's init script can inline the latest rules without a bridge round-trip.
-- `set_header_rules()` pushes live updates via `eval("window.__XEVO_HEADER_RULES = [...]")` to every open `browser-*` webview.
-- `headers.rs` now imports `tauri::Manager` (required for `AppHandle::webview_windows()`).
+- `set_header_rules()` pushes live updates via `eval("window.__XEVO_HEADER_RULES = [...]")` to every open `browser-*` webview, scanning both Tauri's `webview_windows()` registry and the persistent `BrowserState.webviews` map so handles dropped by Tauri #14843 stay in sync.
+- `headers.rs` now imports `tauri::Manager` (required for `AppHandle::webview_windows()` and `try_state()`).
+- `HEADER_INJECTION_SCRIPT` skips `tauri://localhost` and `http://ipc.localhost` so user headers never attach to internal Tauri IPC requests.
 
 ### Verification
 - `pnpm tsc --noEmit` — clean
