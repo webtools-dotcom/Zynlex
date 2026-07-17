@@ -454,6 +454,13 @@ const HEADER_INJECTION_SCRIPT: &str = r##"
   }
 
   function xevoHeadersForUrl(url) {
+    // ponytail: never add user headers to Tauri IPC traffic (tauri://localhost,
+    // http://ipc.localhost) — these calls are internal and have no use for dev headers.
+    try {
+      var u = new URL(url);
+      if (u.hostname === 'ipc.localhost' || u.protocol === 'tauri:') return {};
+    } catch (e) { return {}; }
+
     var headers = {};
     var rules = xevoGetRules();
     for (var i = 0; i < rules.length; i++) {
