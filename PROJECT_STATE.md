@@ -1,8 +1,25 @@
 # XEVO Project State
 
 ## Version: v1.32.1-dev
-## Last Updated: 2026-07-10
-## Status: Network panel rebuilt as lightweight "Network Health Monitor" — resource type detection, timing/duration, content size, error/slow/API filtering, summary bar, copy-as-cURL/fetch. Phase 1-5 complete. Both TS and Rust compile clean.
+## Last Updated: 2026-07-17
+## Status: Header injection fixed using page-level fetch/XHR monkeypatch (the COM `SetHeader` call was returning `Ok(())` but not actually sending headers). Network panel v1.32.x remains complete. `pnpm tsc --noEmit` clean; `cargo check --target x86_64-pc-windows-msvc` clean.
+
+## Header Injection Perfect Fix (report follow-up)
+
+### Problem
+`ICoreWebView2HttpRequestHeaders::SetHeader` inside `WebResourceRequested` returned `Ok(())`, yet destinations like `httpbin.org/headers` received no user-defined headers.
+
+### Solution
+- Removed the broken COM `SetHeader` block from the `WebResourceRequested` handler.
+- Added `HEADER_INJECTION_SCRIPT` init script that monkeypatches `window.fetch` and `XMLHttpRequest` to inject matching header rules before each request.
+- `headers::current_rules_json()` exposes the Rust static rules as JSON so each new tab's init script can inline the latest rules without a bridge round-trip.
+- `set_header_rules()` pushes live updates via `eval("window.__XEVO_HEADER_RULES = [...]")` to every open `browser-*` webview.
+- `headers.rs` now imports `tauri::Manager` (required for `AppHandle::webview_windows()`).
+
+### Verification
+- `pnpm tsc --noEmit` — clean
+- `cargo check --target x86_64-pc-windows-msvc` — clean
+- `cargo check` on the Linux host fails inside the transitive `windows-future 0.2.1` crate (`IMarshal`/`marshaler` not found in `windows_core::imp`), which is an environment/target limitation, not a code error.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -47,7 +64,7 @@ All requests from browser webviews are captured via native WebView2 COM handlers
 
 ### Earlier sessions (v0.9–v1.24.1)
 
-Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zustand v5. Early sessions (v0.9–v0.9.11) went through multiple architectural iterations for the browser webview — started with `Window::add_child` child webviews, then pivoted to persistent `WebviewWindow` with `parent` (v0.9.6) after discovering Tauri 2's child-webview limitations on Windows (Issue #10079, "not planned"). This became the **tab-per-WebviewWindow architecture**: each tab gets its own `WebviewWindow` (label `browser-{tabId}`), created lazily on first navigation, hidden/shown on switch with full state preservation. **30+ Rust commands** were built: browser_create_tab/navigate_tab/close_tab, show/hide/set_bounds, go_back/forward/reload/stop_loading, find/find_next/stop_find/find_callback, reposition, set_theme, forward_shortcut, update_tab_info, scan_ports, browser_update_header_rules, browser_eval_inspector, inspector_data/mutate, browser_set_user_agent, browser_screenshot, browser_set_memory_target, open_external_url, create_viewport/destroy_viewport/resize_viewport, browser_save_tab_state/restore_tab_state, etc. The frontend has **12+ sidebar panels**: Live Servers, Bookmarks, History, Network (COM-based capture, color-coded rows, filter chips, detail pane), API Tester (Postman-style with cURL import, response viewer, history), Notes (rich text with pin/color/export), JWT Decoder, Base64 Tool, Headers Panel (custom header injection), Inspector Panel (meta/SEO/cookies/storage), Viewport Panel, User Agent Panel (presets), Social Preview. The browser chrome includes a tab system with pointer-based drag-to-reorder, address bar with URL resolution and search engine support, find-in-page (Ctrl+F via injected JS), loading bar, status bar with load-time tracking, command palette (Ctrl+K with fuzzy search), shortcut help (Ctrl+?), and overlay panel system (split-view webview resize for API Tester and Notes). Keyboard shortcuts work in the browser webview via `XEVO_SHORTCUT_FORWARD_SCRIPT` injected into every page. The app has Dark/Light/System theme via `data-theme` attributes and the **XEVO_FRONTEND.md design system** (Tailwind v4 `@theme` token block, `@custom-variant dark`, 34 aria-labels, custom window controls via `tauri-plugin-os`, `prefers-reduced-motion`, all cosmetic shadows removed, tabular-nums on numeric columns, custom DM Sans + JetBrains Mono fonts). A JSON auto-formatter viewer is injected into the webview for API responses. Performance optimizations include: tab discarding after 10min inactivity, concurrent webview cap of 10, shared WebView2 `data_directory`, pre-warm about:blank webview at startup, split init scripts (CORE_SCRIPT, HEADER_SCRIPT, NETWORK_SCRIPT, CHROME_FEATURES_SCRIPT, JSON_VIEWER_SCRIPT), React.lazy panels, Vite manualChunks, and network log memory leak fixes (batching, 5KB body truncation, off-by-default capturing). Workspaces are persisted via Zustand middleware with per-tab history stacks. Key bugs resolved: DPI scaling (PhysicalSize→LogicalSize after discovering `getBoundingClientRect()` returns CSS pixels, not DPI-scaled), title-bar double-counting (window.screenY already returns viewport top-left), 5px oscillation threshold (infinite close-and-recreate loop from WebView2 re-layer shifts), unique webview labels eliminating close-vs-add races, onMoved+onResized dual listener for window drag following, minimize hide/show cycle (hide all browser webviews when main window minimizes), `data-tauri-drag-region="deep"` for window drag from tab bar, and a comprehensive 30-bug sweep (Mutex poison recovery, CSP hardening, async race conditions, webview leaks on tab close/workspace deletion, async listener cancellation flags).
+Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zustand v5. Early sessions (v0.9–v0.9.11) went through multiple architectural iterations for the browser webview — started with `Window::add_child` child webviews, then pivoted to persistent `WebviewWindow` with `parent` (v0.9.6) after discovering Tauri 2's child-webview limitations on Windows (Issue #10079, "not planned"). This became the **tab-per-WebviewWindow architecture**: each tab gets its own `WebviewWindow` (label `browser-{tabId}`), created lazily on first navigation, hidden/shown on switch with full state preservation. **30+ Rust commands** were built: browser_create_tab/navigate_tab/close_tab, show/hide/set_bounds, go_back/forward/reload/stop_loading, find/find_next/stop_find/find_callback, reposition, set_theme, forward_shortcut, update_tab_info, scan_ports, set_header_rules, browser_eval_inspector, inspector_data/mutate, browser_set_user_agent, browser_screenshot, browser_set_memory_target, open_external_url, create_viewport/destroy_viewport/resize_viewport, browser_save_tab_state/restore_tab_state, etc. The frontend has **12+ sidebar panels**: Live Servers, Bookmarks, History, Network (COM-based capture, color-coded rows, filter chips, detail pane), API Tester (Postman-style with cURL import, response viewer, history), Notes (rich text with pin/color/export), JWT Decoder, Base64 Tool, Headers Panel (custom header injection), Inspector Panel (meta/SEO/cookies/storage), Viewport Panel, User Agent Panel (presets), Social Preview. The browser chrome includes a tab system with pointer-based drag-to-reorder, address bar with URL resolution and search engine support, find-in-page (Ctrl+F via injected JS), loading bar, status bar with load-time tracking, command palette (Ctrl+K with fuzzy search), shortcut help (Ctrl+?), and overlay panel system (split-view webview resize for API Tester and Notes). Keyboard shortcuts work in the browser webview via `XEVO_SHORTCUT_FORWARD_SCRIPT` injected into every page. The app has Dark/Light/System theme via `data-theme` attributes and the **XEVO_FRONTEND.md design system** (Tailwind v4 `@theme` token block, `@custom-variant dark`, 34 aria-labels, custom window controls via `tauri-plugin-os`, `prefers-reduced-motion`, all cosmetic shadows removed, tabular-nums on numeric columns, custom DM Sans + JetBrains Mono fonts). A JSON auto-formatter viewer is injected into the webview for API responses. Performance optimizations include: tab discarding after 10min inactivity, concurrent webview cap of 10, shared WebView2 `data_directory`, pre-warm about:blank webview at startup, split init scripts (CORE_SCRIPT, HEADER_SCRIPT, NETWORK_SCRIPT, CHROME_FEATURES_SCRIPT, JSON_VIEWER_SCRIPT), React.lazy panels, Vite manualChunks, and network log memory leak fixes (batching, 5KB body truncation, off-by-default capturing). Workspaces are persisted via Zustand middleware with per-tab history stacks. Key bugs resolved: DPI scaling (PhysicalSize→LogicalSize after discovering `getBoundingClientRect()` returns CSS pixels, not DPI-scaled), title-bar double-counting (window.screenY already returns viewport top-left), 5px oscillation threshold (infinite close-and-recreate loop from WebView2 re-layer shifts), unique webview labels eliminating close-vs-add races, onMoved+onResized dual listener for window drag following, minimize hide/show cycle (hide all browser webviews when main window minimizes), `data-tauri-drag-region="deep"` for window drag from tab bar, and a comprehensive 30-bug sweep (Mutex poison recovery, CSP hardening, async race conditions, webview leaks on tab close/workspace deletion, async listener cancellation flags).
 
 ## ARCHITECTURE NOTE (CURRENT)
 - **Tab-per-WebviewWindow architecture:** Each tab gets its own `WebviewWindow` (label `browser-{tabId}`), created lazily on first navigation via `browser_create_tab`. Tab switching calls `browser_activate_tab` which hides the old webview and shows the new one — no navigation, no reload, full state preservation.
@@ -57,7 +74,7 @@ Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zust
 - **Cap concurrent webviews:** Soft limit of 10 (configurable via `maxConcurrentWebviews`). When exceeded, oldest background tab is discarded.
 - **Shared WebView2 environment:** All browser webviews use the same `data_directory` path, so WebView2 shares browser/GPU/network processes across tabs.
 - **Pre-warm:** Hidden about:blank webview created at startup to initialize WebView2 browser process, destroyed after 2 seconds.
-- **Init scripts:** 3 scripts injected per tab: (1) `__XEVO_TAB_ID` (1 line), (2) `CORE_SCRIPT` (~400 lines: header injection, tab info reporting, keyboard shortcuts), (3) `CHROME_FEATURES_SCRIPT` (~300 lines: find-in-page + bookmark shortcut + shortcut forwarding), (4) `JSON_VIEWER_SCRIPT` (~120 lines: collapsible JSON viewer).
+- **Init scripts:** 5 scripts injected per tab (see `create_webview_for_tab`): (1) `__XEVO_TAB_ID` + `__XEVO_HEADER_RULES` (1 line), (2) `HEADER_INJECTION_SCRIPT` (~70 lines: fetch/XHR header injection), (3) `CORE_SCRIPT` (~400 lines: tab info reporting, keyboard shortcuts), (4) `CHROME_FEATURES_SCRIPT` (~300 lines: find-in-page + bookmark shortcut + shortcut forwarding), (5) `JSON_VIEWER_SCRIPT` (~120 lines: collapsible JSON viewer).
 - Bounds are in LOGICAL (CSS) pixels. Frontend `getBounds()` returns `rect.left + window.screenX, rect.top + window.screenY`. Rust passes these directly to `set_position(Position::Logical(...))` / `set_size(Size::Logical(...))`. The OS scales to physical via DPI.
 - Hidden by `WebviewWindow::hide()`. Shown by `WebviewWindow::show()` via `browser_show_tab`.
 - Events (`browser://url-changed`, `browser://loading`, `browser://tab-info`) include `tabId` in payload so the frontend routes state updates to the correct tab.
@@ -97,7 +114,7 @@ Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zust
 - **Network log captures fetch/XHR only** — document navigations, image/CSS/font/script asset loads, and Web Worker requests are not captured. By design — developers debugging API calls care about fetch/XHR, not assets. Panel now shows an explanatory message when a URL is loaded but no requests have been captured.
 - **HttpOnly cookies not visible in Cookie inspector** — browser security restriction; JavaScript cannot read HttpOnly cookies. The inspector shows a warning banner about this.
 - **Header injection applies to fetch/XHR only** — navigation requests and asset loads are not intercepted. By design — no dev wants auth headers on images.
-- **Header rules pushed to existing tabs via eval; new tabs get rules from init script** — `browser_update_header_rules` evals `window.__XEVO_HEADER_RULES = [...]` in all open browser webviews. New tabs created after the rules are set will also have the rules injected via the init script's initial empty array (which is then updated by `browser_update_header_rules`). This two-step approach ensures rules work immediately on existing tabs without requiring a page reload.
+- **Header rules pushed to existing tabs via eval; new tabs get current rules from init script** — `set_header_rules` evals `window.__XEVO_HEADER_RULES = [...]` in all open browser webviews. New tabs created after the rules are set also receive the rules through the `__XEVO_TAB_ID` init script's `window.__XEVO_HEADER_RULES = <headers::current_rules_json()>` and `HEADER_INJECTION_SCRIPT` applies them to fetch/XHR. The Rust static remains the single source of truth.
 
 ## Session 40 — Screenshot Bug Fix (WebView2 Content Black)
 
@@ -883,126 +900,156 @@ Tab-per-webview architecture: normal tab switching = hide/show (zero state loss)
 ## Repository Structure Worktree
 
 ```text
-Xevo/
-├─ .vscode/
-│  └─ extensions.json
-├─ AGENTS.md
-├─ ARCHITECTURE.md
-├─ PROJECT_STATE.md
-├─ README.md
-├─ TASKS.md
-├─ XEVO_FRONTEND.md
-├─ ENHANCED_BROWSER.md
-├─ MAJOR_FIXES.md
-├─ bug_report.md
-├─ feature_bug_fixes.md
-├─ quickfixes.md
-├─ web_url_issue.md
-├─ components.json
-├─ index.html
-├─ package.json
-├─ pnpm-lock.yaml
-├─ pnpm-workspace.yaml
-├─ tsconfig.json
-├─ tsconfig.node.json
-├─ vite.config.ts
-├─ public/
-│  ├─ tauri.svg
-│  └─ vite.svg
-├─ src/
-│  ├─ App.tsx
-│  ├─ main.tsx
-│  ├─ index.css
-│  ├─ vite-env.d.ts
-│  ├─ components/
-│  │  ├─ browser/
-│  │  │  ├─ BrowserChrome.tsx
-│  │  │  ├─ ContentArea.tsx
-│  │  │  ├─ FindBar.tsx
-│  │  │  ├─ LoadingBar.tsx
-│  │  │  ├─ StatusBar.tsx
-│  │  │  ├─ TabBar.tsx
-│  │  │  ├─ TabContextMenu.tsx
-│  │  │  ├─ TabItem.tsx
-│  │  │  ├─ Toolbar.tsx
-│  │  │  └─ WindowControls.tsx
-│  │  ├─ layout/
-│  │  │  └─ RootLayout.tsx
-│  │  ├─ overlay/
-│  │  │  └─ OverlayPanel.tsx
-│  │  ├─ panels/
-│  │  │  ├─ ApiTester.tsx
-│  │  │  ├─ Base64Tool.tsx
-│  │  │  ├─ HeadersPanel.tsx
-│  │  │  ├─ HomePage.tsx
-│  │  │  ├─ InspectorPanel.tsx
-│  │  │  ├─ JwtDecoder.tsx
-│  │  │  ├─ MetaValidator.ts
-│  │  │  ├─ NotesNotepad.tsx
-│  │  │  ├─ SettingsPanel.tsx
-│  │  │  ├─ SocialPreview.tsx
-│  │  │  ├─ UserAgentPanel.tsx
-│  │  │  ├─ UserAgentPresets.ts
-│  │  │  ├─ ViewportPanel.tsx
-│  │  │  └─ ViewportPresets.ts
-│  │  ├─ sidebar/
-│  │  │  ├─ ApiTesterPanel.tsx
-│  │  │  ├─ BookmarksPanel.tsx
-│  │  │  ├─ HistoryPanel.tsx
-│  │  │  ├─ NotesSidebarPanel.tsx
-│  │  │  ├─ Sidebar.tsx
-│  │  │  ├─ WorkspaceContextMenu.tsx
-│  │  │  └─ WorkspaceSwitcher.tsx
-│  │  ├─ ui/
-│  │  │  ├─ badge.tsx
-│  │  │  ├─ button.tsx
-│  │  │  ├─ input.tsx
-│  │  │  ├─ separator.tsx
-│  │  │  ├─ tooltip.tsx
-│  │  │  └─ VirtualList.tsx
-│  │  └─ ErrorBoundary.tsx
-│  ├─ lib/
-│  │  ├─ bookmarkAction.ts
-│  │  ├─ screenshot.ts
-│  │  ├─ url.ts
-│  │  ├─ utils.ts
-│  │  └─ workspaceTabs.ts
-│  ├─ stores/
-│  │  ├─ apiHistory.ts
-│  │  ├─ bookmarks.ts
-│  │  ├─ headers.ts
-│  │  ├─ history.ts
-│  │  ├─ inspector.ts
-│  │  ├─ notes.ts
-│  │  ├─ servers.ts
-│  │  ├─ settings.ts
-│  │  ├─ tabs.ts
-│  │  ├─ ui.ts
-│  │  └─ workspaces.ts
-│  ├─ types/
-│  │  └─ index.ts
-│  ├─ hooks/
-│  │  ├─ useKeyboardShortcuts.ts
-│  │  ├─ usePortScanner.ts
-│  │  ├─ useViewportSync.ts
-│  │  └─ useWebviewBridge.ts
-│  └─ services/
-│     └─ browser.ts
-└─ src-tauri/
-   ├─ .gitignore
-   ├─ Cargo.toml
-   ├─ Cargo.lock
-   ├─ build.rs
-   ├─ tauri.conf.json
-   ├─ capabilities/
-   │  └─ default.json
-   ├─ icons/
-   └─ src/
-       ├─ commands/
-       │  ├─ browser.rs
-       │  ├─ mod.rs
-        │  ├─ ports.rs
-       ├─ lib.rs
-      └─ main.rs
-```
+Xevo
+├── .vscode
+│   └── extensions.json
+├── public
+│   ├── tauri.svg
+│   └── vite.svg
+├── src
+│   ├── components
+│   │   ├── browser
+│   │   │   ├── BrowserChrome.tsx
+│   │   │   ├── ContentArea.tsx
+│   │   │   ├── FindBar.tsx
+│   │   │   ├── LoadingBar.tsx
+│   │   │   ├── StatusBar.tsx
+│   │   │   ├── TabBar.tsx
+│   │   │   ├── TabContextMenu.tsx
+│   │   │   ├── TabItem.tsx
+│   │   │   ├── Toolbar.tsx
+│   │   │   └── WindowControls.tsx
+│   │   ├── layout
+│   │   │   └── RootLayout.tsx
+│   │   ├── overlay
+│   │   │   └── OverlayPanel.tsx
+│   │   ├── panels
+│   │   │   ├── ApiTester.tsx
+│   │   │   ├── Base64Tool.tsx
+│   │   │   ├── HeadersPanel.tsx
+│   │   │   ├── HomePage.tsx
+│   │   │   ├── InspectorPanel.tsx
+│   │   │   ├── JwtDecoder.tsx
+│   │   │   ├── MetaValidator.ts
+│   │   │   ├── NetworkPanel.tsx
+│   │   │   ├── NotesNotepad.tsx
+│   │   │   ├── SettingsPanel.tsx
+│   │   │   ├── SocialPreview.tsx
+│   │   │   ├── UserAgentPanel.tsx
+│   │   │   ├── UserAgentPresets.ts
+│   │   │   ├── ViewportPanel.tsx
+│   │   │   └── ViewportPresets.ts
+│   │   ├── sidebar
+│   │   │   ├── ApiTesterPanel.tsx
+│   │   │   ├── BookmarksPanel.tsx
+│   │   │   ├── HistoryPanel.tsx
+│   │   │   ├── NotesSidebarPanel.tsx
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── WorkspaceContextMenu.tsx
+│   │   │   └── WorkspaceSwitcher.tsx
+│   │   ├── ui
+│   │   │   ├── VirtualList.tsx
+│   │   │   ├── badge.tsx
+│   │   │   ├── button.tsx
+│   │   │   ├── input.tsx
+│   │   │   ├── separator.tsx
+│   │   │   └── tooltip.tsx
+│   │   ├── CommandPalette.tsx
+│   │   ├── ErrorBoundary.tsx
+│   │   ├── ShortcutHelp.tsx
+│   │   └── Toast.tsx
+│   ├── hooks
+│   │   ├── useKeyboardShortcuts.ts
+│   │   ├── usePortScanner.ts
+│   │   ├── useViewportSync.ts
+│   │   └── useWebviewBridge.ts
+│   ├── lib
+│   │   ├── bookmarkAction.ts
+│   │   ├── networkCopy.ts
+│   │   ├── screenshot.ts
+│   │   ├── url.ts
+│   │   ├── utils.ts
+│   │   └── workspaceTabs.ts
+│   ├── services
+│   │   └── browser.ts
+│   ├── stores
+│   │   ├── apiHistory.ts
+│   │   ├── bookmarks.ts
+│   │   ├── headers.ts
+│   │   ├── history.ts
+│   │   ├── inspector.ts
+│   │   ├── network.ts
+│   │   ├── notes.ts
+│   │   ├── servers.ts
+│   │   ├── settings.ts
+│   │   ├── tabs.ts
+│   │   ├── ui.ts
+│   │   └── workspaces.ts
+│   ├── types
+│   │   └── index.ts
+│   ├── App.tsx
+│   ├── index.css
+│   ├── main.tsx
+│   └── vite-env.d.ts
+├── src-tauri
+│   ├── capabilities
+│   │   └── default.json
+│   ├── gen
+│   │   └── schemas
+│   │       ├── acl-manifests.json
+│   │       ├── capabilities.json
+│   │       ├── desktop-schema.json
+│   │       └── windows-schema.json
+│   ├── icons
+│   │   ├── 128x128.png
+│   │   ├── 128x128@2x.png
+│   │   ├── 32x32.png
+│   │   ├── Square107x107Logo.png
+│   │   ├── Square142x142Logo.png
+│   │   ├── Square150x150Logo.png
+│   │   ├── Square284x284Logo.png
+│   │   ├── Square30x30Logo.png
+│   │   ├── Square310x310Logo.png
+│   │   ├── Square44x44Logo.png
+│   │   ├── Square71x71Logo.png
+│   │   ├── Square89x89Logo.png
+│   │   ├── StoreLogo.png
+│   │   ├── icon.icns
+│   │   ├── icon.ico
+│   │   └── icon.png
+│   ├── src
+│   │   ├── commands
+│   │   │   ├── browser.rs
+│   │   │   ├── headers.rs
+│   │   │   ├── mod.rs
+│   │   │   └── ports.rs
+│   │   ├── lib.rs
+│   │   └── main.rs
+│   ├── .gitignore
+│   ├── Cargo.lock
+│   ├── Cargo.toml
+│   ├── build.rs
+│   └── tauri.conf.json
+├── .gitignore
+├── AGENTS.md
+├── ARCHITECTURE.md
+├── DEVBROWSER_PROJECT_GUIDE.md
+├── PROJECT_STATE.md
+├── README.md
+├── TASKS.md
+├── XEVO_FRONTEND.md
+├── components.json
+├── header_issue-report.md
+├── index.html
+├── networklog_issues.md
+├── package.json
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+├── repo-structure.md
+├── tsconfig.json
+├── tsconfig.node.json
+├── vite-review.json
+└── vite.config.ts
 
+22 directories, 127 files
+```

@@ -435,6 +435,78 @@ document.addEventListener("keydown", function(e) {
 })();
 "##;
 
+// ── HEADER_INJECTION_SCRIPT: fetch/XHR header injection.
+// ponytail: done at the page level because WebView2 COM SetHeader in the
+// WebResourceRequested handler returns Ok without actually sending the header.
+const HEADER_INJECTION_SCRIPT: &str = r##"
+(function() {
+  if (window.__xevoHeaderInjectionDone) return;
+  window.__xevoHeaderInjectionDone = true;
+
+  function xevoGetRules() { return window.__XEVO_HEADER_RULES || []; }
+
+  function xevoUrlMatches(pattern, url) {
+    if (!pattern || pattern === '*') return true;
+    try {
+      var re = new RegExp(pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*'));
+      return re.test(url);
+    } catch (e) { return false; }
+  }
+
+  function xevoHeadersForUrl(url) {
+    var headers = {};
+    var rules = xevoGetRules();
+    for (var i = 0; i < rules.length; i++) {
+      var r = rules[i];
+      if (r && r.enabled && xevoUrlMatches(r.pattern, url)) headers[r.name] = r.value;
+    }
+    return headers;
+  }
+
+  var origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    try {
+      var url = null;
+      if (typeof input === 'string') url = new URL(input, window.location.href).href;
+      else if (input && typeof input.href === 'string') url = input.href;
+      else if (input && typeof input.url === 'string') url = input.url;
+
+      if (url) {
+        var toAdd = xevoHeadersForUrl(url);
+        var names = Object.keys(toAdd);
+        if (names.length) {
+          var baseHeaders = (init && init.headers) ? init.headers : (input && typeof input.headers === 'object' ? input.headers : {});
+          var h = new Headers(baseHeaders);
+          for (var i = 0; i < names.length; i++) h.set(names[i], toAdd[names[i]]);
+          init = Object.assign({}, init, { headers: h });
+        }
+      }
+    } catch (e) {}
+    return origFetch.call(this, input, init);
+  };
+
+  var origOpen = XMLHttpRequest.prototype.open;
+  var origSend = XMLHttpRequest.prototype.send;
+  var xhrUrlMap = new WeakMap();
+
+  XMLHttpRequest.prototype.open = function(method, url) {
+    try { xhrUrlMap.set(this, new URL(url, window.location.href).href); } catch (e) {}
+    return origOpen.apply(this, arguments);
+  };
+
+  XMLHttpRequest.prototype.send = function() {
+    try {
+      var url = xhrUrlMap.get(this);
+      if (url) {
+        var toAdd = xevoHeadersForUrl(url);
+        for (var name in toAdd) this.setRequestHeader(name, toAdd[name]);
+      }
+    } catch (e) {}
+    return origSend.apply(this, arguments);
+  };
+})();
+"##;
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 fn webview_label_for_tab(tab_id: &str) -> String {
@@ -516,8 +588,9 @@ fn create_webview_for_tab(
     let app_for_load = app.clone();
     let app_for_new_window = app.clone();
 
-    // Per-tab init script that sets __XEVO_TAB_ID
-    let tab_id_init = format!("window.__XEVO_TAB_ID = \"{}\";", tab_id);
+    // Per-tab init script that sets __XEVO_TAB_ID and active header rules.
+    let rules_json = crate::commands::headers::current_rules_json();
+    let tab_id_init = format!("window.__XEVO_TAB_ID = \"{}\"; window.__XEVO_HEADER_RULES = {};", tab_id, rules_json);
 
     let state = app.state::<BrowserState>();
     let user_agent = state.user_agent.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -531,6 +604,7 @@ fn create_webview_for_tab(
         .position(x, y)
         .data_directory(shared_webview_data_dir(app))
         .initialization_script(&tab_id_init)
+        .initialization_script(HEADER_INJECTION_SCRIPT)
         .initialization_script(CORE_SCRIPT)
         .initialization_script(CHROME_FEATURES_SCRIPT)
         .initialization_script(JSON_VIEWER_SCRIPT);
@@ -1126,7 +1200,6 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
             use webview2_com::WebResourceRequestedEventHandler;
             use webview2_com::WebResourceResponseReceivedEventHandler;
             use webview2_com::WebResourceResponseViewGetContentCompletedHandler;
-            use windows::core::HSTRING;
             use windows::core::PWSTR;
             use windows_core::BOOL;
             use windows_core::Interface;
@@ -1159,14 +1232,9 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
                     Err(_) => return Ok(()),
                 };
 
-                // ── Header injection: set headers on the canonical request reference ──
-                // Must happen FIRST, before any other reads on `request`, to ensure
-                // modifications land on the real COM object (not a disconnected copy).
-                if let Ok(req_headers) = request.Headers() {
-                    let name = HSTRING::from("X-Xevo-Test");
-                    let value = HSTRING::from("phase1-proof");
-                    let _ = req_headers.SetHeader(&name, &value);
-                }
+                // ponytail: header injection lives in HEADER_INJECTION_SCRIPT
+                // (page-level fetch/XHR patch) because COM SetHeader returns Ok
+                // here but the destination server still receives no headers.
 
                 let mut method_ptr = PWSTR::null();
                 let mut uri_ptr = PWSTR::null();

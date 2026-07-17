@@ -872,3 +872,11 @@
   - [x] Removed unused `hydrateTab` function from `tabs.ts`
   - [x] Verified: `cargo check` + `pnpm tsc --noEmit` + `pnpm build` clean
 
+## Session 62 — Header Injection Perfect Fix (report follow-up)
+
+- [x] Read `header_issue-report.md`
+- [x] Replaced broken COM `SetHeader` approach with page-level `window.fetch` / `XMLHttpRequest` monkeypatch in `HEADER_INJECTION_SCRIPT`
+- [x] Wired `headers.rs` to inline current rules into each tab's init script and push live updates via `set_header_rules`
+- [x] Fixed `headers.rs` to import `tauri::Manager` for `webview_windows()`
+- [x] Verified `pnpm tsc --noEmit` clean; `cargo check --target x86_64-pc-windows-msvc` clean
+
