@@ -94,10 +94,10 @@ async fn scan_single_host(port: u16, host: &'static str) -> ScannedPort {
     .await;
 
     match http_result {
-        Ok(Ok((status, title))) => ScannedPort {
+        Ok(Ok((status, title, is_tls))) => ScannedPort {
             port,
             alive: true,
-            protocol: "http".to_string(),
+            protocol: if is_tls { "https".to_string() } else { "http".to_string() },
             title,
             status: Some(status),
         },
@@ -112,8 +112,16 @@ async fn scan_single_host(port: u16, host: &'static str) -> ScannedPort {
     }
 }
 
-/// Send a basic HTTP GET and return (status_code, Option<title>).
-async fn http_get_title(host: &str, port: u16) -> Result<(u16, Option<String>), String> {
+/// A plaintext HTTP/1.0 GET sent to a TLS-only server elicits a TLS alert or
+/// handshake record instead of an HTTP response. TLS record types 20-23 (0x14-0x17)
+/// followed by a 0x03 version-major byte are the giveaway — cheap to detect without
+/// a TLS client library, which a full handshake would require.
+fn looks_like_tls_record(buf: &[u8]) -> bool {
+    buf.len() >= 2 && matches!(buf[0], 0x14..=0x17) && buf[1] == 0x03
+}
+
+/// Send a basic HTTP GET and return (status_code, Option<title>, looks_like_tls).
+async fn http_get_title(host: &str, port: u16) -> Result<(u16, Option<String>, bool), String> {
     let addr = loopback_addr(host, port);
     let mut stream = TcpStream::connect(&addr)
         .await
@@ -145,6 +153,7 @@ async fn http_get_title(host: &str, port: u16) -> Result<(u16, Option<String>), 
         }
     }
 
+    let is_tls = looks_like_tls_record(&buf[..total]);
     let response = String::from_utf8_lossy(&buf[..total]);
     let response_str = response.as_ref();
 
@@ -159,7 +168,7 @@ async fn http_get_title(host: &str, port: u16) -> Result<(u16, Option<String>), 
     // Extract <title>...</title> from body
     let title = extract_title(response_str);
 
-    Ok((status, title))
+    Ok((status, title, is_tls))
 }
 
 /// Extract text content of <title> tag from HTML string.
@@ -214,4 +223,22 @@ pub async fn scan_ports(ports: Vec<u16>) -> Result<Vec<ScannedPort>, String> {
     // Sort by port number for consistent UI ordering
     results.sort_by_key(|r| r.port);
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::looks_like_tls_record;
+
+    #[test]
+    fn tls_record_detection() {
+        // TLS alert (21) and handshake (22) records, version 3.x — the shapes a
+        // TLS-only server sends back when it receives our plaintext HTTP GET.
+        assert!(looks_like_tls_record(&[0x15, 0x03, 0x03, 0x00, 0x02]));
+        assert!(looks_like_tls_record(&[0x16, 0x03, 0x01, 0x00, 0x50]));
+        // A normal HTTP response must not be misdetected as TLS.
+        assert!(!looks_like_tls_record(b"HTTP/1.1 200 OK\r\n"));
+        // Too short to inspect.
+        assert!(!looks_like_tls_record(&[0x16]));
+        assert!(!looks_like_tls_record(&[]));
+    }
 }

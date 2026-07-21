@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { Tab, NewTabOptions } from "@/types";
+import { useNetworkStore } from "@/stores/network";
 
 function genId(): string {
   return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -65,6 +66,8 @@ export const useTabsStore = create<TabsStore>()(
             delete s.tabs[tabId];
           }
         });
+        // Tab is genuinely gone (not discarded) — its network log has no more use.
+        useNetworkStore.getState().clearTab(tabId);
       },
 
       updateTab: (tabId, updates) => {

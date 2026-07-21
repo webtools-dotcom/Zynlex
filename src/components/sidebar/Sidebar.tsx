@@ -28,13 +28,13 @@ const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
   { id: "bookmarks",  Icon: Bookmark,     label: "Bookmarks" },
   { id: "history",    Icon: Clock,        label: "History" },
   { id: "network",    Icon: Activity,     label: "Network" },
+  { id: "headers",    Icon: Shield,       label: "Header Injection" },
   { id: "inspector",  Icon: FlaskConical, label: "Inspector" },
   { id: "api",        Icon: Code2,        label: "API Tester" },
   { id: "notes",      Icon: FileText,     label: "Notes" },
   { id: "jwt",        Icon: KeyRound,     label: "JWT Decoder" },
   { id: "base64",     Icon: Binary,       label: "Base64" },
   { id: "ua",         Icon: Globe,        label: "User Agent" },
-  { id: "headers",    Icon: Shield,       label: "Header Injection" },
   { id: "viewport",   Icon: Monitor,      label: "Viewports" },
 ];
 

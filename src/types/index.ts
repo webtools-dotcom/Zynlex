@@ -87,16 +87,6 @@ export interface AppSettings {
   maxConcurrentWebviews: number;
 }
 
-// ─── UI State ────────────────────────────────────────────────────
-
-export interface UIState {
-  sidebarOpen: boolean;
-  sidebarWidth: number;
-  activePanel: PanelId | null;
-  commandPaletteOpen: boolean;
-  settingsOpen: boolean;
-}
-
 // ─── Find in Page ─────────────────────────────────────────────────
 
 export interface FindResult {

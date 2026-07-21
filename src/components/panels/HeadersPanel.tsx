@@ -1,17 +1,32 @@
 import { useState, useMemo } from "react";
 import { useHeadersStore, genHeaderRuleId, type HeaderRule } from "@/stores/headers";
 import { useWorkspacesStore } from "@/stores/workspaces";
-import { Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { useTabsStore } from "@/stores/tabs";
+import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
+import { Plus, Trash2, ToggleLeft, ToggleRight, AlertTriangle } from "lucide-react";
+
+/** Origin of the active tab, or "*" if there is none/it's unparseable — the
+ * safe scoped default for a new rule instead of "match everything". */
+function defaultPatternFor(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "*";
+  }
+}
 
 function RuleRow({
   rule,
   onToggle,
   onDelete,
+  onEditValue,
 }: {
   rule: HeaderRule;
   onToggle: () => void;
   onDelete: () => void;
+  onEditValue: (value: string) => void;
 }) {
+  const isWildcard = rule.enabled && (rule.pattern.trim() === "" || rule.pattern.trim() === "*");
   return (
     <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-mono hover:bg-[var(--color-hover)] border-b border-[var(--color-border)] group">
       <button
@@ -25,6 +40,14 @@ function RuleRow({
           <ToggleLeft size={13} />
         )}
       </button>
+      {isWildcard && (
+        <span
+          className="shrink-0 text-amber-400 inline-flex"
+          title="Matches every origin — this header is sent to every request the tab makes, including third-party scripts"
+        >
+          <AlertTriangle size={11} />
+        </span>
+      )}
       <span className="truncate flex-1 min-w-0 text-[var(--color-muted-foreground)]" title={rule.pattern}>
         {rule.pattern}
       </span>
@@ -33,9 +56,12 @@ function RuleRow({
         {rule.name}
       </span>
       <span className="text-[var(--color-muted-foreground)] shrink-0">:</span>
-      <span className="text-[var(--color-muted-foreground)] truncate max-w-[80px] shrink-0" title={rule.value}>
-        {rule.value.length > 12 ? rule.value.slice(0, 12) + "..." : rule.value}
-      </span>
+      <input
+        value={rule.value}
+        onChange={(e) => onEditValue(e.target.value)}
+        title="Click to edit"
+        className="text-[var(--color-muted-foreground)] bg-transparent w-[80px] shrink-0 outline-none focus:w-[160px] focus:bg-[var(--color-hover)] focus:text-[var(--color-foreground)] rounded px-0.5 transition-all"
+      />
       <button
         onClick={onDelete}
         className="opacity-0 group-hover:opacity-100 text-[var(--color-muted-foreground)] hover:text-red-400 px-0.5 shrink-0 transition-opacity"
@@ -47,8 +73,14 @@ function RuleRow({
   );
 }
 
-function AddRuleForm({ onAdd }: { onAdd: (rule: HeaderRule) => void }) {
-  const [pattern, setPattern] = useState("*");
+function AddRuleForm({
+  onAdd,
+  defaultPattern,
+}: {
+  onAdd: (rule: HeaderRule) => void;
+  defaultPattern: string;
+}) {
+  const [pattern, setPattern] = useState(defaultPattern);
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
 
@@ -62,7 +94,7 @@ function AddRuleForm({ onAdd }: { onAdd: (rule: HeaderRule) => void }) {
       value: value.trim(),
       enabled: true,
     });
-    setPattern("*");
+    setPattern(defaultPattern);
     setName("");
     setValue("");
   };
@@ -72,7 +104,7 @@ function AddRuleForm({ onAdd }: { onAdd: (rule: HeaderRule) => void }) {
       <input
         value={pattern}
         onChange={(e) => setPattern(e.target.value)}
-        placeholder="URL pattern (*)"
+        placeholder="URL pattern (defaults to current tab's origin)"
         className="bg-[var(--color-hover)] text-[11px] font-mono px-2 py-1 rounded border border-[var(--color-border)] outline-none focus:border-[var(--color-accent)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)]"
       />
       <div className="flex gap-1.5">
@@ -104,6 +136,11 @@ const EMPTY_RULES: HeaderRule[] = [];
 
 export function HeadersPanel() {
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
+  const workspaces = useWorkspacesStore((s) => s.workspaces);
+  const tabs = useTabsStore((s) => s.tabs);
+  const activeTab = getLiveWorkspaceActiveTab(workspaces[activeWorkspaceId], tabs);
+  const defaultPattern = activeTab?.url ? defaultPatternFor(activeTab.url) : "*";
+
   const rulesByWs = useHeadersStore((s) => s.rulesByWs);
   const rules = useMemo(() => rulesByWs[activeWorkspaceId] ?? EMPTY_RULES, [rulesByWs, activeWorkspaceId]);
   const addRule = useHeadersStore((s) => s.addRule);
@@ -125,6 +162,10 @@ export function HeadersPanel() {
     removeRule(activeWorkspaceId, id);
   };
 
+  const handleEditValue = (id: string, value: string) => {
+    updateRule(activeWorkspaceId, id, { value });
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--color-border)]">
@@ -133,12 +174,13 @@ export function HeadersPanel() {
         </span>
       </div>
 
-      <AddRuleForm onAdd={handleAdd} />
+      <AddRuleForm onAdd={handleAdd} defaultPattern={defaultPattern} />
 
       <div className="flex-1 overflow-y-auto">
         {rules.length === 0 ? (
           <div className="text-[11px] text-[var(--color-muted-foreground)] px-3 py-4 italic">
-            No header injection rules. Add one above.
+            No header injection rules. Add one above. Note: WebSocket connections aren't
+            covered — only regular HTTP/HTTPS requests.
           </div>
         ) : (
           rules.map((rule) => (
@@ -147,6 +189,7 @@ export function HeadersPanel() {
               rule={rule}
               onToggle={() => handleToggle(rule.id)}
               onDelete={() => handleDelete(rule.id)}
+              onEditValue={(value) => handleEditValue(rule.id, value)}
             />
           ))
         )}
