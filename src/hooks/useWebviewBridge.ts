@@ -49,8 +49,6 @@ import {
   getLiveWorkspaceActiveTabId,
 } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen } from "@tauri-apps/api/event";
 import { useNetworkStore } from "@/stores/network";
 import { useHeadersStore } from "@/stores/headers";
 import { setHeaderRules } from "@/services/browser";
@@ -59,49 +57,47 @@ let _netEntryId = 0;
 
 const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-const IS_WINDOWS =
-  typeof navigator !== "undefined" &&
-  /Windows|Win32|Win64|WOW64/i.test(navigator.userAgent);
-// Compensates for a known Tauri/WebView2 child-webview positioning bug:
-// the native webview's actual rendered position drifts from the CSS
-// bounds we compute, by a DIFFERENT amount on each edge. This is an
-// unresolved upstream issue (not something we can fix from here), so we
-// calibrate it empirically per edge instead of one symmetric number.
-//
-//   POSITIVE value = INSET  -> shrinks the webview inward.
-//                              Use this on an edge where the webview
-//                              currently overflows past the chrome.
-//   NEGATIVE value = BLEED  -> expands the webview outward.
-//                              Use this on an edge where there's a
-//                              visible gap between the webview and chrome.
-//
-// Change ONE value at a time, rebuild, and check only that edge.
-const WEBVIEW_EDGE_INSET = {
-  top: 1.5,
-  right: 7.5,
-  bottom: 4,
-  left: -5.5,
-};
 
 /**
- * Computes the native webview's screen-space bounds from the content
- * area's DOMRect, applying the per-edge calibration above. Every place
- * that positions or resizes the webview goes through this single
- * function — so tuning WEBVIEW_EDGE_INSET fixes the gap everywhere at
- * once, instead of needing the same edit repeated in five places.
+ * Computes the webview's bounds from the content area's DOMRect.
+ *
+ * These are WINDOW-RELATIVE (main window client area), not screen
+ * coordinates: tab webviews are child webviews created via Rust's
+ * `Window::add_child`, and Tauri positions those relative to the parent
+ * window's top-left corner. So a DOMRect — already relative to the same
+ * client area — maps across directly.
+ *
+ * The old per-edge WEBVIEW_EDGE_INSET calibration is gone. It was
+ * compensating for `window.screenX/screenY` vs. the DWM extended frame
+ * (Windows 10/11 windows carry a ~7px invisible resize border — that was
+ * the `right: 7.5`), which only mattered while we were converting to
+ * screen coordinates. Child webviews never leave client space.
  */
 function computeWebviewBounds(rect: DOMRect, overlayH: number): BrowserBounds {
-  const inset = IS_WINDOWS
-    ? WEBVIEW_EDGE_INSET
-    : { top: 0, right: 0, bottom: 0, left: 0 };
   return {
-    x: Math.round(rect.left + window.screenX + inset.left),
-    y: Math.round(rect.top + window.screenY + overlayH + inset.top),
-    width: Math.round(Math.max(1, rect.width - inset.left - inset.right)),
-    height: Math.round(
-      Math.max(1, rect.height - overlayH - inset.top - inset.bottom)
-    ),
+    x: Math.round(rect.left),
+    y: Math.round(rect.top + overlayH),
+    width: Math.round(Math.max(1, rect.width)),
+    height: Math.round(Math.max(1, rect.height - overlayH)),
   };
+}
+
+/**
+ * The getBoundingClientRect → overlay-height → computeWebviewBounds sequence,
+ * factored out since every bounds-sync call site repeated it verbatim.
+ * Returns null when there's no content area yet or it's too small to
+ * measure (matches every call site's existing early-return threshold).
+ */
+function getActiveBounds(
+  contentAreaRef: React.RefObject<HTMLDivElement | null>
+): BrowserBounds | null {
+  const el = contentAreaRef.current;
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 10 || rect.height < 10) return null;
+  const ui = useUIStore.getState();
+  const overlayH = ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
+  return computeWebviewBounds(rect, overlayH);
 }
 
 /** Any React chrome overlay that must sit above the OS-level browser webview. */
@@ -133,43 +129,22 @@ export function useWebviewBridge(
   const lastBoundsRef = useRef<BrowserBounds | null>(null);
   // Track when loading started so we can report load time on completion.
   const loadStartRef = useRef<number | null>(null);
-  // Track minimize state — suppress syncBounds while minimized.
-  const isMinimizedRef = useRef(false);
-  // Debounce timers for window resize event
-  const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longResizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Throttle onMoved to avoid spamming Rust during drag (~60 events/sec).
-  const lastMoveRef = useRef(0);
-  // Track which tabs have been created (have a WebviewWindow).
+  // Track which tabs have been created (have a webview).
   const createdTabsRef = useRef<Set<string>>(new Set());
   const prevActiveTabIdRef = useRef<string | null>(null);
-  // Diagnostic: which trigger initiated the current syncBounds call.
-  const syncTriggerRef = useRef<string>("initial");
 
   // ── Ref-based syncBounds ──────────────────────────────────────────
   const syncBoundsRef = useRef<() => void>(() => {});
   syncBoundsRef.current = () => {
     if (!IS_TAURI) return;
-    if (isMinimizedRef.current) {
-      console.log("[XEVO-BOUNDS] SKIP (isMinimized)", syncTriggerRef.current);
-      return;
-    }
     if (useUIStore.getState().viewportMode) return;
     const tabId = useWorkspacesStore.getState().workspaces[
       useWorkspacesStore.getState().activeWorkspaceId
     ]?.activeTabId;
     if (!tabId) return;
-    const el = contentAreaRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 10) return;
-    const ui = useUIStore.getState();
-    const overlayH =
-      ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-    const bounds: BrowserBounds = computeWebviewBounds(rect, overlayH);
+    const bounds = getActiveBounds(contentAreaRef);
+    if (!bounds) return;
     const last = lastBoundsRef.current;
-    const trigger = syncTriggerRef.current;
-    const now = Date.now() % 100000;
     if (
       last &&
       Math.abs(last.x - bounds.x) < 5 &&
@@ -177,27 +152,8 @@ export function useWebviewBridge(
       Math.abs(last.width - bounds.width) < 5 &&
       Math.abs(last.height - bounds.height) < 5
     ) {
-      console.log(
-        `[XEVO-BOUNDS] BLOCKED (${trigger}) t=${now}`,
-        "last:", last,
-        "computed:", bounds,
-        "deltas:", {
-          dx: Math.abs(last.x - bounds.x),
-          dy: Math.abs(last.y - bounds.y),
-          dw: Math.abs(last.width - bounds.width),
-          dh: Math.abs(last.height - bounds.height),
-        }
-      );
       return;
     }
-    console.log(
-      `[XEVO-BOUNDS] SYNC (${trigger}) t=${now}`,
-      "computed:", bounds,
-      "last:", last,
-      "rect:", { l: rect.left, t: rect.top, w: rect.width, h: rect.height },
-      "screen:", { sx: window.screenX, sy: window.screenY },
-      "overlayH:", overlayH
-    );
     lastBoundsRef.current = bounds;
     setWebviewBounds(tabId, bounds).catch((err) => {
       console.error("[XEVO-BOUNDS] Rust setWebviewBounds ERROR:", err, "for bounds:", bounds);
@@ -210,7 +166,6 @@ export function useWebviewBridge(
   const ensureWebviewVisible = useCallback(
     (attempt = 0) => {
       if (useUIStore.getState().viewportMode) return;
-      if (isMinimizedRef.current) return;
       if (isChromeOverlayOpen()) return;
       const tabId = useWorkspacesStore.getState().workspaces[
         useWorkspacesStore.getState().activeWorkspaceId
@@ -219,22 +174,16 @@ export function useWebviewBridge(
       // Guard: don't try to show a webview that hasn't been created yet.
       // The browser_create_tab command is called lazily on first navigation.
       if (!createdTabsRef.current.has(tabId)) {
-        console.log("[XEVO-LIFECYCLE] ensureWebviewVisible — tabId", tabId, "not yet created, skipping");
         return;
       }
-      const el = contentAreaRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width < 10 || rect.height < 10) {
+      if (!contentAreaRef.current) return;
+      const bounds = getActiveBounds(contentAreaRef);
+      if (!bounds) {
         if (attempt < 8) {
           setTimeout(() => ensureWebviewVisible(attempt + 1), 50);
         }
         return;
       }
-      const ui = useUIStore.getState();
-      const overlayH =
-        ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-      const bounds: BrowserBounds = computeWebviewBounds(rect, overlayH);
       showTabWebview(tabId, bounds).catch(() => {});
     },
     [contentAreaRef]
@@ -262,17 +211,12 @@ export function useWebviewBridge(
         }
         return;
       }
-      const el = contentAreaRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width < 10 || rect.height < 10) return;
-      const ui = useUIStore.getState();
-      const overlayH =
-        ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-      const bounds: BrowserBounds = computeWebviewBounds(rect, overlayH);
+      const bounds = getActiveBounds(contentAreaRef);
+      if (!bounds) return;
       const displayTitle = url
         .replace(/^https?:\/\/(www\.)?/, "")
         .split("/")[0];
+      let reservedNewSlot = false;
       try {
         if (activeTabId) {
           updateTab(activeTabId, {
@@ -290,6 +234,7 @@ export function useWebviewBridge(
             // Reserve slot synchronously BEFORE async call to prevent
             // duplicate creation from concurrent effects (hydration + tab switching).
             createdTabsRef.current.add(activeTabId);
+            reservedNewSlot = true;
             await createTab(activeTabId, url, bounds);
           }
         }
@@ -301,6 +246,11 @@ export function useWebviewBridge(
           workspaceId: useWorkspacesStore.getState().activeWorkspaceId,
         });
       } catch {
+        // If createTab failed, release the reserved slot — otherwise the tab
+        // is marked "created" with no webview behind it, permanently blank.
+        if (reservedNewSlot && activeTabId) {
+          createdTabsRef.current.delete(activeTabId);
+        }
         if (activeTabId) {
           updateTab(activeTabId, { isLoading: false });
         }
@@ -446,30 +396,28 @@ export function useWebviewBridge(
       );
       if (event.tabId !== activeTabId) return;
 
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.error) {
-          store.setError(parsed.error);
-          return;
-        }
-        store.setError(null);
+      // event.data arrives as an already-parsed object (Rust sends serde_json::Value,
+      // not a JSON string) — no JSON.parse needed here.
+      const parsed = event.data;
+      if (parsed.error) {
+        store.setError(parsed.error);
+        return;
+      }
+      store.setError(null);
 
-        switch (event.dataType) {
-          case "meta":
-            store.setMeta(parsed as MetaInfo);
-            break;
-          case "cookies":
-            store.setCookies(parsed.cookies as CookieEntry[]);
-            break;
-          case "localStorage":
-            store.setLocalStorage(parsed.items as StorageEntry[]);
-            break;
-          case "sessionStorage":
-            store.setSessionStorage(parsed.items as StorageEntry[]);
-            break;
-        }
-      } catch {
-        store.setError("Failed to parse inspector data");
+      switch (event.dataType) {
+        case "meta":
+          store.setMeta(parsed as unknown as MetaInfo);
+          break;
+        case "cookies":
+          store.setCookies(parsed.cookies as CookieEntry[]);
+          break;
+        case "localStorage":
+          store.setLocalStorage(parsed.items as StorageEntry[]);
+          break;
+        case "sessionStorage":
+          store.setSessionStorage(parsed.items as StorageEntry[]);
+          break;
       }
     }).then((fn) => {
       if (cancelled) { fn(); return; }
@@ -526,14 +474,8 @@ export function useWebviewBridge(
     }
 
     // Tab has a URL -> activate its webview (create if needed)
-    const el = contentAreaRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 10) return;
-    const ui = useUIStore.getState();
-    const overlayH =
-      ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-    const bounds: BrowserBounds = computeWebviewBounds(rect, overlayH);
+    const bounds = getActiveBounds(contentAreaRef);
+    if (!bounds) return;
 
     const setNormal = () => {
       setMemoryTarget(activeTabId!, false).catch(() => {});
@@ -639,11 +581,9 @@ export function useWebviewBridge(
     if (!IS_TAURI) return;
 
     const recreateForUserAgent = () => {
-      console.log("[XEVO-LIFECYCLE] recreateForUserAgent — starting, createdTabs:", Array.from(createdTabsRef.current));
       const wsState = useWorkspacesStore.getState();
       const ws = wsState.workspaces[wsState.activeWorkspaceId];
       const activeTabId = ws ? getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs)?.id : null;
-      console.log("[XEVO-LIFECYCLE] recreateForUserAgent — activeTabId:", activeTabId);
 
       const createdIds = Array.from(createdTabsRef.current);
       createdTabsRef.current.clear();
@@ -652,14 +592,12 @@ export function useWebviewBridge(
       const tabsState = useTabsStore.getState().tabs;
       for (const id of createdIds) {
         if (id !== activeTabId && tabsState[id]) {
-          console.log("[XEVO-LIFECYCLE] recreateForUserAgent — discarding non-active tab:", id);
           // Save tab state before discarding
           saveTabState(id).catch(() => {});
           useTabsStore.getState().discardTab(id);
         }
       }
 
-      console.log("[XEVO-LIFECYCLE] recreateForUserAgent — closing all", createdIds.length, "webviews:", createdIds);
       Promise.all(createdIds.map((id) => closeTabWebview(id).catch(() => {})))
         .then(
           () =>
@@ -678,14 +616,8 @@ export function useWebviewBridge(
           if (tab.discardedAt !== null) {
             useTabsStore.getState().restoreTab(tab.id);
           }
-          const el = contentAreaRef.current;
-          if (!el) return;
-          const rect = el.getBoundingClientRect();
-          if (rect.width < 10 || rect.height < 10) return;
-          const ui = useUIStore.getState();
-          const overlayH =
-            ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-          const bounds = computeWebviewBounds(rect, overlayH);
+          const bounds = getActiveBounds(contentAreaRef);
+          if (!bounds) return;
           // Reserve slot synchronously BEFORE async call.
           createdTabsRef.current.add(tab.id);
           return createTab(tab.id, tab.url, bounds).catch(() => {
@@ -745,11 +677,10 @@ export function useWebviewBridge(
     let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
     const observer = new ResizeObserver(() => {
       if (resizeTimeout) clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => { syncTriggerRef.current = "resizeObserver"; syncBounds(); }, 16);
+      resizeTimeout = setTimeout(() => { syncBounds(); }, 16);
     });
     observer.observe(el);
     observer.observe(document.documentElement);
-    syncTriggerRef.current = "resizeObserverInitial";
     syncBounds();
     return () => {
       if (resizeTimeout) clearTimeout(resizeTimeout);
@@ -757,69 +688,18 @@ export function useWebviewBridge(
     };
   }, [contentAreaRef, syncBounds]);
 
-  // ── Window move + resize listeners ────────────────────────────────
-  useEffect(() => {
-    if (!IS_TAURI) return;
-    let cancelled = false;
-    let unmove: (() => void) | null = null;
-    let unresize: (() => void) | null = null;
-
-    getCurrentWindow()
-      .onMoved(() => {
-        const now = performance.now();
-        if (now - lastMoveRef.current < 16) return;
-        lastMoveRef.current = now;
-        requestAnimationFrame(() => { syncTriggerRef.current = "onMoved"; syncBoundsRef.current(); });
-      })
-      .then((fn) => {
-        if (cancelled) { fn(); return; }
-        unmove = fn;
-      });
-
-    getCurrentWindow()
-      .onResized(() => {
-        if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);
-        resizeTimerRef.current = setTimeout(() => { syncTriggerRef.current = "onResized-50"; syncBoundsRef.current(); }, 50);
-        if (longResizeTimerRef.current) clearTimeout(longResizeTimerRef.current);
-        longResizeTimerRef.current = setTimeout(() => { syncTriggerRef.current = "onResized-500"; syncBoundsRef.current(); }, 500);
-      })
-      .then((fn) => {
-        if (cancelled) { fn(); return; }
-        unresize = fn;
-      });
-
-    return () => {
-      cancelled = true;
-      unmove?.();
-      unresize?.();
-      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);
-      if (longResizeTimerRef.current) clearTimeout(longResizeTimerRef.current);
-    };
-  }, []);
-
-  // ── Minimize state listener ──────────────────────────────────────
-  useEffect(() => {
-    if (!IS_TAURI) return;
-    const unlisten = listen<boolean>("xevo://minimize-state", (event) => {
-      isMinimizedRef.current = event.payload;
-      if (!event.payload) {
-        // Just restored from minimize — force bounds sync.
-        lastBoundsRef.current = null;
-        requestAnimationFrame(() => { syncTriggerRef.current = "minRestore-rAF"; syncBoundsRef.current(); });
-        setTimeout(() => {
-          lastBoundsRef.current = null;
-          syncTriggerRef.current = "minRestore-120";
-          syncBoundsRef.current();
-        }, 120);
-        setTimeout(() => {
-          lastBoundsRef.current = null;
-          syncTriggerRef.current = "minRestore-500";
-          syncBoundsRef.current();
-        }, 500);
-      }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, []);
+  // Window move/resize following is GONE, and deliberately so.
+  //
+  // Tab webviews used to be top-level *owner* windows positioned in screen
+  // coordinates, so every window move had to be observed here and replayed
+  // to Rust — the onMoved listener that never fired for maximize/unmaximize
+  // (SWP_NOMOVE), the throttle, the double resize timers, the minimize-state
+  // and force-sync listeners, and the maximize-transition lastBoundsRef reset.
+  //
+  // They are child webviews inside the main window now, so Windows moves,
+  // clips, hides and restores them with the parent. The ResizeObserver above
+  // still handles *layout* changes (sidebar, overlay panel, window resize
+  // changing the content area) — that is a different thing from window moves.
 
   // ── Network entry listener ────────────────────────────────────────
   useEffect(() => {
@@ -839,31 +719,30 @@ export function useWebviewBridge(
     };
   }, []);
 
-  // ── Header rules sync: push current workspace's rules to Rust on any change ────
+  // ── Header rules sync: resolve each tab's own workspace's rules and push the
+  // whole per-tab map to Rust. Keyed by tabId (not the active workspace) so a
+  // background tab from an inactive workspace never picks up another
+  // workspace's rules. ──
   useEffect(() => {
     if (!IS_TAURI) return;
-    const wsId = activeWorkspaceId;
     const sync = () => {
-      const rules = useHeadersStore.getState().rulesByWs[wsId] ?? [];
-      setHeaderRules(rules).catch((err) =>
-        console.error("[XEVO-HEADERS] sync failed:", err)
+      const { rulesByWs } = useHeadersStore.getState();
+      const rulesByTab: Record<string, ReturnType<typeof useHeadersStore.getState>["rulesByWs"][string]> = {};
+      for (const tab of Object.values(useTabsStore.getState().tabs)) {
+        const rules = rulesByWs[tab.workspaceId];
+        if (rules?.length) rulesByTab[tab.id] = rules;
+      }
+      setHeaderRules(rulesByTab).catch((err) =>
+        console.error("Failed to sync header rules:", err)
       );
     };
     sync();
-    const unsub = useHeadersStore.subscribe(sync);
-    return () => unsub();
-  }, [activeWorkspaceId]);
-
-  // ── Force-sync from Rust (e.g. after Focused(true) restore) ──────
-  useEffect(() => {
-    if (!IS_TAURI) return;
-    const unlisten = listen("xevo://force-sync", () => {
-      console.log("[XEVO-BOUNDS] force-sync event received from Rust");
-      lastBoundsRef.current = null;
-      syncTriggerRef.current = "forceSync";
-      syncBoundsRef.current();
-    });
-    return () => { unlisten.then((fn) => fn()); };
+    const unsubHeaders = useHeadersStore.subscribe(sync);
+    const unsubTabs = useTabsStore.subscribe(sync);
+    return () => {
+      unsubHeaders();
+      unsubTabs();
+    };
   }, []);
 
   // ── Reposition on sidebar toggle ────────────────────────────────
@@ -875,15 +754,8 @@ export function useWebviewBridge(
       const ws = wsState.workspaces[wsState.activeWorkspaceId];
       const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
       if (!tab?.url) return;
-      const el = contentAreaRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width < 10 || rect.height < 10) return;
-      const ui = useUIStore.getState();
-      const overlayH =
-        ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
-      const bounds = computeWebviewBounds(rect, overlayH);
-      console.log("[XEVO-BOUNDS] SYNC (sidebarToggle) computed:", bounds);
+      const bounds = getActiveBounds(contentAreaRef);
+      if (!bounds) return;
       setWebviewBounds(tab.id, {
         x: bounds.x,
         y: bounds.y,

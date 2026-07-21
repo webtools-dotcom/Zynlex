@@ -1,18 +1,96 @@
-use tauri::webview::{PageLoadEvent, WebviewWindowBuilder};
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl, WebviewWindow};
+use tauri::webview::{PageLoadEvent, WebviewBuilder};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
 
 use crate::BrowserState;
+use crate::xevo_log;
 use tauri_plugin_opener::OpenerExt;
 
 // Shared data directory for all browser webviews. WebView2 automatically shares
 // browser/GPU/network processes when webviews use the same data directory.
 static SHARED_WEBVIEW_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
-static NETWORK_REQUEST_META: OnceLock<Mutex<HashMap<String, (Instant, String)>>> = OnceLock::new();
+// Keyed by "{tabId}:{uri}". A VecDeque (not a single slot) because two concurrent
+// requests to the same URL are common (duplicate fetches, polling) — request order
+// is preserved so the response handler pairs each response with its own request's
+// start time via FIFO pop, instead of two concurrent requests overwriting each
+// other's timing. Entries are popped on response and swept on tab close
+// (browser_close_tab) so cancelled/aborted requests and closed tabs don't leak.
+static NETWORK_REQUEST_META: OnceLock<Mutex<HashMap<String, VecDeque<(Instant, String)>>>> = OnceLock::new();
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HeaderRule {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub pattern: String,
+    pub name: String,
+    pub value: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_true() -> bool { true }
+
+// Keyed by tabId — each tab only ever sees its own workspace's rules. The
+// frontend resolves workspace -> rules and hands us a finished per-tab map,
+// so switching the active workspace can never leak another workspace's
+// still-alive background tabs into the wrong rule set.
+static HEADER_RULES: OnceLock<Mutex<HashMap<String, Vec<HeaderRule>>>> = OnceLock::new();
+
+fn header_rules() -> &'static Mutex<HashMap<String, Vec<HeaderRule>>> {
+    HEADER_RULES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn strip_scheme(s: &str) -> &str {
+    match s.find("://") {
+        Some(i) => &s[i + 3..],
+        None => s,
+    }
+}
+
+/// Case-insensitive match, anchored to the URL with scheme stripped so a
+/// pattern can't match a substring buried in a foreign origin's query string
+/// (e.g. pattern `localhost:5000` must not match `evil.com/?next=localhost:5000`).
+/// A wildcard-free pattern is a prefix match (the common case: "this host").
+/// `*` acts as a glob wildcard when present.
+fn url_matches(pattern: &str, uri: &str) -> bool {
+    let pattern = pattern.trim();
+    if pattern.is_empty() || pattern == "*" {
+        return true;
+    }
+    let (pattern, uri) = (pattern.to_lowercase(), uri.to_lowercase());
+    let (pattern, uri) = (strip_scheme(&pattern), strip_scheme(&uri));
+
+    if !pattern.contains('*') {
+        return uri.starts_with(pattern);
+    }
+
+    let mut rest = uri;
+    let mut trailing_star = false;
+    for (i, part) in pattern.split('*').enumerate() {
+        if part.is_empty() {
+            trailing_star = true;
+            continue;
+        }
+        trailing_star = false;
+        if i == 0 {
+            match rest.strip_prefix(part) {
+                Some(r) => rest = r,
+                None => return false,
+            }
+        } else {
+            match rest.find(part) {
+                Some(j) => rest = &rest[j + part.len()..],
+                None => return false,
+            }
+        }
+    }
+    trailing_star || rest.is_empty()
+}
 
 fn shared_webview_data_dir(app: &AppHandle) -> PathBuf {
     SHARED_WEBVIEW_DATA_DIR
@@ -441,24 +519,54 @@ fn webview_label_for_tab(tab_id: &str) -> String {
     format!("browser-{}", tab_id)
 }
 
+/// Resolve a tab/viewport webview by label: Tauri's own registry first, then
+/// our persistent handle map (webviews whose strong refs we hold may not appear
+/// in `app.webviews()` — Tauri #14843).
+///
+/// Every tab lookup routes through here, so the registry-then-map fallback that
+/// used to be copy-pasted at ~25 call sites lives in exactly one place.
+pub fn find_tab_webview(app: &AppHandle, label: &str) -> Option<tauri::Webview> {
+    if let Some(wv) = app.get_webview(label) {
+        return Some(wv);
+    }
+    let state = app.state::<BrowserState>();
+    let guard = state.webviews.lock().unwrap_or_else(|e| e.into_inner());
+    guard.get(label).cloned()
+}
+
 /// Hide all browser-* webviews EXCEPT the one with the given label.
 /// This is the authoritative way to ensure exactly one webview is visible.
-/// Called before showing a new webview to prevent orphan floating windows.
 fn hide_all_browser_webviews_except(app: &AppHandle, state: &crate::BrowserState, except_label: &str) {
     // Hide via Tauri's built-in registry
-    for (label, wv) in app.webview_windows() {
+    for (label, wv) in app.webviews() {
         if label.starts_with("browser-") && label != except_label {
             let _ = wv.hide();
         }
     }
     // Also hide via our persistent handle map — webviews whose strong refs
-    // we hold may not appear in app.webview_windows() (Tauri #14843).
+    // we hold may not appear in app.webviews() (Tauri #14843).
     if let Ok(webviews) = state.webviews.lock() {
         for (label, wv) in webviews.iter() {
             if label.starts_with("browser-") && label != except_label {
                 let _ = wv.hide();
             }
         }
+    }
+}
+
+/// Poll until no webview is registered under `label`, in either Tauri's own
+/// registry or our persistent handle map. `destroy()` on Windows is async — a
+/// window can still be found for a few ms after we call it — so a caller that
+/// just destroyed the old handle for this label needs to wait for it to
+/// actually clear before treating "still present" as a real conflict.
+async fn wait_until_absent(app: &AppHandle, state: &crate::BrowserState, label: &str) {
+    for _ in 0..25 {
+        let present = app.get_webview(label).is_some()
+            || state.webviews.lock().unwrap_or_else(|e| e.into_inner()).contains_key(label);
+        if !present {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 }
 
@@ -489,11 +597,20 @@ fn resolve_url(input: &str) -> String {
     )
 }
 
-/// Build a WebviewWindow for a tab. Injects per-tab __XEVO_TAB_ID plus
+/// Build a child Webview for a tab. Injects per-tab __XEVO_TAB_ID plus
 /// all shared init scripts (core, chrome features, JSON viewer).
+///
+/// Uses `Window::add_child`, NOT `WebviewWindowBuilder::parent()`. On Windows
+/// `.parent()` creates an *owner* window (top-level, screen coordinates) which
+/// the OS never moves with its owner — that is what forced the old JS
+/// onMoved/onResized bounds-following. A child webview lives inside the main
+/// window's HWND at window-relative coordinates, so it moves and clips for free.
+///
+/// Callers MUST be async: a sync `#[tauri::command]` runs on the main thread and
+/// creating a webview needs to pump the event loop that thread is blocked on,
+/// which deadlocks (the webview is created and hit-tests but never paints).
 fn create_webview_for_tab(
     app: &AppHandle,
-    main_window: &WebviewWindow,
     tab_id: &str,
     url: &str,
     x: f64,
@@ -501,7 +618,7 @@ fn create_webview_for_tab(
     width: f64,
     height: f64,
     show_immediately: bool,
-) -> Result<WebviewWindow, String> {
+) -> Result<tauri::Webview, String> {
     let width = width.max(1.0);
     let height = height.max(1.0);
     let label = webview_label_for_tab(tab_id);
@@ -522,13 +639,13 @@ fn create_webview_for_tab(
     let state = app.state::<BrowserState>();
     let user_agent = state.user_agent.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
-    let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url::Url::parse("about:blank").expect("about:blank must parse")))
-        .parent(main_window)
-        .map_err(|e| e.to_string())?
-        .decorations(false)
-        .resizable(false)
-        .inner_size(width, height)
-        .position(x, y)
+    let main_window = app
+        .get_window("main")
+        .ok_or("main window not found")?;
+
+    // decorations/resizable/inner_size/position are window concepts — a child
+    // webview gets its geometry from add_child's position/size arguments below.
+    let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(url::Url::parse("about:blank").expect("about:blank must parse")))
         .data_directory(shared_webview_data_dir(app))
         .initialization_script(&tab_id_init)
         .initialization_script(CORE_SCRIPT)
@@ -539,7 +656,7 @@ fn create_webview_for_tab(
         builder = builder.user_agent(ua);
     }
 
-    let webview = builder
+    let builder = builder
             .on_navigation(move |nav_url| {
                 let scheme = nav_url.scheme();
                 let allowed = matches!(scheme, "http" | "https" | "" | "tauri");
@@ -574,9 +691,17 @@ fn create_webview_for_tab(
                     "url": url.to_string()
                 }));
                 tauri::webview::NewWindowResponse::Deny
-            })
-            .build()
-            .map_err(|e| e.to_string())?;
+            });
+
+    // Position/size are relative to the main window's client area, not the
+    // screen — this is what makes window moves free.
+    let webview = main_window
+        .add_child(
+            builder,
+            Position::Logical(LogicalPosition::new(x, y)),
+            Size::Logical(LogicalSize::new(width, height)),
+        )
+        .map_err(|e| e.to_string())?;
 
     register_webview_network_capture(&webview, app, tab_id);
 
@@ -595,7 +720,6 @@ fn create_webview_for_tab(
 /// webview. Called on first navigation (when a URL is entered).
 #[tauri::command]
 pub async fn browser_create_tab(
-    window: tauri::WebviewWindow,
     app: AppHandle,
     state: tauri::State<'_, BrowserState>,
     tab_id: String,
@@ -614,28 +738,32 @@ pub async fn browser_create_tab(
     {
         let mut webviews = state.webviews.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(old_wv) = webviews.remove(&label) {
-            eprintln!("[XEVO-LIFECYCLE] browser_create_tab — destroying stale handle for label={}", label);
-            let _ = old_wv.destroy();
+            xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — closing stale handle for label={}", label);
+            let _ = old_wv.close();
         }
     }
 
-    // Destroy any orphan webview in Tauri's registry with this label.
-    if let Some(orphan) = app.get_webview_window(&label) {
-        eprintln!("[XEVO-LIFECYCLE] browser_create_tab — destroying orphan label={}", label);
-        let _ = orphan.destroy();
+    // Close any orphan webview in Tauri's registry with this label.
+    if let Some(orphan) = app.get_webview(&label) {
+        xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — closing orphan label={}", label);
+        let _ = orphan.close();
     }
 
-    // Guard: if a webview with this label now exists in Tauri OR in our
-    // persistent map, no-op.
+    // We just destroyed whatever was under this label above, but destroy() is
+    // async on Windows — wait for it to actually clear rather than treating
+    // "still present a moment later" as a legitimate pre-existing webview and
+    // silently no-op'ing (that used to report success without creating
+    // anything, leaving the tab permanently blank).
+    wait_until_absent(&app, &state, &label).await;
     {
         let webviews = state.webviews.lock().unwrap_or_else(|e| e.into_inner());
-        if app.get_webview_window(&label).is_some() || webviews.contains_key(&label) {
-            eprintln!("[XEVO-LIFECYCLE] browser_create_tab — label={} already exists, no-op", label);
-            return Ok(());
+        if app.get_webview(&label).is_some() || webviews.contains_key(&label) {
+            xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — label={} did not release after waiting, aborting", label);
+            return Err(format!("webview for tab {} did not release in time", tab_id));
         }
     }
 
-    eprintln!("[XEVO-LIFECYCLE] browser_create_tab — creating label={} url={} x={} y={} w={} h={}", label, resolved, x, y, width, height);
+    xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — creating label={} url={} x={} y={} w={} h={}", label, resolved, x, y, width, height);
 
     // Hide ALL other browser webviews — this is authoritative.
     // The old approach (hide only active_tab_label) missed webviews hidden
@@ -643,16 +771,13 @@ pub async fn browser_create_tab(
     // windows that became "stuck".
     hide_all_browser_webviews_except(&app, &state, &label);
 
-    // Don't show the webview if the main window is minimized.
-    // The Focused(true) restore handler in lib.rs will show it on restore.
-    let is_minimized = window.is_minimized().unwrap_or(false);
-    eprintln!("[XEVO-LIFECYCLE] browser_create_tab — label={} is_minimized={} show_immediately={}", label, is_minimized, !is_minimized);
-
+    // A child webview is hidden and restored by the OS along with its parent
+    // window, so minimize state no longer gates creation.
     let webview = create_webview_for_tab(
-        &app, &window, &tab_id, &resolved, x, y, width, height, !is_minimized,
+        &app, &tab_id, &resolved, x, y, width, height, true,
     )?;
 
-    // Store a persistent strong reference to prevent the WebviewWindow
+    // Store a persistent strong reference to prevent the Webview
     // from being destroyed when this async function returns (Tauri #14843).
     // Without this, the handle drops and the OS window disappears, causing
     // browser_set_bounds to find only ["main"].
@@ -661,7 +786,7 @@ pub async fn browser_create_tab(
         // Race check: another call may have created this webview while we were
         // creating ours. If so, drop our duplicate to avoid orphaning theirs.
         if webviews.contains_key(&label) {
-            eprintln!("[XEVO-LIFECYCLE] browser_create_tab — RACE: label={} already in map, dropping duplicate", label);
+            xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — RACE: label={} already in map, dropping duplicate", label);
             drop(webview);
             return Ok(());
         }
@@ -682,23 +807,34 @@ pub async fn browser_close_tab(
     tab_id: String,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    let exists = app.get_webview_window(&label).is_some();
-    eprintln!("[XEVO-LIFECYCLE] browser_close_tab — label={} tab_id={} exists_before={}", label, tab_id, exists);
+    let exists = app.get_webview(&label).is_some();
+    xevo_log!("[XEVO-LIFECYCLE] browser_close_tab — label={} tab_id={} exists_before={}", label, tab_id, exists);
     // Remove from our persistent map FIRST — this is the authoritative source
     // of strong references. The handle will drop after removal, allowing the
     // OS window to be destroyed naturally (confirming the close on Rust's side).
     state.webviews.lock().unwrap_or_else(|e| e.into_inner()).remove(&label);
-    if let Some(wv) = app.get_webview_window(&label) {
+    if let Some(wv) = app.get_webview(&label) {
         wv.close().map_err(|e| e.to_string())?;
-        eprintln!("[XEVO-LIFECYCLE] browser_close_tab — label={} closed OK, still_exists={}", label, app.get_webview_window(&label).is_some());
+        xevo_log!("[XEVO-LIFECYCLE] browser_close_tab — label={} closed OK, still_exists={}", label, app.get_webview(&label).is_some());
     } else {
-        eprintln!("[XEVO-LIFECYCLE] browser_close_tab — label={} not found (already closed?)", label);
+        xevo_log!("[XEVO-LIFECYCLE] browser_close_tab — label={} not found (already closed?)", label);
     }
     // If this was the active tab, clear the tracker
     let mut active = state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner());
     if active.as_deref() == Some(&label) {
         *active = None;
     }
+    drop(active);
+
+    // Sweep any still-pending network request timing entries for this tab —
+    // otherwise cancelled/in-flight requests from a closed tab leak forever.
+    if let Some(store) = NETWORK_REQUEST_META.get() {
+        if let Ok(mut map) = store.lock() {
+            let prefix = format!("{}:", tab_id);
+            map.retain(|k, _| !k.starts_with(&prefix));
+        }
+    }
+
     Ok(())
 }
 
@@ -711,11 +847,11 @@ pub async fn browser_navigate_tab(
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
     let resolved = resolve_url(&url);
-    if let Some(wv) = app.get_webview_window(&label) {
+    if let Some(wv) = find_tab_webview(&app, &label) {
         wv.navigate(resolved.parse().map_err(|e: url::ParseError| e.to_string())?)
             .map_err(|e| {
                 #[cfg(debug_assertions)]
-                eprintln!("[xevo] browser_navigate_tab failed: {e}");
+                xevo_log!("[xevo] browser_navigate_tab failed: {e}");
                 e.to_string()
             })?;
     }
@@ -735,32 +871,31 @@ pub async fn browser_set_bounds(
     height: f64,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    eprintln!("[XEVO-BOUNDS] browser_set_bounds called — label={} x={} y={} w={} h={}", label, x, y, width, height);
+    xevo_log!("[XEVO-BOUNDS] browser_set_bounds called — label={} x={} y={} w={} h={}", label, x, y, width, height);
     // Try Tauri's registry first, then fallback to our persistent handle map
-    let wv = app.get_webview_window(&label)
-        .or_else(|| state.webviews.lock().unwrap_or_else(|e| e.into_inner()).get(&label).cloned());
+    let wv = find_tab_webview(&app, &label);
     if let Some(wv) = wv {
-        eprintln!("[XEVO-BOUNDS] browser_set_bounds — webview found, calling set_position");
+        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — webview found, calling set_position");
         if let Err(e) = wv.set_position(Position::Logical(LogicalPosition::new(x, y))) {
-            eprintln!("[XEVO-BOUNDS] browser_set_bounds — set_position ERROR: {}", e);
+            xevo_log!("[XEVO-BOUNDS] browser_set_bounds — set_position ERROR: {}", e);
             return Err(format!("set_position failed: {}", e));
         }
-        eprintln!("[XEVO-BOUNDS] browser_set_bounds — set_position OK, calling set_size");
+        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — set_position OK, calling set_size");
         if let Err(e) = wv.set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0)))) {
-            eprintln!("[XEVO-BOUNDS] browser_set_bounds — set_size ERROR: {}", e);
+            xevo_log!("[XEVO-BOUNDS] browser_set_bounds — set_size ERROR: {}", e);
             return Err(format!("set_size failed: {}", e));
         }
-        eprintln!("[XEVO-BOUNDS] browser_set_bounds — both OK");
+        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — both OK");
     } else {
-        eprintln!("[XEVO-BOUNDS] browser_set_bounds — webview NOT FOUND for label: {}", label);
+        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — webview NOT FOUND for label: {}", label);
         // Diagnostic: dump all registered webview labels to understand why lookup failed
-        let all_labels: Vec<String> = app.webview_windows()
+        let all_labels: Vec<String> = app.webviews()
             .iter()
             .map(|(l, _)| l.clone())
             .collect();
-        eprintln!("[XEVO-BOUNDS] browser_set_bounds — registered webview labels: {:?}", all_labels);
+        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — registered webview labels: {:?}", all_labels);
         let stored_labels: Vec<String> = state.webviews.lock().unwrap_or_else(|e| e.into_inner()).keys().cloned().collect();
-        eprintln!("[XEVO-BOUNDS] browser_set_bounds — stored webview labels: {:?}", stored_labels);
+        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — stored webview labels: {:?}", stored_labels);
     }
     Ok(())
 }
@@ -770,7 +905,7 @@ pub async fn browser_set_bounds(
 #[tauri::command]
 pub async fn browser_go_back(app: AppHandle, tab_id: String) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    if let Some(wv) = app.get_webview_window(&label) {
+    if let Some(wv) = find_tab_webview(&app, &label) {
         wv.eval("window.history.back()")
             .map_err(|e| format!("browser_go_back eval failed: {e}"))?;
     }
@@ -780,7 +915,7 @@ pub async fn browser_go_back(app: AppHandle, tab_id: String) -> Result<(), Strin
 #[tauri::command]
 pub async fn browser_go_forward(app: AppHandle, tab_id: String) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    if let Some(wv) = app.get_webview_window(&label) {
+    if let Some(wv) = find_tab_webview(&app, &label) {
         wv.eval("window.history.forward()")
             .map_err(|e| format!("browser_go_forward eval failed: {e}"))?;
     }
@@ -790,7 +925,7 @@ pub async fn browser_go_forward(app: AppHandle, tab_id: String) -> Result<(), St
 #[tauri::command]
 pub async fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    if let Some(wv) = app.get_webview_window(&label) {
+    if let Some(wv) = find_tab_webview(&app, &label) {
         wv.eval("window.location.reload()")
             .map_err(|e| format!("browser_reload eval failed: {e}"))?;
     }
@@ -800,7 +935,7 @@ pub async fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String
 #[tauri::command]
 pub async fn browser_stop_loading(app: AppHandle, tab_id: String) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    if let Some(wv) = app.get_webview_window(&label) {
+    if let Some(wv) = find_tab_webview(&app, &label) {
         wv.eval("window.stop()").map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -854,14 +989,13 @@ pub fn update_tab_info(
 
 fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<(), String> {
     let label = webview_label_for_tab(tab_id);
-    let wv = app
-        .get_webview_window(&label)
+    let wv = find_tab_webview(app, &label)
         .ok_or_else(|| "browser webview not found for tab".to_string())?;
     // ponytail: script_body already JS-escaped via js_string_literal — no re-escaping needed
     let wrapped = format!("(function() {{ {} }})();", script_body);
     wv.eval(&wrapped).map_err(|e| {
         #[cfg(debug_assertions)]
-        eprintln!("[xevo] browser find eval failed: {e}");
+        xevo_log!("[xevo] browser find eval failed: {e}");
         e.to_string()
     })
 }
@@ -970,11 +1104,11 @@ pub async fn browser_set_theme(app: AppHandle, theme: String) -> Result<(), Stri
 }})();"#
     );
     // Apply to ALL browser webviews (all labels starting with "browser-")
-    for (_, wv) in app.webview_windows() {
+    for (_, wv) in app.webviews() {
         if wv.label().starts_with("browser-") {
             if let Err(e) = wv.eval(&script) {
                 #[cfg(debug_assertions)]
-                eprintln!("[xevo] theme eval failed for {}: {}", wv.label(), e);
+                xevo_log!("[xevo] theme eval failed for {}: {}", wv.label(), e);
             }
         }
     }
@@ -990,12 +1124,11 @@ pub async fn browser_hide_tab(
     tab_id: String,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    eprintln!("[XEVO-LIFECYCLE] browser_hide_tab — label={}", label);
-    let wv = app.get_webview_window(&label)
-        .or_else(|| state.webviews.lock().unwrap_or_else(|e| e.into_inner()).get(&label).cloned());
+    xevo_log!("[XEVO-LIFECYCLE] browser_hide_tab — label={}", label);
+    let wv = find_tab_webview(&app, &label);
     if let Some(wv) = wv {
         wv.hide().map_err(|e| format!("failed to hide tab: {e}"))?;
-        eprintln!("[XEVO-LIFECYCLE] browser_hide_tab — label={} hidden OK", label);
+        xevo_log!("[XEVO-LIFECYCLE] browser_hide_tab — label={} hidden OK", label);
         // Clear active_tab_label if we just hid the tracked webview.
         // This prevents stale state where active_tab_label points to a
         // hidden webview — which causes orphan floating windows on restore.
@@ -1004,7 +1137,7 @@ pub async fn browser_hide_tab(
             *active = None;
         }
     } else {
-        eprintln!("[XEVO-LIFECYCLE] browser_hide_tab — label={} not found", label);
+        xevo_log!("[XEVO-LIFECYCLE] browser_hide_tab — label={} not found", label);
     }
     Ok(())
 }
@@ -1020,10 +1153,9 @@ pub async fn browser_show_tab(
     height: f64,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    eprintln!("[XEVO-BOUNDS] browser_show_tab called — label={}", label);
+    xevo_log!("[XEVO-BOUNDS] browser_show_tab called — label={}", label);
     // Try Tauri's registry first, then fallback to our persistent handle map
-    let wv = app.get_webview_window(&label)
-        .or_else(|| state.webviews.lock().unwrap_or_else(|e| e.into_inner()).get(&label).cloned());
+    let wv = find_tab_webview(&app, &label);
     if let Some(wv) = wv {
         wv.set_position(Position::Logical(LogicalPosition::new(x, y)))
             .map_err(|e| format!("failed to set position: {e}"))?;
@@ -1034,9 +1166,9 @@ pub async fn browser_show_tab(
         // cleared it, which causes the Focused(true) restore handler in lib.rs
         // to skip showing the webview on minimize-restore.
         *state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner()) = Some(label.clone());
-        eprintln!("[XEVO-BOUNDS] browser_show_tab — restored active_tab_label to {}", label);
+        xevo_log!("[XEVO-BOUNDS] browser_show_tab — restored active_tab_label to {}", label);
     } else {
-        eprintln!("[XEVO-BOUNDS] browser_show_tab — webview NOT FOUND for label: {}", label);
+        xevo_log!("[XEVO-BOUNDS] browser_show_tab — webview NOT FOUND for label: {}", label);
     }
     Ok(())
 }
@@ -1059,7 +1191,7 @@ pub async fn browser_set_user_agent(
 /// Set the memory usage target level for a specific tab's webview.
 /// Best-effort — silently no-ops on non-Windows or older WebView2 runtimes,
 /// but logs which step failed so it's debuggable.
-pub fn apply_memory_target(wv: &tauri::WebviewWindow, low: bool) {
+pub fn apply_memory_target(wv: &tauri::Webview, low: bool) {
     let _ = wv.with_webview(move |platform| {
         #[cfg(windows)]
         unsafe {
@@ -1080,12 +1212,12 @@ pub fn apply_memory_target(wv: &tauri::WebviewWindow, low: bool) {
                 Ok(core) => match core.cast::<ICoreWebView2_19>() {
                     Ok(core19) => {
                         if let Err(e) = core19.SetMemoryUsageTargetLevel(level) {
-                            eprintln!("[xevo] SetMemoryUsageTargetLevel failed: {e:?}");
+                            xevo_log!("[xevo] SetMemoryUsageTargetLevel failed: {e:?}");
                         }
                     }
-                    Err(e) => eprintln!("[xevo] ICoreWebView2_19 unavailable: {e:?}"),
+                    Err(e) => xevo_log!("[xevo] ICoreWebView2_19 unavailable: {e:?}"),
                 },
-                Err(e) => eprintln!("[xevo] CoreWebView2() failed: {e:?}"),
+                Err(e) => xevo_log!("[xevo] CoreWebView2() failed: {e:?}"),
             }
         }
     });
@@ -1096,16 +1228,14 @@ pub fn apply_memory_target(wv: &tauri::WebviewWindow, low: bool) {
 #[tauri::command]
 pub async fn browser_set_memory_target(
     app: AppHandle,
-    state: tauri::State<'_, crate::BrowserState>,
     tab_id: String,
     low: bool,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    eprintln!("[XEVO-LIFECYCLE] browser_set_memory_target — label={} low={}", label, low);
-    let wv = app.get_webview_window(&label)
-        .or_else(|| state.webviews.lock().unwrap_or_else(|e| e.into_inner()).get(&label).cloned())
+    xevo_log!("[XEVO-LIFECYCLE] browser_set_memory_target — label={} low={}", label, low);
+    let wv = find_tab_webview(&app, &label)
         .ok_or_else(|| {
-            eprintln!("[XEVO-LIFECYCLE] browser_set_memory_target — label={} NOT FOUND", label);
+            xevo_log!("[XEVO-LIFECYCLE] browser_set_memory_target — label={} NOT FOUND", label);
             format!("no webview for tab {}", tab_id)
         })?;
     apply_memory_target(&wv, low);
@@ -1114,7 +1244,7 @@ pub async fn browser_set_memory_target(
 
 // ─── Network Capture ──────────────────────────────────────────────
 
-pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::AppHandle, tab_id: &str) {
+pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHandle, tab_id: &str) {
     let app = app.clone();
     let tab_id = tab_id.to_string();
     let _ = wv.with_webview(move |platform| {
@@ -1126,15 +1256,15 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
             use webview2_com::WebResourceRequestedEventHandler;
             use webview2_com::WebResourceResponseReceivedEventHandler;
             use webview2_com::WebResourceResponseViewGetContentCompletedHandler;
-            use windows::core::HSTRING;
             use windows::core::PWSTR;
+            use windows::core::HSTRING;
             use windows_core::BOOL;
             use windows_core::Interface;
 
             let core = match platform.controller().CoreWebView2() {
                 Ok(core) => core,
                 Err(e) => {
-                    eprintln!("[xevo] CoreWebView2() failed for network capture: {e:?}");
+                    xevo_log!("[xevo] CoreWebView2() failed for network capture: {e:?}");
                     return;
                 }
             };
@@ -1143,7 +1273,7 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
                 windows::core::w!("*"),
                 COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
             ) {
-                eprintln!("[xevo] AddWebResourceRequestedFilter failed: {e:?}");
+                xevo_log!("[xevo] AddWebResourceRequestedFilter failed: {e:?}");
                 return;
             }
 
@@ -1159,22 +1289,37 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
                     Err(_) => return Ok(()),
                 };
 
-                // ── Header injection: set headers on the canonical request reference ──
-                // Must happen FIRST, before any other reads on `request`, to ensure
-                // modifications land on the real COM object (not a disconnected copy).
-                if let Ok(req_headers) = request.Headers() {
-                    let name = HSTRING::from("X-Xevo-Test");
-                    let value = HSTRING::from("phase1-proof");
-                    let _ = req_headers.SetHeader(&name, &value);
+                let mut uri_ptr = PWSTR::null();
+                let _ = request.Uri(&mut uri_ptr);
+                let uri = if uri_ptr.is_null() { String::new() } else { uri_ptr.to_string().unwrap_or_default() };
+
+                // ponytail: SetHeader before Method()/other COM reads.
+                // Never inject into Tauri's own IPC/asset traffic — a `*` rule would break it.
+                if !uri.starts_with("http://ipc.localhost") && !uri.starts_with("tauri://localhost") {
+                    // Clone out of the lock — don't hold a mutex across COM calls on the UI thread.
+                    let rules: Vec<HeaderRule> = header_rules()
+                        .lock()
+                        .map(|m| {
+                            m.get(&tab_id_req)
+                                .map(|v| v.iter().filter(|r| r.enabled).cloned().collect())
+                                .unwrap_or_default()
+                        })
+                        .unwrap_or_default();
+
+                    if !rules.is_empty() {
+                        if let Ok(req_headers) = request.Headers() {
+                            for rule in &rules {
+                                if url_matches(&rule.pattern, &uri) {
+                                    let _ = req_headers.SetHeader(&HSTRING::from(&rule.name), &HSTRING::from(&rule.value));
+                                }
+                            }
+                        }
+                    }
                 }
 
                 let mut method_ptr = PWSTR::null();
-                let mut uri_ptr = PWSTR::null();
                 let _ = request.Method(&mut method_ptr);
-                let _ = request.Uri(&mut uri_ptr);
-
                 let method = if method_ptr.is_null() { String::new() } else { method_ptr.to_string().unwrap_or_default() };
-                let uri = if uri_ptr.is_null() { String::new() } else { uri_ptr.to_string().unwrap_or_default() };
 
                 let mut resource_context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT(0);
                 let _ = args.ResourceContext(&mut resource_context);
@@ -1191,8 +1336,7 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
                 let meta_key = format!("{}:{}", tab_id_req, uri);
                 let store = NETWORK_REQUEST_META.get_or_init(|| Mutex::new(HashMap::new()));
                 if let Ok(mut map) = store.lock() {
-                    map.insert(meta_key, (now, resource_type.to_string()));
-                    // ponytail: entries removed on response — no cap needed
+                    map.entry(meta_key).or_default().push_back((now, resource_type.to_string()));
                 }
 
                 let _ = app_req.emit("browser://network-request", serde_json::json!({
@@ -1206,14 +1350,14 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
 
             let mut token: i64 = 0;
             match core.add_WebResourceRequested(&req_handler, &mut token) {
-                Ok(()) => eprintln!("[XEVO] WebResourceRequested handler registered — token={token}"),
-                Err(e) => eprintln!("[XEVO] WebResourceRequested handler FAILED: {e:?}"),
+                Ok(()) => xevo_log!("[XEVO] WebResourceRequested handler registered — token={token}"),
+                Err(e) => xevo_log!("[XEVO] WebResourceRequested handler FAILED: {e:?}"),
             }
 
             let core2: ICoreWebView2_2 = match core.cast() {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("[xevo] ICoreWebView2_2 cast failed: {e:?}");
+                    xevo_log!("[xevo] ICoreWebView2_2 cast failed: {e:?}");
                     return;
                 }
             };
@@ -1288,11 +1432,18 @@ pub fn register_webview_network_capture(wv: &tauri::WebviewWindow, app: &tauri::
                 let meta_key = format!("{}:{}", tab_id_resp, uri);
                 let (duration_ms, resource_type) = if let Some(store) = NETWORK_REQUEST_META.get() {
                     if let Ok(mut map) = store.lock() {
-                        if let Some((req_time, rt)) = map.remove(&meta_key) {
-                            let dur = now.duration_since(req_time);
-                            (dur.as_millis() as u64, rt)
-                        } else {
-                            (0, "other".to_string())
+                        // FIFO pop — pairs with the oldest still-pending request to this
+                        // exact URL, so concurrent same-URL requests don't clobber timing.
+                        let popped = map.get_mut(&meta_key).and_then(|q| q.pop_front());
+                        if map.get(&meta_key).is_some_and(|q| q.is_empty()) {
+                            map.remove(&meta_key);
+                        }
+                        match popped {
+                            Some((req_time, rt)) => {
+                                let dur = now.duration_since(req_time);
+                                (dur.as_millis() as u64, rt)
+                            }
+                            None => (0, "other".to_string()),
                         }
                     } else {
                         (0, "other".to_string())
@@ -1360,8 +1511,7 @@ pub async fn browser_eval_inspector(
     inspector_type: String,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    let wv = app
-        .get_webview_window(&label)
+    let wv = find_tab_webview(&app, &label)
         .ok_or_else(|| format!("No webview for tab {}", tab_id))?;
 
     let script = match inspector_type.as_str() {
@@ -1526,8 +1676,7 @@ pub async fn inspector_mutate(
     params: serde_json::Value,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    let wv = app
-        .get_webview_window(&label)
+    let wv = find_tab_webview(&app, &label)
         .ok_or_else(|| format!("No webview for tab {}", tab_id))?;
 
     let script = match operation.as_str() {
@@ -1600,11 +1749,11 @@ pub async fn create_viewport(
     height: f64,
 ) -> Result<(), String> {
     let parent = app
-        .get_webview_window("main")
+        .get_window("main")
         .ok_or("Main window not found")?;
     let parsed_url = url::Url::parse(&url).map_err(|e| e.to_string())?;
 
-    if let Some(webview) = app.get_webview_window(&label) {
+    if let Some(webview) = find_tab_webview(&app, &label) {
         webview
             .set_position(Position::Logical(LogicalPosition::new(x, y)))
             .map_err(|e| e.to_string())?;
@@ -1615,16 +1764,14 @@ pub async fn create_viewport(
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
-        .parent(&parent)
-        .map_err(|e| e.to_string())?
-        .initialization_script(CORE_SCRIPT)
-        .position(x, y)
-        .inner_size(width.max(1.0), height.max(1.0))
-        .decorations(false)
-        .resizable(false)
-        .transparent(true)
-        .build()
+    parent
+        .add_child(
+            WebviewBuilder::new(&label, WebviewUrl::External(parsed_url))
+                .initialization_script(CORE_SCRIPT)
+                .transparent(true),
+            Position::Logical(LogicalPosition::new(x, y)),
+            Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),
+        )
         .map_err(|e| e.to_string())?;
 
     Ok(())
@@ -1633,7 +1780,7 @@ pub async fn create_viewport(
 /// Destroy a viewport webview
 #[tauri::command]
 pub async fn destroy_viewport(app: AppHandle, label: String) -> Result<(), String> {
-    if let Some(webview) = app.get_webview_window(&label) {
+    if let Some(webview) = find_tab_webview(&app, &label) {
         webview.close().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -1649,7 +1796,7 @@ pub async fn resize_viewport(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    if let Some(webview) = app.get_webview_window(&label) {
+    if let Some(webview) = find_tab_webview(&app, &label) {
         webview
             .set_position(Position::Logical(LogicalPosition::new(x, y)))
             .map_err(|e| e.to_string())?;
@@ -1663,7 +1810,7 @@ pub async fn resize_viewport(
 /// Show a viewport webview
 #[tauri::command]
 pub async fn show_viewport(app: AppHandle, label: String) -> Result<(), String> {
-    if let Some(webview) = app.get_webview_window(&label) {
+    if let Some(webview) = find_tab_webview(&app, &label) {
         webview.show().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -1672,7 +1819,7 @@ pub async fn show_viewport(app: AppHandle, label: String) -> Result<(), String> 
 /// Hide a viewport webview
 #[tauri::command]
 pub async fn hide_viewport(app: AppHandle, label: String) -> Result<(), String> {
-    if let Some(webview) = app.get_webview_window(&label) {
+    if let Some(webview) = find_tab_webview(&app, &label) {
         webview.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -1686,7 +1833,7 @@ pub async fn scroll_viewport(
     percent_x: f64,
     percent_y: f64,
 ) -> Result<(), String> {
-    if let Some(webview) = app.get_webview_window(&label) {
+    if let Some(webview) = find_tab_webview(&app, &label) {
         let script = format!(
             r#"(function() {{
   var el = document.scrollingElement || document.documentElement;
@@ -1713,7 +1860,7 @@ pub async fn click_viewport(
     x: f64,
     y: f64,
 ) -> Result<(), String> {
-    if let Some(webview) = app.get_webview_window(&label) {
+    if let Some(webview) = find_tab_webview(&app, &label) {
         let script = format!(
             r#"(function() {{
   window.__xevoApplyingClickSync = true;
@@ -1731,7 +1878,7 @@ pub async fn click_viewport(
 /// Eval a raw JavaScript string into a browser or viewport webview.
 #[tauri::command]
 pub async fn browser_eval_raw(app: AppHandle, label: String, script: String) -> Result<(), String> {
-    if let Some(wv) = app.get_webview_window(&label) {
+    if let Some(wv) = find_tab_webview(&app, &label) {
         wv.eval(&script).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -1764,7 +1911,7 @@ pub async fn browser_screenshot(
 
         // Try DevTools Protocol on the active browser webview first
         let png_result = if let Some(ref label) = active_label {
-            if let Some(browser_wv) = app.get_webview_window(label) {
+            if let Some(browser_wv) = find_tab_webview(&app, label) {
                 capture_browser_devtools(&browser_wv).await
             } else {
                 Err("No browser webview found".to_string())
@@ -1777,7 +1924,7 @@ pub async fn browser_screenshot(
             Ok(bytes) => bytes,
             Err(e) => {
                 #[cfg(debug_assertions)]
-                eprintln!("[xevo] DevTools screenshot failed ({e}), falling back to PrintWindow");
+                xevo_log!("[xevo] DevTools screenshot failed ({e}), falling back to PrintWindow");
                 capture_main_window_printwindow(&window)?
             }
         };
@@ -1820,7 +1967,7 @@ pub async fn browser_screenshot(
             .unwrap_or_else(|e| e.into_inner())
             .clone()
         {
-            if let Some(wv) = app.get_webview_window(&label) {
+            if let Some(wv) = find_tab_webview(&app, &label) {
                 let _ = wv.eval(toast_js);
             }
         }
@@ -1844,7 +1991,7 @@ pub async fn browser_screenshot(
 /// which returns a base64-encoded PNG.
 #[cfg(target_os = "windows")]
 async fn capture_browser_devtools(
-    wv: &tauri::WebviewWindow,
+    wv: &tauri::Webview,
 ) -> Result<Vec<u8>, String> {
     use std::sync::Arc;
     use tokio::sync::oneshot;
@@ -2221,12 +2368,10 @@ pub async fn notify_viewport_metrics(
 #[tauri::command]
 pub async fn browser_save_tab_state(
     app: AppHandle,
-    state: tauri::State<'_, crate::BrowserState>,
     tab_id: String,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    let wv = app.get_webview_window(&label)
-        .or_else(|| state.webviews.lock().unwrap_or_else(|e| e.into_inner()).get(&label).cloned())
+    let wv = find_tab_webview(&app, &label)
         .ok_or_else(|| format!("no webview for tab {}", tab_id))?;
 
     let capture_script = r#"(function() {
@@ -2285,13 +2430,11 @@ pub fn browser_tab_state_saved(
 #[tauri::command]
 pub async fn browser_restore_tab_state(
     app: AppHandle,
-    state: tauri::State<'_, crate::BrowserState>,
     tab_id: String,
     state_json: String,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    let wv = app.get_webview_window(&label)
-        .or_else(|| state.webviews.lock().unwrap_or_else(|e| e.into_inner()).get(&label).cloned())
+    let wv = find_tab_webview(&app, &label)
         .ok_or_else(|| format!("no webview for tab {}", tab_id))?;
 
     // ponytail: state_json is already valid JSON — embed directly as JS expression, no string escaping
@@ -2331,5 +2474,40 @@ pub async fn browser_restore_tab_state(
         .map_err(|e| format!("browser_restore_tab_state eval failed: {}", e))?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn browser_set_header_rules(
+    rules_by_tab: HashMap<String, Vec<HeaderRule>>,
+) -> Result<(), String> {
+    *header_rules().lock().map_err(|e| e.to_string())? = rules_by_tab;
+    Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::url_matches;
+
+    #[test]
+    fn glob_matching() {
+        // the exact bug this fixes: the UI's default pattern is "*"
+        assert!(url_matches("*", "http://localhost:3000/"));
+        assert!(url_matches("", "http://localhost:3000/"));
+        assert!(url_matches("  *  ", "http://localhost:3000/"));
+
+        assert!(url_matches("localhost:3000/*", "http://localhost:3000/api/x"));
+        assert!(url_matches("*/api/*", "http://localhost:3000/api/x"));
+        assert!(url_matches("HTTP://LOCALHOST*", "http://localhost:3000/"));
+        assert!(url_matches("http://localhost:3000/api", "http://localhost:3000/api"));
+        // wildcard-free patterns are prefix matches — "this host" is the common intent
+        assert!(url_matches("http://localhost:3000/api", "http://localhost:3000/api/x"));
+        assert!(url_matches("localhost:5000", "http://localhost:5000/api"));
+
+        assert!(!url_matches("localhost:3000/*", "http://example.com/"));
+        assert!(!url_matches("*/api", "http://localhost:3000/api/x"));
+
+        // the leak this closes: a pattern must not match a substring buried
+        // in a foreign origin's query string
+        assert!(!url_matches("localhost:5000", "https://evil.com/?next=localhost:5000"));
+    }
 }
 
