@@ -139,6 +139,27 @@ export async function webviewStopFind(tabId: string): Promise<void> {
   await invoke<void>("browser_stop_find", { tabId });
 }
 
+// ─── API Tester (real HTTP client, bypasses the app's own CSP/CORS) ──
+
+export interface ApiFetchRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+export interface ApiFetchResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  durationMs: number;
+}
+
+export async function apiFetch(req: ApiFetchRequest): Promise<ApiFetchResponse> {
+  return await invoke<ApiFetchResponse>("api_fetch", { req });
+}
+
 // ─── Ports (non-tab) ─────────────────────────────────────────────────
 
 export async function scanPorts(ports: number[]): Promise<ScannedPort[]> {
@@ -233,7 +254,7 @@ export async function evalInspector(
 export interface InspectorDataEvent {
   tabId: string;
   dataType: string;
-  data: string;
+  data: { error?: string } & Record<string, unknown>;
 }
 
 export function onInspectorData(
@@ -336,7 +357,7 @@ export function onNetworkEntry(
   return listen<NetworkEntryPayload>("browser://network-entry", (e) => callback(e.payload));
 }
 
-// ─── Header Injection ────────────────────────────────────────────────
+// ─── Header Injection (COM WebResourceRequested, per-tab rule sets) ──
 
 export interface HeaderRulePayload {
   id: string;
@@ -346,12 +367,10 @@ export interface HeaderRulePayload {
   enabled: boolean;
 }
 
-export async function setHeaderRules(rules: HeaderRulePayload[]): Promise<void> {
-  await invoke<void>("set_header_rules", { rules });
-}
-
-export async function getHeaderRules(): Promise<HeaderRulePayload[]> {
-  return await invoke<HeaderRulePayload[]>("get_header_rules");
+export async function setHeaderRules(
+  rulesByTab: Record<string, HeaderRulePayload[]>
+): Promise<void> {
+  await invoke<void>("browser_set_header_rules", { rulesByTab });
 }
 
 export function onViewportScroll(

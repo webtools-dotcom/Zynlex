@@ -18,10 +18,18 @@ const DEFAULT_SCAN_PORTS: number[] = [
   9000, 9229,  // Node debug:9229
 ];
 
+// usePortScanner is mounted in two places (RootLayout's PortScannerMount for the
+// background scan loop, and LiveServersPanel just to grab the `scan` callback for
+// its rescan button). Only the first-mounted instance should own the mount/interval
+// scan loop — otherwise both fire on mount and on every interval tick, doubling
+// every port scan.
+let primaryMounted = false;
+
 export function usePortScanner() {
   const { updateFromScan, setIsScanning, setLastScanAt } = useServersStore();
   const { settings } = useSettingsStore();
   const isScanningRef = useRef(false);
+  const isPrimaryRef = useRef(false);
 
   const scan = useCallback(async () => {
     if (!IS_TAURI) return;
@@ -70,14 +78,21 @@ export function usePortScanner() {
     }
   }, [updateFromScan, setIsScanning, settings.customPorts]);
 
-  // Initial scan on mount
+  // Initial scan on mount — only the first-mounted instance claims primary status.
   useEffect(() => {
+    if (primaryMounted) return;
+    primaryMounted = true;
+    isPrimaryRef.current = true;
     scan();
+    return () => {
+      if (isPrimaryRef.current) primaryMounted = false;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only on mount
 
-  // Periodic scan on interval
+  // Periodic scan on interval — only the primary instance runs this.
   useEffect(() => {
+    if (!isPrimaryRef.current) return;
     const intervalSec = settings.portScanInterval ?? 10;
     const intervalMs = Math.max(5, Math.min(60, intervalSec)) * 1000;
     const id = setInterval(scan, intervalMs);

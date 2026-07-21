@@ -5,7 +5,9 @@
  *   - Method selector (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS)
  *   - URL input
  *   - Tabbed request editor: Headers, Body, cURL Import
- *   - Send button (uses browser fetch())
+ *   - Send button (routed through the Rust `api_fetch` command — the main
+ *     window's own `fetch()` is bound by the app's CSP to localhost, so a
+ *     real HTTP client on the Rust side is what makes cross-origin requests work)
  *   - Response viewer: status, duration, size, headers, body
  *   - JSON auto-formatting in the response body
  *   - Per-session request history (last 50), shared with the sidebar
@@ -23,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useServersStore } from "@/stores/servers";
 import { useApiHistoryStore } from "@/stores/apiHistory";
+import { apiFetch } from "@/services/browser";
 import type { HttpMethod, ApiHeader, ApiHistoryEntry } from "@/types";
 
 const METHODS: HttpMethod[] = [
@@ -271,35 +274,24 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
       method !== "GET" &&
       method !== "HEAD";
 
-    const fetchInit: RequestInit = {
-      method,
-      headers: hdrObj,
-    };
-    if (hasBody) {
-      fetchInit.body = body;
-    }
-
-    const started = performance.now();
     try {
-      const res = await fetch(url, fetchInit);
-      const responseText = await res.text();
-      const duration = Math.round(performance.now() - started);
-
-      const responseHeaders: Record<string, string> = {};
-      res.headers.forEach((v, k) => {
-        responseHeaders[k] = v;
+      const res = await apiFetch({
+        method,
+        url,
+        headers: hdrObj,
+        body: hasBody ? body : undefined,
       });
 
-      const formatResult = tryFormatJson(responseText);
-      const formatted = formatResult.ok ? formatResult.formatted : responseText;
+      const formatResult = tryFormatJson(res.body);
+      const formatted = formatResult.ok ? formatResult.formatted : res.body;
 
       setResponse({
         status: res.status,
         statusText: res.statusText,
-        headers: responseHeaders,
-        body: responseText,
-        durationMs: duration,
-        size: new Blob([responseText]).size,
+        headers: res.headers,
+        body: res.body,
+        durationMs: res.durationMs,
+        size: new Blob([res.body]).size,
         isJson: formatResult.ok,
         formattedBody: formatted,
       });
@@ -310,7 +302,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
         url,
         status: res.status,
         statusText: res.statusText,
-        durationMs: duration,
+        durationMs: res.durationMs,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

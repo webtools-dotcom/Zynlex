@@ -35,8 +35,13 @@ It contains:
 - what is broken or blocked
 - latest decisions and known caveats
 
-**You must update this after every completed task.** Since you just did the work, you know exactly what changed. Write it down. The next session — whether it's another agent or a new chat — depends on this being accurate. If you skip this update, you are creating a lie that will cause future failures. also in the proejct state file, in the end update that file with the exact whole repo structure worktree. 
-REMEMBER THIS CAREFULLY TO UPDATE THIS PROJECT_STATE.md FILE AFTER EVERY TASK DONE AND DONT JUST WRITE THE WHOLE PARAGRAPH FOR SOME SMALL BUG FIX, INSTEAD TRY TO JUST SUMMARIZE THE WHOLE TASK AND WRITE ONLY IMPORTANT THING IN THIS FILE SO THAT ANY NEXT AI CAN EASILY UNDERSTAND WHAT EXACTLY HAPPENED IN THIS TASK AND THE PROJECT_STATE.md FILE ALSO NOT GET TOO BIG
+**You must update this after every completed task.** Since you just did the work, you know exactly what changed. Write it down. The next session — whether it's another agent or a new chat — depends on this being accurate. If you skip this update, you are creating a lie that will cause future failures. Also update the worktree at the end with the exact repo structure.
+
+**Formatting rules when updating:**
+- DO write: feature/bug summary (1-3 lines), version number, root cause if non-obvious, architecture decision, known caveat
+- DO NOT write: session-by-session history (that's what TASKS.md is for), file paths, "cargo check clean" / "pnpm tsc --noEmit" lines, import changes, debug logging add/remove cycles, pixel-level UI dimension details
+- Group related changes into one entry — do not list each sub-step
+- Keep the file as a "current state + architecture" reference, not a second changelog
 ---
 
 ### `TASKS.md` — READ + UPDATE STATUS ONLY
@@ -50,6 +55,11 @@ This is the prioritized task backlog. It is planned and ordered by the human and
 - That is it
 
 **NEVER add new tasks. NEVER reprioritize. NEVER delete tasks.** If you spot something that should be a task, mention it in your end-of-task report so the human can decide — do not write it into `TASKS.md` yourself.
+
+**Formatting rules when marking tasks done:**
+- DO write: version number, feature/bug summary (1-3 lines), root cause if non-obvious, architectural decisions
+- DO NOT write: sub-task numbering (43.1, 43.2), file paths, import changes, "cargo check clean" / "pnpm tsc --noEmit" lines, debug logging add/remove cycles, "PROJECT_STATE.md updated", or anything any dev would consider boilerplate
+- Group related bug-fix attempts (e.g. all black screen approaches) into one entry — do not list each failed attempt as its own task
 
 ---
 
