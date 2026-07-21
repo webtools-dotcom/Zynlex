@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.34.0
+## Version: v1.35.0
 ## Last Updated: 2026-07-22
-## Status: Window-follow architecture migrated from owner-window (`WebviewWindow::parent()`) to true child webviews (`Window::add_child`) — the long-standing maximize/drag desync bug is fixed at the root, not patched. Both TS and Rust compile clean.
+## Status: Bug-audit remediation pass (Inspector, API Tester, port scanner, network capture, header rules, webview-creation race, debug logging). Both TS and Rust compile clean against the current `Window::add_child` architecture.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -13,6 +13,41 @@
 - Tauri crate: 2.11.2
 
 ## COMPLETED ✅
+
+### Full Codebase Audit + Remediation Pass (v1.35.0)
+Read-only audit produced a feature inventory and root-cause bug list, then every finding
+except the open-source-readiness checklist was fixed:
+- **Inspector panel was broken end-to-end**: frontend did `JSON.parse()` on `event.data`,
+  but Rust already sends it as a parsed `serde_json::Value` object, not a string — every
+  load threw and showed "Failed to parse inspector data". Removed the parse; all 4 sub-tabs
+  (meta/cookies/localStorage/sessionStorage) work now.
+- **API Tester was localhost-only**: it used the main window's `fetch()`, bound by the app's
+  own CSP (`connect-src ... http://localhost:*`) and CORS. Added a Rust `api_fetch` command
+  (reqwest + rustls) so requests go out as a real HTTP client instead.
+- **Port scanner ran every scan twice**: `usePortScanner()` was mounted in two places, each
+  running its own mount+interval scan loop. Added a module-level primary-instance guard.
+- **HTTPS dev servers scanned as `http://`**: the scanner only spoke plaintext HTTP, so a TLS
+  server's alert/handshake response was mislabeled `tcp` and opened as `http://`. Added a
+  cheap TLS-record-byte sniff (no TLS client library needed) — has a unit test.
+- **Network capture leaked**: per-request timing metadata was never cleared for
+  cancelled/aborted requests or closed tabs, and two concurrent requests to the same URL
+  clobbered each other's timing. Re-keyed as a per-URL FIFO queue, swept on tab close; the
+  frontend's network log now also clears on a tab's real close (not on discard).
+- **Header injection rules defaulted to `*`**, so a rule meant for one API (e.g. an auth
+  token) silently attached to every request the tab made, including third-party scripts.
+  New rules now default to the active tab's origin, and any enabled wildcard rule shows a
+  warning icon.
+- **Webview-creation race could permanently blank a tab**: `browser_create_tab` treated a
+  handle still visible immediately after its own `destroy()` call as "already exists" and
+  silently no-op'd, while the frontend had already marked the tab as created. Now waits for
+  the destroy to actually settle before proceeding, and the frontend releases its reserved
+  slot on failure instead of leaking it.
+- **48 unconditional `eprintln!` + assorted `console.log` traces** ran on every window-move
+  frame even in release builds (which have no console to read). Gated behind a debug-only
+  `xevo_log!` macro / removed.
+- Minor cleanup: extracted the 6×-repeated bounds-computation block in
+  `useWebviewBridge.ts` into `getActiveBounds()`, removed dead `settingsOpen`/`UIState`
+  fields, removed a stale `vite-review.json` tool-output artifact.
 
 ### Window-Follow Architecture Migration: WebviewWindow → add_child (v1.34.0)
 - **Problem:** tab webviews were top-level *owner* windows (`WebviewWindowBuilder::parent()`), which Windows leaves in screen coordinates and never moves with the main window. This forced a JS `onMoved`+`onResized` follower that missed maximize/unmaximize (`SWP_NOMOVE`), a per-edge screen-coordinate fudge constant (`WEBVIEW_EDGE_INSET`), and ~125 lines of minimize/restore/orphan-recovery in `lib.rs`.
