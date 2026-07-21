@@ -1,24 +1,32 @@
 mod commands;
 
+/// Debug-build-only trace logging. Release builds set `windows_subsystem =
+/// "windows"` (see main.rs), so there is no console to read stderr from in a
+/// release build regardless — these calls were previously unconditional,
+/// running on every window-move/resize frame for no one to see.
+#[macro_export]
+macro_rules! xevo_log {
+    ($($arg:tt)*) => {
+        if cfg!(debug_assertions) { eprintln!($($arg)*); }
+    };
+}
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
-use tauri::{Emitter, Manager, WebviewUrl, webview::WebviewWindowBuilder};
 use std::sync::Mutex;
-use std::time::Duration;
 use std::collections::HashMap;
 
 /// Tracks which browser webview is currently visible.
-/// Each tab gets its own WebviewWindow with label `browser-{tab_id}`.
+/// Each tab gets a child Webview (via `Window::add_child`) inside the main
+/// window, labelled `browser-{tab_id}`.
 pub struct BrowserState {
     /// Label of the currently visible webview (e.g. "browser-tab-123").
     pub active_tab_label: Mutex<Option<String>>,
     /// Custom user agent override (None = default browser UA).
     pub user_agent: Mutex<Option<String>>,
     /// Persistent strong references to ALL browser webview handles.
-    /// Prevents the OS window from being destroyed when the Rust async
+    /// Prevents the webview from being destroyed when the Rust async
     /// function's local variable goes out of scope (Tauri #14843).
     /// Key = label (e.g. "browser-tab-123"), value = cloneable handle.
-    pub webviews: Mutex<HashMap<String, tauri::WebviewWindow>>,
+    pub webviews: Mutex<HashMap<String, tauri::Webview>>,
 
 }
 
@@ -31,161 +39,21 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_os::init())
-        .setup(|app| {
-            let main_window = app
-                .get_webview_window("main")
-                .ok_or("main window not found")?;
+        .setup(|_app| {
+            // The minimize/restore/orphan-recovery apparatus that used to live
+            // here is gone. It existed because each tab was a top-level *owner*
+            // window (WebviewWindowBuilder::parent()), which the OS leaves
+            // floating on screen when its owner minimizes — so we had to detect
+            // minimize ourselves and hide/show/re-find every webview by hand.
+            //
+            // Tabs are now child webviews inside the main window's HWND
+            // (Window::add_child), which the OS hides, restores, moves and clips
+            // with the parent for free. Nothing left to do at setup.
+            //
+            // The WebView2 pre-warm webview is gone too: it only existed to boot
+            // the browser process early, and the main window's own webview
+            // already does that.
 
-            // Pre-warm: create a hidden about:blank webview to initialize
-            // the WebView2 browser process. This makes subsequent tab
-            // creation ~200ms faster.
-            let warmup_label = "xevo-warmup";
-            let _warmup = WebviewWindowBuilder::new(
-                app.handle(),
-                warmup_label,
-                WebviewUrl::External("about:blank".parse().unwrap()),
-            )
-            .parent(&main_window)?
-            .inner_size(1.0, 1.0)
-            .position(-9999.0, -9999.0)
-            .build();
-
-            // Destroy it after 2 seconds — just here to warm up the process
-            let warmup_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                if let Some(wv) = warmup_handle.get_webview_window(warmup_label) {
-                    let _ = wv.destroy();
-                }
-            });
-            let app_handle = app.handle().clone();
-            let was_minimized = Arc::new(AtomicBool::new(false));
-
-            let wm = was_minimized.clone();
-            let mw_clone = main_window.clone();
-            main_window.on_window_event(move |event| {
-                match event {
-                    tauri::WindowEvent::Focused(false) => {
-                        if mw_clone.is_minimized().unwrap_or(false) {
-                            eprintln!("[XEVO-BOUNDS] Focused(false) + is_minimized → minimize detected");
-                            wm.store(true, Ordering::Relaxed);
-                            let _ = app_handle.emit("xevo://minimize-state", true);
-                            for (_, wv) in app_handle.webview_windows() {
-                                if wv.label().starts_with("browser-") {
-                                    let _ = wv.hide();
-                                    commands::browser::apply_memory_target(&wv, true);
-                                }
-                            }
-                        }
-                    }
-                    tauri::WindowEvent::Resized(_) => {
-                        // SECONDARY minimize detection: Focused(false) can fire
-                        // before is_minimized() returns true on Windows (message
-                        // ordering race). Resized fires AFTER the window state
-                        // is committed, so is_minimized() is reliable here.
-                        if mw_clone.is_minimized().unwrap_or(false) {
-                            if !wm.swap(true, Ordering::Relaxed) {
-                                eprintln!("[XEVO-BOUNDS] Resized + is_minimized → minimize detected (fallback)");
-                                let _ = app_handle.emit("xevo://minimize-state", true);
-                                for (_, wv) in app_handle.webview_windows() {
-                                    if wv.label().starts_with("browser-") {
-                                        let _ = wv.hide();
-                                        commands::browser::apply_memory_target(&wv, true);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    tauri::WindowEvent::Focused(true) => {
-                        if wm.swap(false, Ordering::Relaxed) {
-                            eprintln!("[XEVO-BOUNDS] Focused(true) — restore from minimize");
-                            let _ = app_handle.emit("xevo://minimize-state", false);
-                            let state = app_handle.state::<BrowserState>();
-                            let mut active_label = state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                            // Hide ALL browser webviews first, then show only
-                            // the active one. This prevents orphan floating
-                            // windows from stale active_tab_label state or
-                            // frontend desync.
-                            for (_, wv) in app_handle.webview_windows() {
-                                if wv.label().starts_with("browser-") {
-                                    let _ = wv.hide();
-                                }
-                            }
-                            // Also hide from our persistent handle map (webviews whose
-                            // handles we hold but Tauri's registry dropped).
-                            if let Ok(webviews) = state.webviews.lock() {
-                                for (_, wv) in webviews.iter() {
-                                    if wv.label().starts_with("browser-") {
-                                        let _ = wv.hide();
-                                    }
-                                }
-                            }
-                            // Resolve which webview to show: use active_tab_label if set,
-                            // otherwise fall back to any browser-* webview.
-                            let show_label: Option<String> = if let Some(ref label) = active_label {
-                                if app_handle.get_webview_window(label).is_some() || state.webviews.lock().unwrap_or_else(|e| e.into_inner()).contains_key(label) {
-                                    Some(label.clone())
-                                } else {
-                                    eprintln!("[XEVO-BOUNDS] Focused(true) — active_tab_label '{}' points to non-existent webview, scanning fallback", label);
-                                    active_label = None;
-                                    // Scan Tauri's registry
-                                    let found = app_handle.webview_windows()
-                                        .iter()
-                                        .find(|(l, _)| l.starts_with("browser-"))
-                                        .map(|(l, _)| l.clone());
-                                    // Fallback: scan our persistent map
-                                    let found = found.or_else(|| {
-                                        state.webviews.lock().unwrap_or_else(|e| e.into_inner()).keys()
-                                            .find(|l| l.starts_with("browser-"))
-                                            .cloned()
-                                    });
-                                    found.or_else(|| {
-                                        eprintln!("[XEVO-BOUNDS] Focused(true) — no browser-* webviews found at all");
-                                        None
-                                    })
-                                }
-                            } else {
-                                eprintln!("[XEVO-BOUNDS] Focused(true) — active_tab_label was None, scanning fallback");
-                                // Scan Tauri's registry
-                                let found = app_handle.webview_windows()
-                                    .iter()
-                                    .find(|(l, _)| l.starts_with("browser-"))
-                                    .map(|(l, _)| l.clone());
-                                // Fallback: scan our persistent map
-                                let found = found.or_else(|| {
-                                    state.webviews.lock().unwrap_or_else(|e| e.into_inner()).keys()
-                                        .find(|l| l.starts_with("browser-"))
-                                        .cloned()
-                                });
-                                found.or_else(|| {
-                                    eprintln!("[XEVO-BOUNDS] Focused(true) — no browser-* webviews found at all");
-                                    None
-                                })
-                            };
-                            if let Some(label) = show_label {
-                                // Try Tauri's registry first, then fallback to our map
-                                let wv = app_handle.get_webview_window(&label)
-                                    .or_else(|| {
-                                        state.webviews.lock().unwrap_or_else(|e| e.into_inner()).get(&label).cloned()
-                                    });
-                                if let Some(wv) = wv {
-                                    let _ = wv.show();
-                                    commands::browser::apply_memory_target(&wv, false);
-                                    // Restore active_tab_label so subsequent operations can find it
-                                    *state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner()) = Some(label.clone());
-                                    eprintln!("[XEVO-BOUNDS] Focused(true) — showed webview '{}', emitting force-sync", label);
-                                    let _ = app_handle.emit("xevo://force-sync", ());
-                                }
-                            } else {
-                                eprintln!("[XEVO-BOUNDS] Focused(true) — no webview to show");
-                            }
-                        } else {
-                            eprintln!("[XEVO-BOUNDS] Focused(true) — was_minimized flag was false, skipping restore");
-                        }
-                    }
-                    _ => {}
-                }
-            });
             Ok(())
         })
         .manage(BrowserState {
@@ -234,8 +102,8 @@ pub fn run() {
             commands::browser::browser_save_tab_state,
             commands::browser::browser_tab_state_saved,
             commands::browser::browser_restore_tab_state,
-            commands::headers::set_header_rules,
-            commands::headers::get_header_rules,
+            commands::browser::browser_set_header_rules,
+            commands::http::api_fetch,
             commands::ports::scan_ports,
         ])
         .run(tauri::generate_context!())

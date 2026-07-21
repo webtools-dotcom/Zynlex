@@ -526,8 +526,12 @@ export function ViewportSurface() {
       const rect = node.getBoundingClientRect();
       if (rect.width < 10 || rect.height < 10) continue;
 
-      const x = Math.round(rect.left + window.screenX);
-      const y = Math.round(rect.top + window.screenY);
+      // Window-relative, not screen: viewport webviews are child webviews
+      // (Rust create_viewport uses Window::add_child), so Tauri positions
+      // them against the main window's client area — which is the same
+      // space getBoundingClientRect() already reports in.
+      const x = Math.round(rect.left);
+      const y = Math.round(rect.top);
       const width = Math.round(Math.max(1, rect.width));
       const height = Math.round(Math.max(1, rect.height));
       const url = vp.url || activeUrl;
@@ -565,15 +569,11 @@ export function ViewportSurface() {
     if (surfaceRef.current) observer.observe(surfaceRef.current);
     for (const node of cardRefs.current.values()) observer.observe(node);
 
+    // No onMoved listener: viewport webviews are children of the main window,
+    // so the OS moves them with it. onResized stays — a window resize changes
+    // the card layout, which is a real bounds change.
     let cancelled = false;
-    let unmove: (() => void) | null = null;
     let unresize: (() => void) | null = null;
-    getCurrentWindow()
-      .onMoved(() => setTimeout(syncNativeViewports, 16))
-      .then((fn) => {
-        if (cancelled) fn();
-        else unmove = fn;
-      });
     getCurrentWindow()
       .onResized(() => setTimeout(syncNativeViewports, 50))
       .then((fn) => {
@@ -584,7 +584,6 @@ export function ViewportSurface() {
     return () => {
       cancelled = true;
       observer.disconnect();
-      unmove?.();
       unresize?.();
     };
   }, [syncNativeViewports]);
