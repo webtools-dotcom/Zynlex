@@ -411,108 +411,6 @@ const JSON_VIEWER_SCRIPT: &str = r##"
 })();
 "##;
 
-// ── CORE_SCRIPT: tab info + shortcut forwarding. Injected into EVERY tab.
-// Small (~50 lines) — always present so titles/favicons work and keyboard
-// shortcuts reach the frontend even from within the webview.
-const CORE_SCRIPT: &str = r##"
-(function() {
-
-// ── TAB INFO (title / favicon) ───────────────────────────────────
-if (!window.__xevoTabInfoDone) {
-  window.__xevoTabInfoDone = true;
-
-  function xevoSendPageInfo() {
-    try {
-      var title = document.title || "";
-      var url = window.location.href || "";
-      var favicon = null;
-      var selectors = [
-        'link[rel="icon"][href]',
-        'link[rel="shortcut icon"][href]',
-        'link[rel="apple-touch-icon"][href]'
-      ];
-      for (var i = 0; i < selectors.length; i++) {
-        var el = document.querySelector(selectors[i]);
-        if (el && el.href) { favicon = el.href; break; }
-      }
-      var tabId = window.__XEVO_TAB_ID || "";
-      if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-        window.__TAURI_INTERNALS__.invoke("update_tab_info", {
-          tabId: tabId,
-          title: title,
-          url: url,
-          favicon: favicon
-        }).catch(function() {});
-      }
-    } catch (e) {}
-  }
-
-  document.addEventListener("DOMContentLoaded", xevoSendPageInfo);
-  window.addEventListener("load", xevoSendPageInfo);
-
-  var titleEl = document.querySelector("title");
-  if (titleEl) {
-    var titleDebounceTimer = null;
-    var obs = new MutationObserver(function() {
-      if (titleDebounceTimer) clearTimeout(titleDebounceTimer);
-      titleDebounceTimer = setTimeout(function() {
-        titleDebounceTimer = null;
-        xevoSendPageInfo();
-      }, 300);
-    });
-    obs.observe(titleEl, { characterData: true, childList: true });
-  }
-}
-
-// ── SHORTCUT FORWARDING ──────────────────────────────────────────
-var SHORTCUTS = {
-  "k": "ctrl+k", "t": "ctrl+t", "w": "ctrl+w", "b": "ctrl+b",
-  ",": "ctrl+,", "l": "ctrl+l", "1": "ctrl+1", "2": "ctrl+2",
-  "3": "ctrl+3", "4": "ctrl+4", "5": "ctrl+5", "6": "ctrl+6",
-  "7": "ctrl+7", "8": "ctrl+8", "9": "ctrl+9"
-};
-
-function isEditableTarget(t) {
-  if (!t) return false;
-  var tag = (t.tagName || "").toLowerCase();
-  if (tag === "input" || tag === "textarea" || tag === "select") return true;
-  if (t.isContentEditable) return true;
-  return false;
-}
-
-function forwardShortcut(shortcut) {
-  try {
-    if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-      window.__TAURI_INTERNALS__.invoke("forward_shortcut", { shortcut: shortcut }).catch(function() {});
-    }
-  } catch (err) {}
-}
-
-function blockEvent(e) {
-  e.preventDefault();
-  e.stopPropagation();
-  if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-}
-
-document.addEventListener("keydown", function(e) {
-  if (e.key === "Escape") { blockEvent(e); forwardShortcut("escape"); return; }
-  if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-    if (e.key === "ArrowLeft") { blockEvent(e); forwardShortcut("alt+left"); return; }
-    if (e.key === "ArrowRight") { blockEvent(e); forwardShortcut("alt+right"); return; }
-  }
-  if (!(e.ctrlKey || e.metaKey)) return;
-  if (e.shiftKey && !e.altKey && (e.key === "T" || e.key === "t")) { blockEvent(e); forwardShortcut("ctrl+shift+t"); return; }
-  if (e.shiftKey && !e.altKey && e.key === "Tab") { blockEvent(e); forwardShortcut("ctrl+shift+tab"); return; }
-  if (e.shiftKey && !e.altKey && (e.key === "?" || e.key === "/")) { blockEvent(e); forwardShortcut("ctrl+?"); return; }
-  if (isEditableTarget(e.target)) return;
-  if (e.shiftKey || e.altKey) return;
-  var mapping = SHORTCUTS[(e.key || "").toLowerCase()];
-  if (mapping) { blockEvent(e); forwardShortcut(mapping); }
-}, true);
-
-})();
-"##;
-
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 fn webview_label_for_tab(tab_id: &str) -> String {
@@ -648,7 +546,6 @@ fn create_webview_for_tab(
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(url::Url::parse("about:blank").expect("about:blank must parse")))
         .data_directory(shared_webview_data_dir(app))
         .initialization_script(&tab_id_init)
-        .initialization_script(CORE_SCRIPT)
         .initialization_script(CHROME_FEATURES_SCRIPT)
         .initialization_script(JSON_VIEWER_SCRIPT);
 
@@ -704,6 +601,7 @@ fn create_webview_for_tab(
         .map_err(|e| e.to_string())?;
 
     register_webview_network_capture(&webview, app, tab_id);
+    register_webview_native_events(&webview, app, tab_id);
 
     // Navigate to the real URL now that network handlers are registered
     let _ = webview.navigate(target_url);
@@ -1502,7 +1400,481 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
     });
 }
 
+// ─── Tab title/favicon + in-page shortcut forwarding (native, no injected JS) ─
+//
+// Both used to be handled by injected JS calling back into Tauri IPC, which
+// is silently rejected for every remote (https://) page — see the Inspector
+// panel fix above. These go through native WebView2 events instead: no
+// page-originated IPC, so no ACL to satisfy.
+
+pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandle, tab_id: &str) {
+    let app = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = wv.with_webview(move |platform| {
+        #[cfg(windows)]
+        unsafe {
+            use webview2_com::{AcceleratorKeyPressedEventHandler, DocumentTitleChangedEventHandler};
+            use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+
+            let core = match platform.controller().CoreWebView2() {
+                Ok(core) => core,
+                Err(e) => {
+                    xevo_log!("[xevo] CoreWebView2() failed for native events: {e:?}");
+                    return;
+                }
+            };
+
+            let app_title = app.clone();
+            let tab_id_title = tab_id.clone();
+            let core_title = core.clone();
+            let title_handler = DocumentTitleChangedEventHandler::create(Box::new(move |_webview, _args| {
+                use windows::core::PWSTR;
+
+                let mut title_ptr = PWSTR::null();
+                let _ = core_title.DocumentTitle(&mut title_ptr);
+                let title = if title_ptr.is_null() { String::new() } else { title_ptr.to_string().unwrap_or_default() };
+
+                let mut url_ptr = PWSTR::null();
+                let _ = core_title.Source(&mut url_ptr);
+                let url = if url_ptr.is_null() { String::new() } else { url_ptr.to_string().unwrap_or_default() };
+
+                let _ = update_tab_info(app_title.clone(), tab_id_title.clone(), title, url, None);
+                Ok(())
+            }));
+            let mut title_token: i64 = 0;
+            let _ = core.add_DocumentTitleChanged(&title_handler, &mut title_token);
+
+            let app_key = app.clone();
+            let controller = platform.controller();
+            let key_handler = AcceleratorKeyPressedEventHandler::create(Box::new(move |_controller, args| {
+                let args = match args {
+                    Some(a) => a,
+                    None => return Ok(()),
+                };
+                let mut kind = Default::default();
+                let _ = args.KeyEventKind(&mut kind);
+                if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN {
+                    return Ok(());
+                }
+                let mut vkey: u32 = 0;
+                let _ = args.VirtualKey(&mut vkey);
+
+                // Mirrors the key set the old injected CORE_SCRIPT mapped
+                // (ctrl+t/w/b/,/l/1-9, ctrl+shift+t, ctrl+shift+tab, ctrl+?, alt+left/right, escape).
+                let ctrl = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
+                    windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL.0 as i32,
+                ) < 0;
+                let shift = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
+                    windows::Win32::UI::Input::KeyboardAndMouse::VK_SHIFT.0 as i32,
+                ) < 0;
+                let alt = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
+                    windows::Win32::UI::Input::KeyboardAndMouse::VK_MENU.0 as i32,
+                ) < 0;
+
+                let shortcut = if vkey == 0x1B {
+                    Some("escape")
+                } else if alt && !ctrl && !shift && vkey == 0x25 {
+                    Some("alt+left")
+                } else if alt && !ctrl && !shift && vkey == 0x27 {
+                    Some("alt+right")
+                } else if ctrl && shift && !alt && vkey == 0x54 {
+                    Some("ctrl+shift+t")
+                } else if ctrl && shift && !alt && vkey == 0x09 {
+                    Some("ctrl+shift+tab")
+                } else if ctrl && shift && !alt && (vkey == 0xBF || vkey == 0x6F) {
+                    Some("ctrl+?")
+                } else if ctrl && !shift && !alt {
+                    match vkey {
+                        0x4B => Some("ctrl+k"),
+                        0x54 => Some("ctrl+t"),
+                        0x57 => Some("ctrl+w"),
+                        0x42 => Some("ctrl+b"),
+                        0xBC => Some("ctrl+,"),
+                        0x4C => Some("ctrl+l"),
+                        0x31 => Some("ctrl+1"),
+                        0x32 => Some("ctrl+2"),
+                        0x33 => Some("ctrl+3"),
+                        0x34 => Some("ctrl+4"),
+                        0x35 => Some("ctrl+5"),
+                        0x36 => Some("ctrl+6"),
+                        0x37 => Some("ctrl+7"),
+                        0x38 => Some("ctrl+8"),
+                        0x39 => Some("ctrl+9"),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(s) = shortcut {
+                    let _ = forward_shortcut(app_key.clone(), s.to_string());
+                    let _ = args.SetHandled(true);
+                }
+                Ok(())
+            }));
+            let mut key_token: i64 = 0;
+            let _ = controller.add_AcceleratorKeyPressed(&key_handler, &mut key_token);
+        }
+    });
+}
+
 // ─── Inspector ────────────────────────────────────────────────────
+
+/// Runs `script` in the tab's webview via WebView2 `ExecuteScript` and parses
+/// its result as JSON. Used instead of injected-JS-calls-back-into-Tauri
+/// because remote (https://) pages are rejected by the IPC ACL — this reads
+/// the result directly through the native COM API, no page-originated IPC at all.
+///
+/// ponytail: ExecuteScript returns the whole result as one JSON string, so a
+/// multi-megabyte localStorage dump could be slow to marshal. Upgrade path:
+/// chunk large stores if this becomes a real complaint.
+#[cfg(target_os = "windows")]
+async fn eval_json(wv: &tauri::Webview, script: String) -> Result<serde_json::Value, String> {
+    use std::sync::Arc;
+    use tokio::sync::oneshot;
+    use webview2_com::ExecuteScriptCompletedHandler;
+    use windows_core::HSTRING;
+
+    let (inner_tx, rx) = oneshot::channel::<Result<serde_json::Value, String>>();
+    let tx = Arc::new(Mutex::new(Some(inner_tx)));
+    let tx_outer = tx.clone();
+
+    wv.with_webview(move |platform| {
+        #[cfg(windows)]
+        unsafe {
+            let controller = platform.controller();
+            let core_webview = match controller.CoreWebView2() {
+                Ok(wv) => wv,
+                Err(e) => {
+                    if let Some(s) = tx_outer.lock().unwrap().take() {
+                        let _ = s.send(Err(format!("CoreWebView2 failed: {:?}", e)));
+                    }
+                    return;
+                }
+            };
+
+            let tx_inner = tx_outer.clone();
+            let handler = ExecuteScriptCompletedHandler::create(Box::new(
+                move |result: windows_core::Result<()>, json: String| -> windows_core::Result<()> {
+                    let sender = tx_inner.lock().unwrap().take();
+                    if let Some(s) = sender {
+                        if let Err(e) = result {
+                            let _ = s.send(Err(format!("ExecuteScript failed: {:?}", e)));
+                        } else {
+                            match serde_json::from_str::<serde_json::Value>(&json) {
+                                Ok(v) => {
+                                    let _ = s.send(Ok(v));
+                                }
+                                Err(e) => {
+                                    let _ = s.send(Err(format!("JSON parse failed: {e}")));
+                                }
+                            }
+                        }
+                    }
+                    Ok(())
+                },
+            ));
+
+            if let Err(e) = core_webview.ExecuteScript(&HSTRING::from(script.as_str()), &handler) {
+                if let Some(s) = tx_outer.lock().unwrap().take() {
+                    let _ = s.send(Err(format!("ExecuteScript call failed: {:?}", e)));
+                }
+            }
+        }
+    })
+    .map_err(|e| format!("with_webview error: {e}"))?;
+
+    rx.await.map_err(|_| "Inspector eval channel closed".to_string())?
+}
+
+/// Marshal one WebView2 cookie into JSON. Must be called on the UI thread —
+/// COM interface pointers are not `Send`, so every field is read out here and
+/// only the plain JSON crosses the channel.
+#[cfg(target_os = "windows")]
+unsafe fn cookie_to_json(
+    c: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Cookie,
+) -> serde_json::Value {
+    use windows::core::PWSTR;
+    use windows_core::BOOL;
+
+    unsafe fn read(f: impl FnOnce(*mut PWSTR)) -> String {
+        let mut p = PWSTR::null();
+        f(&mut p);
+        if p.is_null() { String::new() } else { p.to_string().unwrap_or_default() }
+    }
+
+    let name = read(|p| { let _ = c.Name(p); });
+    let value = read(|p| { let _ = c.Value(p); });
+    let domain = read(|p| { let _ = c.Domain(p); });
+    let path = read(|p| { let _ = c.Path(p); });
+
+    let mut expires: f64 = -1.0;
+    let _ = c.Expires(&mut expires);
+
+    let mut http_only = BOOL(0);
+    let _ = c.IsHttpOnly(&mut http_only);
+    let mut secure = BOOL(0);
+    let _ = c.IsSecure(&mut secure);
+    let mut session = BOOL(0);
+    let _ = c.IsSession(&mut session);
+
+    let mut same_site = Default::default();
+    let _ = c.SameSite(&mut same_site);
+    let same_site = match same_site.0 {
+        0 => "None",
+        1 => "Lax",
+        2 => "Strict",
+        _ => "",
+    };
+
+    serde_json::json!({
+        "name": name,
+        "value": value,
+        "domain": domain,
+        "path": path,
+        "expires": expires,
+        "httpOnly": http_only.as_bool(),
+        "secure": secure.as_bool(),
+        "session": session.as_bool(),
+        "sameSite": same_site,
+    })
+}
+
+/// Sends `msg` as the (only) error response on a one-shot channel, if nothing
+/// has claimed it yet. Shared by every WebView2 async COM call in this file
+/// that bridges a completion handler back to an `async fn` via `oneshot`.
+#[cfg(target_os = "windows")]
+fn cookie_op_failed<T>(
+    tx: &std::sync::Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<T, String>>>>>,
+    msg: String,
+) {
+    if let Some(s) = tx.lock().unwrap().take() {
+        let _ = s.send(Err(msg));
+    }
+}
+
+/// Resolves the tab's `ICoreWebView2CookieManager` plus its current URL.
+/// Shared setup for every cookie read/write — `read_cookies` and
+/// `mutate_cookies` differ only in what they do with the manager once they
+/// have it.
+#[cfg(target_os = "windows")]
+unsafe fn get_cookie_manager(
+    platform: &tauri::webview::PlatformWebview,
+) -> Result<
+    (
+        webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2CookieManager,
+        String,
+    ),
+    String,
+> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_2;
+    use windows::core::PWSTR;
+    use windows_core::Interface;
+
+    let core = platform
+        .controller()
+        .CoreWebView2()
+        .map_err(|e| format!("CoreWebView2 failed: {e:?}"))?;
+
+    let mut url_ptr = PWSTR::null();
+    let _ = core.Source(&mut url_ptr);
+    let url = if url_ptr.is_null() { String::new() } else { url_ptr.to_string().unwrap_or_default() };
+
+    let core2: ICoreWebView2_2 = core.cast().map_err(|e| format!("ICoreWebView2_2 unavailable: {e:?}"))?;
+    let manager = core2.CookieManager().map_err(|e| format!("CookieManager unavailable: {e:?}"))?;
+
+    Ok((manager, url))
+}
+
+/// Read every cookie applicable to the tab's current URL via the native
+/// `ICoreWebView2CookieManager`.
+///
+/// Deliberately not `document.cookie`: that hides HttpOnly cookies entirely
+/// (the ones that matter most when debugging auth) and exposes no domain/path,
+/// which made precise deletion impossible.
+#[cfg(target_os = "windows")]
+async fn read_cookies(wv: &tauri::Webview) -> Result<serde_json::Value, String> {
+    use std::sync::Arc;
+    use tokio::sync::oneshot;
+    use webview2_com::GetCookiesCompletedHandler;
+    use windows::core::HSTRING;
+
+    let (inner_tx, rx) = oneshot::channel::<Result<serde_json::Value, String>>();
+    let tx = Arc::new(Mutex::new(Some(inner_tx)));
+    let tx_outer = tx.clone();
+
+    wv.with_webview(move |platform| {
+        #[cfg(windows)]
+        unsafe {
+            let (manager, url) = match get_cookie_manager(&platform) {
+                Ok(v) => v,
+                Err(e) => return cookie_op_failed(&tx_outer, e),
+            };
+
+            let tx_inner = tx_outer.clone();
+            let url_for_handler = url.clone();
+            let handler = GetCookiesCompletedHandler::create(Box::new(move |result, list| {
+                if let Some(s) = tx_inner.lock().unwrap().take() {
+                    if let Err(e) = result {
+                        let _ = s.send(Err(format!("GetCookies failed: {e:?}")));
+                        return Ok(());
+                    }
+                    let mut cookies = Vec::new();
+                    if let Some(list) = list {
+                        let mut count: u32 = 0;
+                        let _ = list.Count(&mut count);
+                        for i in 0..count {
+                            if let Ok(c) = list.GetValueAtIndex(i) {
+                                cookies.push(cookie_to_json(&c));
+                            }
+                        }
+                    }
+                    let _ = s.send(Ok(serde_json::json!({
+                        "cookies": cookies,
+                        "url": url_for_handler,
+                    })));
+                }
+                Ok(())
+            }));
+
+            if let Err(e) = manager.GetCookies(&HSTRING::from(url.as_str()), &handler) {
+                cookie_op_failed(&tx_outer, format!("GetCookies call failed: {e:?}"));
+            }
+        }
+    })
+    .map_err(|e| format!("with_webview error: {e}"))?;
+
+    rx.await.map_err(|_| "Cookie read channel closed".to_string())?
+}
+
+/// Cookie writes through the native cookie manager, so domain/path are exact
+/// rather than guessed. `document.cookie` could only ever expire a host-only
+/// `path=/` cookie, which silently no-opped on every `Domain=.example.com` one.
+///
+/// Always reads the cookie list first so an edit can mutate the real cookie
+/// object — that preserves httpOnly/secure/expires/sameSite across a value
+/// change instead of replacing it with a bare duplicate.
+#[cfg(target_os = "windows")]
+async fn mutate_cookies(
+    wv: &tauri::Webview,
+    operation: String,
+    params: serde_json::Value,
+) -> Result<(), String> {
+    use std::sync::Arc;
+    use tokio::sync::oneshot;
+    use webview2_com::GetCookiesCompletedHandler;
+    use windows::core::HSTRING;
+
+    let (inner_tx, rx) = oneshot::channel::<Result<(), String>>();
+    let tx = Arc::new(Mutex::new(Some(inner_tx)));
+    let tx_outer = tx.clone();
+
+    wv.with_webview(move |platform| {
+        #[cfg(windows)]
+        unsafe {
+            let (manager, url) = match get_cookie_manager(&platform) {
+                Ok(v) => v,
+                Err(e) => return cookie_op_failed(&tx_outer, e),
+            };
+            let host = url
+                .parse::<url::Url>()
+                .ok()
+                .and_then(|u| u.host_str().map(|h| h.to_string()))
+                .unwrap_or_default();
+
+            let tx_inner = tx_outer.clone();
+            let manager_inner = manager.clone();
+            let handler = GetCookiesCompletedHandler::create(Box::new(move |result, list| {
+                let sender = tx_inner.lock().unwrap().take();
+                let Some(s) = sender else { return Ok(()) };
+                let manager = &manager_inner;
+                if let Err(e) = result {
+                    let _ = s.send(Err(format!("GetCookies failed: {e:?}")));
+                    return Ok(());
+                }
+
+                let name = params["name"].as_str().unwrap_or("");
+                let want_domain = params["domain"].as_str().unwrap_or("");
+                let want_path = params["path"].as_str().unwrap_or("");
+
+                let mut all = Vec::new();
+                if let Some(list) = list {
+                    let mut count: u32 = 0;
+                    let _ = list.Count(&mut count);
+                    for i in 0..count {
+                        if let Ok(c) = list.GetValueAtIndex(i) {
+                            all.push(c);
+                        }
+                    }
+                }
+
+                // A name alone can match several cookies (same name, different
+                // domain/path), so domain/path narrow it when the panel supplies
+                // them. Not needed for clear-cookies, which targets everything.
+                let matched: Vec<_> = if operation == "clear-cookies" {
+                    Vec::new()
+                } else {
+                    all.iter()
+                        .filter(|c| {
+                            let j = cookie_to_json(c);
+                            j["name"].as_str() == Some(name)
+                                && (want_domain.is_empty() || j["domain"].as_str() == Some(want_domain))
+                                && (want_path.is_empty() || j["path"].as_str() == Some(want_path))
+                        })
+                        .cloned()
+                        .collect()
+                };
+
+                let outcome = match operation.as_str() {
+                    "delete-cookie" | "clear-cookies" => {
+                        // clear-cookies targets everything visible to the page —
+                        // NOT DeleteAllCookies(), which would wipe every site in
+                        // the shared profile.
+                        let victims = if operation == "clear-cookies" { &all } else { &matched };
+                        victims
+                            .iter()
+                            .try_for_each(|c| manager.DeleteCookie(c))
+                            .map_err(|e| format!("DeleteCookie failed: {e:?}"))
+                    }
+
+                    "set-cookie" => {
+                        let value = params["value"].as_str().unwrap_or("");
+                        if let Some(existing) = matched.first() {
+                            existing
+                                .SetValue(&HSTRING::from(value))
+                                .and_then(|_| manager.AddOrUpdateCookie(existing))
+                                .map_err(|e| format!("AddOrUpdateCookie failed: {e:?}"))
+                        } else {
+                            let domain = if want_domain.is_empty() { host.as_str() } else { want_domain };
+                            let path = if want_path.is_empty() { "/" } else { want_path };
+                            manager
+                                .CreateCookie(
+                                    &HSTRING::from(name),
+                                    &HSTRING::from(value),
+                                    &HSTRING::from(domain),
+                                    &HSTRING::from(path),
+                                )
+                                .and_then(|c| manager.AddOrUpdateCookie(&c))
+                                .map_err(|e| format!("CreateCookie failed: {e:?}"))
+                        }
+                    }
+
+                    other => Err(format!("Unknown cookie operation: {other}")),
+                };
+
+                let _ = s.send(outcome);
+                Ok(())
+            }));
+
+            if let Err(e) = manager.GetCookies(&HSTRING::from(url.as_str()), &handler) {
+                cookie_op_failed(&tx_outer, format!("GetCookies call failed: {e:?}"));
+            }
+        }
+    })
+    .map_err(|e| format!("with_webview error: {e}"))?;
+
+    rx.await.map_err(|_| "Cookie mutate channel closed".to_string())?
+}
 
 #[tauri::command]
 pub async fn browser_eval_inspector(
@@ -1510,108 +1882,76 @@ pub async fn browser_eval_inspector(
     tab_id: String,
     inspector_type: String,
 ) -> Result<(), String> {
-    let label = webview_label_for_tab(&tab_id);
-    let wv = find_tab_webview(&app, &label)
-        .ok_or_else(|| format!("No webview for tab {}", tab_id))?;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, tab_id, inspector_type);
+        return Err("Inspector requires WebView2".to_string());
+    }
 
-    let script = match inspector_type.as_str() {
-        "meta" => format!(
-            r#"(function() {{
-  try {{
-    var metas = Array.from(document.querySelectorAll('meta')).map(function(m) {{
-      return {{
+    #[cfg(target_os = "windows")]
+    {
+        let label = webview_label_for_tab(&tab_id);
+        let wv = find_tab_webview(&app, &label)
+            .ok_or_else(|| format!("No webview for tab {}", tab_id))?;
+
+        // Cookies come from the native cookie manager, not injected JS — see
+        // `read_cookies`. Same event contract, so the frontend is unaffected.
+        if inspector_type == "cookies" {
+            let data = read_cookies(&wv).await?;
+            return app
+                .emit(
+                    "xevo://inspector-data",
+                    serde_json::json!({
+                        "tabId": tab_id,
+                        "dataType": inspector_type,
+                        "data": data,
+                    }),
+                )
+                .map_err(|e| e.to_string());
+        }
+
+        let script = match inspector_type.as_str() {
+            "meta" => r#"(function() {
+  try {
+    var metas = Array.from(document.querySelectorAll('meta')).map(function(m) {
+      return {
         name: m.getAttribute('name') || m.getAttribute('property') || m.getAttribute('http-equiv') || '',
         content: m.getAttribute('content') || '',
         charset: m.getAttribute('charset'),
         httpEquiv: m.getAttribute('http-equiv')
-      }};
-    }});
-    var canonical = (document.querySelector('link[rel="canonical"]') || {{}}).href || null;
+      };
+    });
+    var canonical = (document.querySelector('link[rel="canonical"]') || {}).href || null;
     var ldJson = [];
     var ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
-    for (var i = 0; i < ldScripts.length; i++) {{
-      try {{
+    for (var i = 0; i < ldScripts.length; i++) {
+      try {
         ldJson.push(JSON.parse(ldScripts[i].textContent));
-      }} catch(e) {{
+      } catch(e) {
         // skip invalid JSON-LD
-      }}
-    }}
-    var result = {{
+      }
+    }
+    return {
       metas: metas,
       title: document.title,
       canonical: canonical,
       url: location.href,
       ldJson: ldJson.length > 0 ? ldJson : undefined
-    }};
-    if (window.__TAURI_INTERNALS__) {{
-      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
-        tabId: '{}',
-        dataType: 'meta',
-        data: result
-      }}).catch(function() {{}});
-    }} else {{
-      console.warn('[xevo] __TAURI_INTERNALS__ not available — cannot send meta inspector data');
-    }}
-  }} catch(e) {{
-    if (window.__TAURI_INTERNALS__) {{
-      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
-        tabId: '{}',
-        dataType: 'meta',
-        data: {{ error: String(e), metas: [], title: '', canonical: null, url: location.href }}
-      }}).catch(function() {{}});
-    }}
-  }}
-}})();
-"#,
-            tab_id, tab_id
-        ),
+    };
+  } catch(e) {
+    return { error: String(e), metas: [], title: '', canonical: null, url: location.href };
+  }
+})()"#
+                .to_string(),
 
-        "cookies" => format!(
-            r#"(function() {{
-  try {{
-    var cookieStr = document.cookie;
-    var cookies = [];
-    if (cookieStr.trim()) {{
-      cookies = cookieStr.split(';').map(function(c) {{
-        var eqIdx = c.indexOf('=');
-        if (eqIdx < 0) return null;
-        return {{
-          name: c.slice(0, eqIdx).trim(),
-          value: c.slice(eqIdx + 1).trim()
-        }};
-      }}).filter(Boolean);
-    }}
-    if (window.__TAURI_INTERNALS__) {{
-      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
-        tabId: '{}',
-        dataType: 'cookies',
-        data: {{ cookies: cookies, url: location.href }}
-      }}).catch(function() {{}});
-    }} else {{
-      console.warn('[xevo] __TAURI_INTERNALS__ not available — cannot send cookies inspector data');
-    }}
-  }} catch(e) {{
-    if (window.__TAURI_INTERNALS__) {{
-      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
-        tabId: '{}',
-        dataType: 'cookies',
-        data: {{ cookies: [], url: location.href, error: String(e) }}
-      }}).catch(function() {{}});
-    }}
-  }}
-}})();
-"#,
-            tab_id, tab_id
-        ),
-
-        "localStorage" | "sessionStorage" => {
-            let store = if inspector_type == "localStorage" {
-                "localStorage"
-            } else {
-                "sessionStorage"
-            };
-            format!(
-                r#"(function() {{
+            "localStorage" | "sessionStorage" => {
+                let store = if inspector_type == "localStorage" {
+                    "localStorage"
+                } else {
+                    "sessionStorage"
+                };
+                format!(
+                    r#"(function() {{
   try {{
     var store = window.{};
     var items = [];
@@ -1622,50 +1962,29 @@ pub async fn browser_eval_inspector(
       totalSize += key.length + value.length;
       items.push({{ key: key, value: value }});
     }}
-    if (window.__TAURI_INTERNALS__) {{
-      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
-        tabId: '{}',
-        dataType: '{}',
-        data: {{ items: items, totalSize: totalSize, url: location.href }}
-      }}).catch(function() {{}});
-    }} else {{
-      console.warn('[xevo] __TAURI_INTERNALS__ not available — cannot send storage inspector data');
-    }}
+    return {{ items: items, totalSize: totalSize, url: location.href }};
   }} catch(e) {{
-    if (window.__TAURI_INTERNALS__) {{
-      window.__TAURI_INTERNALS__.invoke('inspector_data', {{
-        tabId: '{}',
-        dataType: '{}',
-        data: {{ items: [], totalSize: 0, url: location.href, error: String(e) }}
-      }}).catch(function() {{}});
-    }}
+    return {{ items: [], totalSize: 0, url: location.href, error: String(e) }};
   }}
-}})();
-"#,
-                store, tab_id, inspector_type, tab_id, inspector_type
-            )
-        }
+}})()"#,
+                    store
+                )
+            }
 
-        _ => return Err(format!("Unknown inspector type: {}", inspector_type)),
-    };
+            _ => return Err(format!("Unknown inspector type: {}", inspector_type)),
+        };
 
-    wv.eval(&script).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn inspector_data(
-    app: AppHandle,
-    tab_id: String,
-    data_type: String,
-    data: serde_json::Value,
-) -> Result<(), String> {
-    let payload = serde_json::json!({
-        "tabId": tab_id,
-        "dataType": data_type,
-        "data": data,
-    });
-    app.emit("xevo://inspector-data", payload)
+        let data = eval_json(&wv, script).await?;
+        app.emit(
+            "xevo://inspector-data",
+            serde_json::json!({
+                "tabId": tab_id,
+                "dataType": inspector_type,
+                "data": data,
+            }),
+        )
         .map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
@@ -1679,26 +1998,12 @@ pub async fn inspector_mutate(
     let wv = find_tab_webview(&app, &label)
         .ok_or_else(|| format!("No webview for tab {}", tab_id))?;
 
+    #[cfg(target_os = "windows")]
+    if matches!(operation.as_str(), "set-cookie" | "delete-cookie" | "clear-cookies") {
+        return mutate_cookies(&wv, operation, params).await;
+    }
+
     let script = match operation.as_str() {
-        "set-cookie" => {
-            let name = js_string_literal(params["name"].as_str().unwrap_or(""));
-            let value = js_string_literal(params["value"].as_str().unwrap_or(""));
-            format!("document.cookie = {} + '=' + {} + '; path=/';", name, value)
-        }
-        "delete-cookie" => {
-            let name = js_string_literal(params["name"].as_str().unwrap_or(""));
-            format!(
-                "document.cookie = {} + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';",
-                name
-            )
-        }
-        "clear-cookies" => {
-            r#"document.cookie.split(';').forEach(function(c) {
-  var name = c.split('=')[0].trim();
-  if (name) document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-});"#
-                .to_string()
-        }
         "set-storage" => {
             let store = params["storeType"].as_str().unwrap_or("localStorage");
             let key = js_string_literal(params["key"].as_str().unwrap_or(""));
@@ -1767,7 +2072,6 @@ pub async fn create_viewport(
     parent
         .add_child(
             WebviewBuilder::new(&label, WebviewUrl::External(parsed_url))
-                .initialization_script(CORE_SCRIPT)
                 .transparent(true),
             Position::Logical(LogicalPosition::new(x, y)),
             Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),

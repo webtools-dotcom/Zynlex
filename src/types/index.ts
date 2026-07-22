@@ -183,6 +183,16 @@ export interface MetaInfo {
 export interface CookieEntry {
   name: string;
   value: string;
+  /** Read via the native WebView2 cookie manager, so HttpOnly cookies are
+   *  included and domain/path are exact (needed to delete precisely). */
+  domain: string;
+  path: string;
+  /** Seconds since epoch; -1 for session cookies. */
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+  session: boolean;
+  sameSite: string;
 }
 
 export interface StorageEntry {

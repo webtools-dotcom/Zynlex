@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 
 interface WorkspaceContextMenuProps {
   workspaceId: string;
@@ -70,11 +71,11 @@ export function WorkspaceContextMenu({
       <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--color-text-disabled)] truncate">
         {workspaceName}
       </div>
-      <button
-        type="button"
+      {/* Confirms in place — closing the menu on the first click would unmount
+          the armed state before it could be confirmed. */}
+      <ConfirmButton
         disabled={!canDelete}
-        onClick={() => {
-          if (!canDelete) return;
+        onConfirm={() => {
           onDelete();
           onClose();
         }}
@@ -87,7 +88,7 @@ export function WorkspaceContextMenu({
       >
         <Trash2 size={13} />
         Delete Workspace
-      </button>
+      </ConfirmButton>
     </div>,
     document.body
   );

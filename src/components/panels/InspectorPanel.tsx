@@ -12,11 +12,13 @@ import {
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useInspectorStore } from "@/stores/inspector";
-import { evalInspector, inspectorMutate } from "@/services/browser";
+import { evalInspector, inspectorMutate, apiFetch } from "@/services/browser";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { SocialPreviewCard } from "@/components/panels/SocialPreview";
 import { validateMetaTags, metaTagsToRecord } from "@/components/panels/MetaValidator";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { InspectorSubTab } from "@/stores/inspector";
+import type { CookieEntry } from "@/types";
 
 function CopyIcon({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -99,53 +101,60 @@ function MetaSubTab() {
   async function runImageDiag(url: string) {
     setDiagResult({ status: "loading", message: "Loading…" });
     try {
-      const resp = await fetch(url);
-      if (!resp.ok) {
-        setDiagResult({ status: "error", message: `HTTP ${resp.status}` });
-        return;
-      }
-      const ct = resp.headers.get("content-type");
-      if (!ct?.startsWith("image/")) {
-        setDiagResult({ status: "error", message: `Not an image (${ct})` });
-        return;
-      }
-      const blob = await resp.blob();
-      const sizeKB = blob.size / 1024;
       const img = new Image();
-      img.src = URL.createObjectURL(blob);
+      img.src = url;
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
-        img.onerror = () => reject(new Error("Failed to decode image"));
+        img.onerror = () => reject(new Error("Failed to load image"));
       });
+      const width = img.naturalWidth;
+      const height = img.naturalHeight;
+
+      // HEAD request through the Rust HTTP client for size/content-type —
+      // best-effort, since some servers reject HEAD entirely.
+      let sizeKB: number | undefined;
+      try {
+        const resp = await apiFetch({ method: "HEAD", url, headers: {} });
+        const ct = Object.entries(resp.headers).find(([k]) => k.toLowerCase() === "content-type")?.[1];
+        if (ct && !ct.startsWith("image/")) {
+          setDiagResult({ status: "error", message: `Not an image (${ct})` });
+          return;
+        }
+        const len = Object.entries(resp.headers).find(([k]) => k.toLowerCase() === "content-length")?.[1];
+        if (len) sizeKB = parseInt(len, 10) / 1024;
+      } catch {
+        // HEAD failed — still report dimensions below
+      }
+
       const issues: string[] = [];
-      if (img.width < 600 || img.height < 315) {
-        issues.push(`Too small (${img.width}×${img.height}, min 600×315)`);
+      if (width < 600 || height < 315) {
+        issues.push(`Too small (${width}×${height}, min 600×315)`);
       }
-      if (img.width < 1200 || img.height < 630) {
-        issues.push(`Below recommended (${img.width}×${img.height}, recommended 1200×630)`);
+      if (width < 1200 || height < 630) {
+        issues.push(`Below recommended (${width}×${height}, recommended 1200×630)`);
       }
-      if (sizeKB > 5000) {
+      if (sizeKB !== undefined && sizeKB > 5000) {
         issues.push(`Very large (${Math.round(sizeKB)}KB, recommended <500KB)`);
       }
-      const ratio = img.width / img.height;
+      const ratio = width / height;
       if (Math.abs(ratio - 1.91) > 0.1) {
         issues.push(`Wrong aspect ratio (${ratio.toFixed(2)}, expected 1.91)`);
       }
       const declW = record["og:image:width"];
       const declH = record["og:image:height"];
-      if (declW && parseInt(declW) !== img.width) {
-        issues.push(`Declared width ${declW}px but actual is ${img.width}px`);
+      if (declW && parseInt(declW) !== width) {
+        issues.push(`Declared width ${declW}px but actual is ${width}px`);
       }
-      if (declH && parseInt(declH) !== img.height) {
-        issues.push(`Declared height ${declH}px but actual is ${img.height}px`);
+      if (declH && parseInt(declH) !== height) {
+        issues.push(`Declared height ${declH}px but actual is ${height}px`);
       }
-      URL.revokeObjectURL(img.src);
+      const sizePart = sizeKB !== undefined ? `, ${Math.round(sizeKB)}KB` : "";
       setDiagResult({
         status: issues.length > 0 ? "warning" : "valid",
-        message: issues.length > 0 ? issues.join("; ") : `${img.width}×${img.height}, ${Math.round(sizeKB)}KB`,
-        width: img.width,
-        height: img.height,
-        sizeKB,
+        message: issues.length > 0 ? issues.join("; ") : `${width}×${height}${sizePart}`,
+        width,
+        height,
+        sizeKB: sizeKB ?? 0,
       });
     } catch (e) {
       setDiagResult({ status: "error", message: `Failed to load: ${e}` });
@@ -324,9 +333,15 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
     evalInspector(tabId, "cookies").catch(() => {});
   }, [tabId]);
 
+  // domain/path identify the exact cookie — without them a delete or an edit
+  // silently targets a different (host-only) cookie than the one displayed.
   const handleDelete = useCallback(
-    (name: string) => {
-      inspectorMutate(tabId, "delete-cookie", { name }).then(() => {
+    (cookie: CookieEntry) => {
+      inspectorMutate(tabId, "delete-cookie", {
+        name: cookie.name,
+        domain: cookie.domain,
+        path: cookie.path,
+      }).then(() => {
         setTimeout(doRefresh, 300);
       }).catch(() => {});
     },
@@ -334,8 +349,13 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
   );
 
   const handleSave = useCallback(
-    (name: string, value: string) => {
-      inspectorMutate(tabId, "set-cookie", { name, value }).then(() => {
+    (cookie: CookieEntry, value: string) => {
+      inspectorMutate(tabId, "set-cookie", {
+        name: cookie.name,
+        value,
+        domain: cookie.domain,
+        path: cookie.path,
+      }).then(() => {
         setTimeout(doRefresh, 300);
         setExpandedIdx(null);
       }).catch(() => {});
@@ -357,7 +377,6 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
   }, [tabId, addName, addValue, doRefresh]);
 
   const handleClearAll = useCallback(() => {
-    if (!window.confirm("Clear all non-HttpOnly cookies?")) return;
     inspectorMutate(tabId, "clear-cookies", {}).then(() => {
       setTimeout(doRefresh, 300);
     }).catch(() => {});
@@ -370,17 +389,12 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
         <span className="text-[13px] text-[var(--color-text-muted)]">
           {cookies.length} cookie{cookies.length !== 1 ? "s" : ""}
         </span>
-        <button
-          onClick={handleClearAll}
+        <ConfirmButton
+          onConfirm={handleClearAll}
           className="text-[12px] text-[var(--color-danger, #ef4444)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
         >
           Clear All
-        </button>
-      </div>
-
-      {/* Warning */}
-      <div className="text-[12px] text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded p-1.5 mb-2">
-        HttpOnly cookies are not shown — they are inaccessible to JavaScript for security reasons.
+        </ConfirmButton>
       </div>
 
       {/* Cookie list */}
@@ -408,22 +422,41 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
               <span className="text-[13px] font-mono font-medium text-[var(--color-text-primary)]">
                 {cookie.name}
               </span>
+              {cookie.httpOnly && (
+                <span className="text-[10px] px-1 rounded bg-[#f59e0b]/15 text-[#f59e0b]" title="HttpOnly">
+                  HTTP
+                </span>
+              )}
+              {cookie.secure && (
+                <span className="text-[10px] px-1 rounded bg-[#22c55e]/15 text-[#22c55e]" title="Secure">
+                  SEC
+                </span>
+              )}
               <span className="text-[12px] font-mono text-[var(--color-text-muted)] truncate max-w-[120px]">
                 {cookie.value}
               </span>
               <CopyIcon text={`${cookie.name}=${cookie.value}`} />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(cookie.name);
-                }}
+              <ConfirmButton
+                onConfirm={() => handleDelete(cookie)}
+                confirmLabel="del?"
                 className="opacity-0 group-hover:opacity-100 text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-danger, #ef4444)] cursor-pointer transition-all"
               >
                 del
-              </button>
+              </ConfirmButton>
             </div>
             {expandedIdx === idx && (
               <div className="px-2 pb-2 border-t border-[var(--color-border-subtle)]">
+                <div className="mt-1 text-[11px] font-mono text-[var(--color-text-muted)] space-y-0.5">
+                  <div>domain: {cookie.domain || "—"}</div>
+                  <div>path: {cookie.path || "—"}</div>
+                  <div>
+                    expires:{" "}
+                    {cookie.session || cookie.expires <= 0
+                      ? "Session"
+                      : new Date(cookie.expires * 1000).toLocaleString()}
+                  </div>
+                  {cookie.sameSite && <div>sameSite: {cookie.sameSite}</div>}
+                </div>
                 <textarea
                   rows={3}
                   value={editValue}
@@ -432,7 +465,7 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
                 />
                 <div className="flex gap-2 mt-1">
                   <button
-                    onClick={() => handleSave(cookie.name, editValue)}
+                    onClick={() => handleSave(cookie, editValue)}
                     className="text-[12px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white cursor-pointer"
                   >
                     Save
@@ -576,12 +609,6 @@ function StorageSubTab({
   }, [tabId, storageSubTab, addKey, addValue, doRefresh]);
 
   const handleClear = useCallback(() => {
-    if (
-      !window.confirm(
-        `Clear all items in ${storageSubTab}?`
-      )
-    )
-      return;
     inspectorMutate(tabId, "clear-storage", {
       storeType: storageSubTab,
     }).then(() => {
@@ -744,12 +771,12 @@ function StorageSubTab({
 
       {/* Clear All */}
       {items.length > 0 && (
-        <button
-          onClick={handleClear}
+        <ConfirmButton
+          onConfirm={handleClear}
           className="mt-2 w-full text-[12px] text-[var(--color-danger, #ef4444)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors py-1"
         >
           Clear All
-        </button>
+        </ConfirmButton>
       )}
     </div>
   );

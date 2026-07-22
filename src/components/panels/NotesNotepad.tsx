@@ -4,6 +4,7 @@ import { RichTextEditor, type RichTextEditorHandle } from "@tolipovjs/rich-text"
 import { useNotesStore } from "@/stores/notes";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useSettingsStore } from "@/stores/settings";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { NoteColor } from "@/types";
 
 const COLOR_OPTIONS: { value: NoteColor; label: string; hex: string }[] = [
@@ -299,17 +300,16 @@ export function NotesNotepad() {
                 >
                   <Download size={12} />
                 </button>
-                <button
-                  onClick={() => {
-                    if (window.confirm("Delete this note?")) {
-                      deleteNote(selectedNote.id);
-                      setSelectedId(null);
-                    }
+                <ConfirmButton
+                  onConfirm={() => {
+                    deleteNote(selectedNote.id);
+                    setSelectedId(null);
                   }}
+                  title="Delete this note"
                   className="text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
                 >
                   Delete
-                </button>
+                </ConfirmButton>
               </div>
             </div>
 

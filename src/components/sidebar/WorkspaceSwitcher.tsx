@@ -85,7 +85,6 @@ export function WorkspaceSwitcher() {
   function handleDeleteWorkspace(workspaceId: string) {
     const ws = workspaces[workspaceId];
     if (!ws || workspaceOrder.length <= 1) return;
-    if (!window.confirm(`Delete workspace "${ws.name}" and all its tabs?`)) return;
     const tabIds = getLiveWorkspaceTabIds(ws, tabs);
     tabIds.forEach((tabId) => {
       closeTabWebview(tabId).catch(() => {});
