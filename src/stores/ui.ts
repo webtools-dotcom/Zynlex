@@ -115,7 +115,7 @@ export const useUIStore = create<UIStore>()(
 
     setSidebarOpen: (v) => set((s) => { s.sidebarOpen = v; }),
     toggleSidebar: () => set((s) => { s.sidebarOpen = !s.sidebarOpen; }),
-    setSidebarWidth: (w) => set((s) => { s.sidebarWidth = Math.max(180, Math.min(420, w)); }),
+    setSidebarWidth: (w) => set((s) => { s.sidebarWidth = Math.max(180, Math.min(Math.max(480, window.innerWidth - 420), w)); }),
     setActivePanel: (p) => set((s) => { s.activePanel = p; }),
     togglePanel: (p) => set((s) => { s.activePanel = s.activePanel === p ? null : p; }),
     setCommandPaletteOpen: (v) => set((s) => { s.commandPaletteOpen = v; }),
