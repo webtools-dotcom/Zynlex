@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.36.0
+## Version: v1.37.0
 ## Last Updated: 2026-07-22
-## Status: Bug-audit remediation pass (Inspector, API Tester, port scanner, network capture, header rules, webview-creation race, debug logging), plus a follow-up fix replacing remote-page IPC with native WebView2 events. Both TS and Rust compile clean against the current `Window::add_child` architecture.
+## Status: Bug-audit remediation pass (Inspector, API Tester, port scanner, network capture, header rules, webview-creation race, debug logging), plus a follow-up fix replacing remote-page IPC with native WebView2 events, plus a draggable sidebar resize. Both TS and Rust compile clean against the current `Window::add_child` architecture.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -13,6 +13,13 @@
 - Tauri crate: 2.11.2
 
 ## COMPLETED ✅
+
+### Draggable sidebar resize (v1.37.0)
+Sidebar width was fixed and hard-clamped to 420px. Added a drag handle on the sidebar's right
+edge (mouse drag + arrow-key nudge) wired to the store's existing `sidebarWidth`/
+`setSidebarWidth`, and raised the clamp ceiling to `max(480, window width - 420)`. No bridge
+changes needed — the existing content-area ResizeObserver already re-syncs the child webview
+bounds on any layout change.
 
 ### Full Codebase Audit + Remediation Pass (v1.35.0)
 Read-only audit produced a feature inventory and root-cause bug list, then every finding

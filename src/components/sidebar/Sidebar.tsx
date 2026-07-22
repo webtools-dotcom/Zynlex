@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense, lazy } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense, lazy } from "react";
 import {
   Server, Bookmark, Clock, Activity, Code2, FileText, KeyRound, Binary,
   FlaskConical, RefreshCw, Globe, Monitor, Shield,
@@ -186,6 +186,7 @@ function PanelSkeleton() {
 
 export function Sidebar() {
   const { sidebarOpen, sidebarWidth, activePanel, togglePanel } = useUIStore();
+  const setSidebarWidth = useUIStore((s) => s.setSidebarWidth);
   const { workspaces, activeWorkspaceId } = useWorkspacesStore();
   const tabs = useTabsStore((s) => s.tabs);
 
@@ -193,14 +194,43 @@ export function Sidebar() {
   const activeTabId = getLiveWorkspaceActiveTabId(ws, tabs);
   const wsName = ws?.name ?? "Workspace";
 
+  const [resizing, setResizing] = useState(false);
+  const dragStartRef = useRef({ x: 0, width: 0 });
+
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      dragStartRef.current = { x: e.clientX, width: sidebarWidth };
+      setResizing(true);
+    },
+    [sidebarWidth]
+  );
+
+  useEffect(() => {
+    if (!resizing) return;
+    document.body.style.cursor = "col-resize";
+    const handleMouseMove = (e: MouseEvent) => {
+      const { x, width } = dragStartRef.current;
+      setSidebarWidth(width + (e.clientX - x));
+    };
+    const handleMouseUp = () => setResizing(false);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.body.style.cursor = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [resizing, setSidebarWidth]);
+
   return (
     <div
-      className="flex flex-col flex-shrink-0 border-r overflow-hidden"
+      className="relative flex flex-col flex-shrink-0 border-r overflow-hidden"
       style={{
         width: sidebarOpen ? sidebarWidth : 0,
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
-        transition: "width 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: resizing ? "none" : "width 150ms cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
       {/* Header */}
@@ -253,6 +283,24 @@ export function Sidebar() {
           {activePanel === "viewport" && <ViewportControlsPanel />}
         </Suspense>
       </div>
+
+      {/* Resize handle */}
+      {sidebarOpen && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          tabIndex={0}
+          onMouseDown={handleDragStart}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") setSidebarWidth(sidebarWidth - 16);
+            else if (e.key === "ArrowRight") setSidebarWidth(sidebarWidth + 16);
+            else return;
+            e.preventDefault();
+          }}
+          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--color-accent-dim)] focus:bg-[var(--color-accent-dim)] outline-none"
+        />
+      )}
     </div>
   );
 }
