@@ -4,6 +4,7 @@ import { useHistoryStore } from "@/stores/history";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { VirtualList } from "@/components/ui/VirtualList";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { HistoryEntry } from "@/types";
 
 function relativeTime(ts: number): string {
@@ -63,16 +64,13 @@ export function HistoryPanel() {
           History
         </p>
         {entries.length > 0 && (
-          <button
-            onClick={() => {
-              if (window.confirm("Clear all history?")) clearAll();
-            }}
+          <ConfirmButton
+            onConfirm={clearAll}
             title="Clear all history"
-            aria-label="Clear all history"
             className="text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
           >
             <Trash2 size={12} />
-          </button>
+          </ConfirmButton>
         )}
       </div>
 

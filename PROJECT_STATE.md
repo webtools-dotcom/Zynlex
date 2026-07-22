@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.35.0
+## Version: v1.36.0
 ## Last Updated: 2026-07-22
-## Status: Bug-audit remediation pass (Inspector, API Tester, port scanner, network capture, header rules, webview-creation race, debug logging). Both TS and Rust compile clean against the current `Window::add_child` architecture.
+## Status: Bug-audit remediation pass (Inspector, API Tester, port scanner, network capture, header rules, webview-creation race, debug logging), plus a follow-up fix replacing remote-page IPC with native WebView2 events. Both TS and Rust compile clean against the current `Window::add_child` architecture.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -17,10 +17,56 @@
 ### Full Codebase Audit + Remediation Pass (v1.35.0)
 Read-only audit produced a feature inventory and root-cause bug list, then every finding
 except the open-source-readiness checklist was fixed:
-- **Inspector panel was broken end-to-end**: frontend did `JSON.parse()` on `event.data`,
-  but Rust already sends it as a parsed `serde_json::Value` object, not a string — every
-  load threw and showed "Failed to parse inspector data". Removed the parse; all 4 sub-tabs
-  (meta/cookies/localStorage/sessionStorage) work now.
+- **Inspector panel was broken end-to-end (real root cause)**: the earlier "removed a stray
+  `JSON.parse()`" fix was a symptom patch — the actual break was that injected JS in tab
+  webviews called `window.__TAURI_INTERNALS__.invoke('inspector_data', ...)` from a remote
+  (`https://`) page, and Tauri v2 silently rejects all IPC from remote origins unless a
+  capability declares `remote.urls` (the app's only capability is local-only). The call was
+  never rejected loudly because the injected script's `.catch(() => {})` swallowed it, so
+  `isLoading` never cleared and every sub-tab stayed empty. Fixed by moving inspector reads
+  off page-originated IPC entirely: `browser_eval_inspector` now runs the script via
+  `ICoreWebView2::ExecuteScript` and reads the JSON result straight back in Rust, then emits
+  `xevo://inspector-data` itself. The `inspector_data` command is gone — nothing calls into
+  it from a page anymore. All 3 sub-tabs (meta/cookies/localStorage/sessionStorage) and their
+  mutations now work.
+- **Same remote-IPC problem also killed tab titles/favicons and in-page keyboard shortcuts**:
+  `update_tab_info` and `forward_shortcut` were invoked the same broken way from the shared
+  `CORE_SCRIPT` injected into every tab. Replaced with native WebView2 events —
+  `DocumentTitleChanged` for title/favicon/URL, `AcceleratorKeyPressed` for shortcut capture —
+  registered per-tab alongside the existing network-capture handler. `CORE_SCRIPT` is deleted;
+  no injected JS calls into Tauri IPC from page content anymore.
+- **"Run diagnostics" on og:image never worked**: it called `fetch(url)` from the main
+  window, blocked by the app's CSP (`connect-src ... http://localhost:*`) and CORS for any
+  external image host. Now reads dimensions via `new Image()` (CSP already allows
+  `img-src https:`) and gets size/content-type via a HEAD request through the existing
+  `api_fetch` Rust command, degrading gracefully if the server rejects HEAD.
+
+### Cookie inspector rebuilt on the native cookie manager (v1.36.0)
+The cookie panel read and wrote `document.cookie`, which has two fatal limits for a devtool:
+it cannot see HttpOnly cookies at all (exactly the ones that matter when debugging auth),
+and it exposes no domain/path — so deletion had to guess. A cookie is only removed by a write
+whose **domain and path match the ones it was set with**, and the delete script always wrote
+host-only `path=/`. Result: `del` worked on JS-set cookies and silently no-opped on every
+`Domain=.example.com` cookie; "Clear All" had the same flaw, and editing a value created a
+host-only duplicate instead of overwriting. Replaced entirely with
+`ICoreWebView2CookieManager` (`read_cookies` / `mutate_cookies` in `browser.rs`):
+HttpOnly cookies are now listed and editable, each entry carries domain/path/expiry/
+secure/sameSite/session, deletion targets the exact cookie object, and an edit mutates the
+real cookie so its other attributes survive. "Clear All" deletes only the cookies visible to
+the current page — deliberately not `DeleteAllCookies()`, which would wipe every site in the
+shared WebView2 profile. Manager/URL resolution and the async-COM failure path are shared
+helpers (`get_cookie_manager`, `cookie_op_failed`) — `read_cookies` and `mutate_cookies` no
+longer duplicate that setup.
+
+### `window.confirm()` replaced everywhere (v1.36.0)
+Tab webviews are native child HWNDs stacked above the main window's webview, so a WebView2
+script dialog renders *behind* the page — the confirm text was visible in the strip above the
+webview but OK/Cancel were unreachable, making every destructive action impossible to confirm.
+CSS z-index cannot fix this. Added `src/components/ui/ConfirmButton.tsx`, which confirms in
+place (`Sure? / No`, Escape or ~4s idle to disarm) inside the panel that owns the button —
+never inside the webview's rectangle, so occlusion is structurally impossible and no webview
+hide/show flicker is needed. Applied to all six sites: Inspector (cookies + storage), History,
+Bookmarks, Notes, and the workspace context menu. `window.confirm` must not be reintroduced.
 - **API Tester was localhost-only**: it used the main window's `fetch()`, bound by the app's
   own CSP (`connect-src ... http://localhost:*`) and CORS. Added a Rust `api_fetch` command
   (reqwest + rustls) so requests go out as a real HTTP client instead.
@@ -96,7 +142,8 @@ Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zust
 - **Tab discarding:** Tabs inactive >10 minutes are destroyed. On switch, the webview is recreated and the page reloads. Pinned tabs and active tab are exempt.
 - **Cap concurrent webviews:** Soft limit of 10 (configurable via `maxConcurrentWebviews`). When exceeded, oldest background tab is discarded.
 - **Shared WebView2 environment:** All browser webviews use the same `data_directory` path, so WebView2 shares browser/GPU/network processes across tabs.
-- **Init scripts:** 3 scripts injected per tab: (1) CORE_SCRIPT (header injection, tab info, keyboard shortcuts), (2) CHROME_FEATURES_SCRIPT (find-in-page, bookmark shortcut, shortcut forwarding), (3) JSON_VIEWER_SCRIPT (collapsible JSON viewer).
+- **Init scripts:** per-tab `__XEVO_TAB_ID` setter, plus CHROME_FEATURES_SCRIPT (find-in-page, bookmark shortcut) and JSON_VIEWER_SCRIPT (collapsible JSON viewer). Tab info (title/favicon) and global keyboard shortcuts are native WebView2 events now, not injected JS — see "Remote-page IPC" below.
+- **Remote-page IPC is intentionally never used.** Tauri v2 rejects all `__TAURI_INTERNALS__.invoke` calls from `https://` page content unless a capability declares `remote.urls` — and doing that flips `has_app_acl` on, forcing every command in the app to be explicitly allow-listed and exposing tab-scoped commands to any page that can guess a `tabId`. Anything that needs data out of a tab (Inspector reads, tab title/favicon, in-page shortcuts) goes through native WebView2 COM APIs instead (`ExecuteScript`, `DocumentTitleChanged`, `AcceleratorKeyPressed`) — Rust-initiated, never page-initiated.
 - Bounds are in LOGICAL (CSS) pixels, WINDOW-RELATIVE (main window client area) — not screen coordinates. Frontend `getBounds()` returns `rect.left, rect.top` directly (no `window.screenX/screenY`). Rust passes these to `add_child(builder, Position::Logical(...), Size::Logical(...))` on creation, `set_position`/`set_size` after. The OS scales to physical via DPI.
 - Hidden by `Webview::hide()`. Shown by `Webview::show()`.
 - Events (`browser://url-changed`, `browser://loading`, `browser://tab-info`) include `tabId` in payload for correct routing.
@@ -118,7 +165,6 @@ Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zust
 - **In-page link clicks can pollute history** — SPA routing fires multiple onUrlChanged events.
 - **Global shortcuts fire even when XEVO not focused** — OS-level hotkeys. Intended trade-off.
 - **Network log captures fetch/XHR only** — assets, images, fonts not captured. By design.
-- **HttpOnly cookies not visible in Cookie inspector** — browser security restriction.
 - **Header injection doesn't cover WebSockets** — WebView2 doesn't fire `WebResourceRequested` for WebSocket handshakes. Not fixable app-side.
 
 ## FEATURES
@@ -142,7 +188,7 @@ Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zust
 - **JWT Decoder / Base64 Tool** (v1.1.0): Decode, expiry countdown. Encode/decode toggle.
 - **Header Injection**: Custom rules per workspace, enforced per-tab via native WebView2 COM interception (`WebResourceRequested`). Live on next request in any open tab, no reload needed. Inline value editing.
 - **UA Switcher**: 9 presets (desktop/mobile/bot). Injects UA override script. `browser_set_user_agent` command.
-- **Inspector Panel**: Meta validation, SocialPreview (FB/Twitter/LinkedIn/Discord), image diagnostics. Cookie inspector (HttpOnly warning).
+- **Inspector Panel**: Meta validation, SocialPreview (FB/Twitter/LinkedIn/Discord), image diagnostics. Cookie inspector via native `ICoreWebView2CookieManager` — includes HttpOnly cookies, shows domain/path/expiry/secure/sameSite, exact-match delete and attribute-preserving edit.
 - **Viewport Panel**: 7 Rust commands. Mobile/tablet/laptop presets. CSS Grid layout, scroll sync.
 - **Screenshot Tool** (v1.0.0): Ctrl+Shift+S. DevTools Protocol Page.captureScreenshot via COM API. PrintWindow fallback. Toast in webview DOM.
 

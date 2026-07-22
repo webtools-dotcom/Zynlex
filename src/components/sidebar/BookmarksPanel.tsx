@@ -13,6 +13,7 @@ import { useBookmarksStore } from "@/stores/bookmarks";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { VirtualList } from "@/components/ui/VirtualList";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 
 function getHost(url: string): string {
   try {
@@ -74,21 +75,13 @@ export function BookmarksPanel() {
           {wsName} Bookmarks
         </p>
         {wsBookmarks.length > 0 && (
-          <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Remove all ${wsBookmarks.length} bookmark${wsBookmarks.length === 1 ? "" : "s"} from "${wsName}"?`
-                )
-              ) {
-                clearForWorkspace(activeWorkspaceId);
-              }
-            }}
-            title="Clear all bookmarks in this workspace"
+          <ConfirmButton
+            onConfirm={() => clearForWorkspace(activeWorkspaceId)}
+            title={`Remove all ${wsBookmarks.length} bookmark${wsBookmarks.length === 1 ? "" : "s"} from "${wsName}"`}
             className="text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
           >
             Clear all
-          </button>
+          </ConfirmButton>
         )}
       </div>
 

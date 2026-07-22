@@ -84,7 +84,6 @@ pub fn run() {
             commands::browser::browser_set_user_agent,
             commands::browser::browser_set_memory_target,
             commands::browser::browser_eval_inspector,
-            commands::browser::inspector_data,
             commands::browser::inspector_mutate,
             commands::browser::create_viewport,
             commands::browser::destroy_viewport,
