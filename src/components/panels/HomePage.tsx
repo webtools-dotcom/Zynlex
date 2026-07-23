@@ -93,7 +93,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
         {/* ── Hero ──────────────────────────────────────────────── */}
         <div className="text-center mb-14">
           <h1
-            className="text-[24px] font-semibold tracking-tight text-[var(--color-text-primary)] mb-6"
+            className="text-2xl font-semibold tracking-tight text-[var(--color-text-primary)] mb-6"
             style={{ fontFamily: "var(--font-ui)" }}
           >
             Your stack, at a glance.
@@ -127,7 +127,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
-              className="flex-1 bg-transparent outline-none text-[13px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
+              className="flex-1 bg-transparent outline-none text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
             />
             {query && (
               <button
@@ -140,8 +140,8 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
               </button>
             )}
           </form>
-          <p className="text-[12px] text-[var(--color-text-disabled)] mt-2">
-            <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded text-[11px] font-mono">Ctrl+L</kbd>{" "}
+          <p className="text-xs text-[var(--color-text-disabled)] mt-2">
+            <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded text-micro font-mono">Ctrl+L</kbd>{" "}
             focuses the address bar
           </p>
         </div>
@@ -168,14 +168,14 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
           <div className="flex items-center justify-between mb-3 relative">
             <div className="flex items-center gap-1.5">
               <Server size={12} className="text-[var(--color-text-disabled)]" />
-              <h2 className="text-[12px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
+              <h2 className="text-xs font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
                 Live Servers
               </h2>
             </div>
             {liveServers.length > 0 && (
               <button
                 onClick={() => setActivePanel("servers")}
-                className="text-[12px] text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
+                className="text-xs text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
               >
                 View all
               </button>
@@ -184,7 +184,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
 
           {liveServers.length === 0 ? (
             <div className="py-4 text-center relative">
-              <p className="text-[13px] text-[var(--color-text-muted)] italic">
+              <p className="text-sm text-[var(--color-text-muted)] italic">
                 No servers detected. Start your dev server and XEVO will find it.
               </p>
             </div>
@@ -216,17 +216,17 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
                           : "none",
                       }}
                     />
-                    <span className="text-[12px] font-mono text-[var(--color-text-primary)] tabular-nums">
+                    <span className="text-xs font-mono text-[var(--color-text-primary)] tabular-nums">
                       :{server.port}
                     </span>
                   </div>
 
                   {/* Right: name + Open link */}
                   <div className="flex-1 min-w-0 flex items-center justify-between">
-                    <span className="text-[12px] text-[var(--color-text-muted)] truncate">
+                    <span className="text-xs text-[var(--color-text-muted)] truncate">
                       {server.label ?? server.title ?? `${server.protocol}://localhost:${server.port}`}
                     </span>
-                    <span className="text-[11px] text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                    <span className="text-micro text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
                       Open →
                     </span>
                   </div>
@@ -242,13 +242,13 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5">
                 <Bookmark size={12} className="text-[var(--color-text-disabled)]" />
-                <h2 className="text-[12px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
+                <h2 className="text-xs font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
                   Bookmarks
                 </h2>
               </div>
               <button
                 onClick={() => setActivePanel("bookmarks")}
-                className="text-[12px] text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
+                className="text-xs text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
               >
                 View all
               </button>
@@ -269,10 +269,10 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
                     className="text-[var(--color-text-disabled)] flex-shrink-0"
                   />
                   <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                    <span className="text-[12px] text-[var(--color-text-primary)] truncate">
+                    <span className="text-xs text-[var(--color-text-primary)] truncate">
                       {bookmark.title}
                     </span>
-                    <span className="text-[12px] text-[var(--color-text-muted)] truncate font-mono">
+                    <span className="text-xs text-[var(--color-text-muted)] truncate font-mono">
                       {bookmark.url}
                     </span>
                   </div>

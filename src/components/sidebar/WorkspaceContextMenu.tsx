@@ -59,7 +59,7 @@ export function WorkspaceContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[10000] py-1 rounded-[4px] border text-[13px]"
+      className="fixed z-[10000] py-1 rounded-[4px] border text-sm"
       style={{
         left: pos.x,
         top: pos.y,
@@ -68,7 +68,7 @@ export function WorkspaceContextMenu({
         borderColor: "var(--color-border)",
       }}
     >
-      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--color-text-disabled)] truncate">
+      <div className="px-3 py-1.5 text-micro uppercase tracking-wider text-[var(--color-text-disabled)] truncate">
         {workspaceName}
       </div>
       {/* Confirms in place — closing the menu on the first click would unmount

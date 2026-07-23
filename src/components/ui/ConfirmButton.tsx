@@ -75,7 +75,7 @@ export function ConfirmButton({
           onConfirm();
         }}
         className={cn(
-          "text-[12px] px-1.5 py-0.5 rounded bg-[var(--color-danger,#ef4444)] text-white cursor-pointer",
+          "text-xs px-1.5 py-0.5 rounded bg-[var(--color-dead)] text-white cursor-pointer",
           className
         )}
       >
@@ -87,7 +87,7 @@ export function ConfirmButton({
           e.stopPropagation();
           setArmed(false);
         }}
-        className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
+        className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
       >
         No
       </button>

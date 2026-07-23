@@ -71,14 +71,14 @@ export function BookmarksPanel() {
     <div className="p-2 flex flex-col h-full">
       {/* Header row */}
       <div className="flex items-center justify-between px-1 mb-2 flex-shrink-0">
-        <p className="text-[12px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+        <p className="text-xs font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
           {wsName} Bookmarks
         </p>
         {wsBookmarks.length > 0 && (
           <ConfirmButton
             onConfirm={() => clearForWorkspace(activeWorkspaceId)}
             title={`Remove all ${wsBookmarks.length} bookmark${wsBookmarks.length === 1 ? "" : "s"} from "${wsName}"`}
-            className="text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
+            className="text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
           >
             Clear all
           </ConfirmButton>
@@ -92,11 +92,11 @@ export function BookmarksPanel() {
             size={22}
             className="text-[var(--color-text-disabled)] mx-auto mb-2"
           />
-          <p className="text-[13px] text-[var(--color-text-disabled)]">
+          <p className="text-sm text-[var(--color-text-disabled)]">
             No bookmarks yet
           </p>
-          <p className="text-[12px] text-[var(--color-text-disabled)] mt-1">
-            Press <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-primary)] rounded text-[11px] font-mono">Ctrl+D</kbd> on a tab to save it
+          <p className="text-xs text-[var(--color-text-disabled)] mt-1">
+            Press <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-primary)] rounded text-micro font-mono">Ctrl+D</kbd> on a tab to save it
           </p>
         </div>
       ) : (
@@ -126,7 +126,7 @@ export function BookmarksPanel() {
                         }
                       }}
                       autoFocus
-                      className="flex-1 bg-[var(--color-elevated)] outline-none border border-[var(--color-accent)] rounded px-1.5 py-0.5 text-[13px] text-[var(--color-text-primary)]"
+                      className="flex-1 bg-[var(--color-elevated)] outline-none border border-[var(--color-accent)] rounded px-1.5 py-0.5 text-sm text-[var(--color-text-primary)]"
                     />
                   ) : (
                     <button
@@ -137,10 +137,10 @@ export function BookmarksPanel() {
                       title={`${item.title}\n${item.url}\n\nClick to open · Double-click to rename`}
                       className="flex-1 min-w-0 text-left"
                     >
-                      <div className="text-[13px] text-[var(--color-text-primary)] truncate">
+                      <div className="text-sm text-[var(--color-text-primary)] truncate">
                         {item.title}
                       </div>
-                      <div className="text-[12px] text-[var(--color-text-disabled)] truncate">
+                      <div className="text-xs text-[var(--color-text-disabled)] truncate">
                         {getHost(item.url)}
                       </div>
                     </button>

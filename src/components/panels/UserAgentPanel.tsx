@@ -42,14 +42,14 @@ export function UserAgentPanel() {
   return (
     <div className="p-2 flex flex-col h-full">
       <div className="flex items-center justify-between px-1 mb-2 flex-shrink-0">
-        <p className="text-[12px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+        <p className="text-xs font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
           User Agent
         </p>
         {currentUA && (
           <button
             onClick={resetDefault}
             title="Reset to default UA"
-            className="text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-accent)] transition-colors flex items-center gap-1"
+            className="text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-accent)] transition-colors flex items-center gap-1"
           >
             <RotateCcw size={12} />
             Default
@@ -59,8 +59,8 @@ export function UserAgentPanel() {
 
       {currentUA && (
         <div className="px-1 mb-2 flex-shrink-0">
-          <p className="text-[11px] text-[var(--color-text-muted)] mb-0.5">Current:</p>
-          <p className="text-[11px] text-[var(--color-text-disabled)] font-mono truncate bg-[var(--color-elevated)] rounded px-1.5 py-1">
+          <p className="text-micro text-[var(--color-text-muted)] mb-0.5">Current:</p>
+          <p className="text-micro text-[var(--color-text-disabled)] font-mono truncate bg-[var(--color-elevated)] rounded px-1.5 py-1">
             {currentUA}
           </p>
         </div>
@@ -73,7 +73,7 @@ export function UserAgentPanel() {
             <div key={key}>
               <div className="flex items-center gap-1.5 px-1 mb-1">
                 <Icon size={12} className="text-[var(--color-text-disabled)]" />
-                <p className="text-[11px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+                <p className="text-micro font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
                   {label}
                 </p>
               </div>
@@ -82,7 +82,7 @@ export function UserAgentPanel() {
                   key={preset.ua}
                   onClick={() => selectPreset(preset)}
                   className={cn(
-                    "w-full text-left px-2 py-1.5 rounded text-[13px] transition-colors mb-0.5",
+                    "w-full text-left px-2 py-1.5 rounded text-sm transition-colors mb-0.5",
                     currentUA === preset.ua
                       ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
                       : "text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]"
@@ -98,7 +98,7 @@ export function UserAgentPanel() {
 
       {/* Custom UA input */}
       <div className="flex-shrink-0 pt-2 border-t mt-2" style={{ borderColor: "var(--color-border-subtle)" }}>
-        <p className="text-[11px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase mb-1 px-1">
+        <p className="text-micro font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase mb-1 px-1">
           Custom UA
         </p>
         <div className="flex gap-1 px-1">
@@ -109,13 +109,13 @@ export function UserAgentPanel() {
               if (e.key === "Enter" && customUA.trim()) applyCustom();
             }}
             placeholder="Mozilla/5.0 (..."
-            className="flex-1 min-w-0 bg-[var(--color-elevated)] text-[12px] text-[var(--color-text-primary)] font-mono rounded px-1.5 py-1 outline-none border border-[var(--color-border)] focus:border-[var(--color-accent)]"
+            className="flex-1 min-w-0 bg-[var(--color-elevated)] text-xs text-[var(--color-text-primary)] font-mono rounded px-1.5 py-1 outline-none border border-[var(--color-border)] focus:border-[var(--color-accent)]"
           />
           <button
             onClick={applyCustom}
             disabled={!customUA.trim()}
             className={cn(
-              "text-[12px] px-2 rounded transition-colors",
+              "text-xs px-2 rounded transition-colors",
               customUA.trim()
                 ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white"
                 : "bg-[var(--color-elevated)] text-[var(--color-text-disabled)]"

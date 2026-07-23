@@ -355,6 +355,10 @@ export function useWebviewBridge(
       if (loading) {
         loadStartRef.current = Date.now();
         useTabsStore.getState().updateTab(tabId, { isLoading: true });
+        // Fires on reload too, not just fresh navigation — so the network log
+        // resets per page load instead of accumulating for the tab's whole
+        // lifetime (it was hitting the 500-entry cap after a handful of reloads).
+        useNetworkStore.getState().clearTab(tabId);
       } else {
         const elapsed = loadStartRef.current !== null
           ? Date.now() - loadStartRef.current

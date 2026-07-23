@@ -159,8 +159,8 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
               "px-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]",
               "focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]",
               focused
-                ? "font-[var(--font-ui)] text-[13px]"
-                : "font-[var(--font-mono)] text-[13px]",
+                ? "font-[var(--font-ui)] text-sm"
+                : "font-[var(--font-mono)] text-sm",
             )}
             spellCheck={false}
             autoCorrect="off"

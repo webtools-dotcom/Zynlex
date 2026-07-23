@@ -84,7 +84,7 @@ export function TabItem({
       </div>
 
       {/* Title */}
-      <span className="flex-1 min-w-0 text-[14px] font-medium leading-none truncate">
+      <span className="flex-1 min-w-0 text-md font-medium leading-none truncate">
         {tab.isLoading ? "Loading…" : (tab.title || "New Tab")}
       </span>
 

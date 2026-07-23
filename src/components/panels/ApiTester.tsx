@@ -474,7 +474,7 @@ function MethodSelector({
       <select
         value={method}
         onChange={(e) => setMethod(e.target.value as HttpMethod)}
-        className="appearance-none h-9 pl-2 pr-7 text-[12px] font-bold rounded border outline-none cursor-pointer"
+        className="appearance-none h-9 pl-2 pr-7 text-xs font-bold rounded border outline-none cursor-pointer"
         style={{
           background: METHOD_COLORS[method] + "22",
           borderColor: METHOD_COLORS[method] + "66",
@@ -546,7 +546,7 @@ function RequestEditor(p: BodySharedProps) {
                   value={h.key}
                   onChange={(e) => p.updateHeader(h.id, { key: e.target.value })}
                   placeholder="Header name"
-                  className="flex-1 min-w-0 px-2 py-1 text-[13px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
+                  className="flex-1 min-w-0 px-2 py-1 text-sm font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
                   style={{ borderColor: "var(--color-border)" }}
                 />
                 <input
@@ -554,7 +554,7 @@ function RequestEditor(p: BodySharedProps) {
                   value={h.value}
                   onChange={(e) => p.updateHeader(h.id, { value: e.target.value })}
                   placeholder="Value"
-                  className="flex-1 min-w-0 px-2 py-1 text-[13px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
+                  className="flex-1 min-w-0 px-2 py-1 text-sm font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
                   style={{ borderColor: "var(--color-border)" }}
                 />
                 <button
@@ -568,7 +568,7 @@ function RequestEditor(p: BodySharedProps) {
             ))}
             <button
               onClick={p.addHeaderRow}
-              className="flex items-center gap-1 text-[13px] text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] mt-1"
+              className="flex items-center gap-1 text-sm text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] mt-1"
             >
               <Plus size={13} /> Add header
             </button>
@@ -581,13 +581,13 @@ function RequestEditor(p: BodySharedProps) {
             onChange={(e) => p.setBody(e.target.value)}
             placeholder='{"key": "value"}'
             spellCheck={false}
-            className="w-full h-40 px-2 py-1.5 text-[13px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border resize-none"
+            className="w-full h-40 px-2 py-1.5 text-sm font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border resize-none"
             style={{ borderColor: "var(--color-border)" }}
           />
         )}
 
         {p.editorTab === "body" && !canHaveBody && (
-          <p className="text-[13px] text-[var(--color-text-disabled)] text-center py-4">
+          <p className="text-sm text-[var(--color-text-disabled)] text-center py-4">
             {p.method} requests cannot have a body
           </p>
         )}
@@ -599,17 +599,17 @@ function RequestEditor(p: BodySharedProps) {
               onChange={(e) => p.setCurlInput(e.target.value)}
               placeholder={`curl -X POST 'https://api.example.com/users' -H 'Content-Type: application/json' -d '{"name":"John"}'`}
               spellCheck={false}
-              className="w-full h-32 px-2 py-1.5 text-[13px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border resize-none"
+              className="w-full h-32 px-2 py-1.5 text-sm font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border resize-none"
               style={{ borderColor: "var(--color-border)" }}
             />
             <button
               onClick={p.importCurl}
               disabled={!p.curlInput.trim()}
-              className="w-full h-8 text-[12px] font-medium rounded text-white bg-[var(--color-accent)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full h-8 text-xs font-medium rounded text-white bg-[var(--color-accent)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Import
             </button>
-            <p className="text-[12px] text-[var(--color-text-disabled)]">
+            <p className="text-xs text-[var(--color-text-disabled)]">
               Pastes a cURL command and parses it into the request fields.
             </p>
           </div>
@@ -623,7 +623,7 @@ function ResponseViewer(p: BodySharedProps) {
   if (p.error) {
     return (
       <div
-        className="p-3 text-[13px] font-mono"
+        className="p-3 text-sm font-mono"
         style={{ color: "var(--color-dead)" }}
       >
         {p.error}
@@ -632,7 +632,7 @@ function ResponseViewer(p: BodySharedProps) {
   }
   if (!p.response) {
     return (
-      <div className="p-6 text-center text-[13px] text-[var(--color-text-disabled)]">
+      <div className="p-6 text-center text-sm text-[var(--color-text-disabled)]">
         Send a request to see the response
       </div>
     );
@@ -643,7 +643,7 @@ function ResponseViewer(p: BodySharedProps) {
     <div className="flex flex-col h-full">
       {/* Status bar */}
       <div
-        className="flex items-center gap-3 px-3 py-2 border-b text-[13px]"
+        className="flex items-center gap-3 px-3 py-2 border-b text-sm"
         style={{ borderColor: "var(--color-border)" }}
       >
         <span
@@ -686,7 +686,7 @@ function ResponseViewer(p: BodySharedProps) {
         />
         <button
           onClick={p.copyResponse}
-          className="ml-auto flex items-center gap-1 px-2 py-0.5 text-[12px] rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
+          className="ml-auto flex items-center gap-1 px-2 py-0.5 text-xs rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
         >
           {p.copied ? <Check size={12} /> : <Clipboard size={12} />}
           {p.copied ? "Copied" : "Copy"}
@@ -696,13 +696,13 @@ function ResponseViewer(p: BodySharedProps) {
       {/* Tab content */}
       <div className="flex-1 overflow-auto p-3">
         {p.responseTab === "body" ? (
-          <pre className="text-[13px] font-mono text-[var(--color-text-primary)] whitespace-pre-wrap break-all">
+          <pre className="text-sm font-mono text-[var(--color-text-primary)] whitespace-pre-wrap break-all">
             {r.formattedBody}
           </pre>
         ) : (
           <div className="space-y-0.5">
             {Object.entries(r.headers).map(([k, v]) => (
-              <div key={k} className="flex text-[13px] font-mono">
+              <div key={k} className="flex text-sm font-mono">
                 <span className="text-[var(--color-accent)] mr-2 flex-shrink-0">
                   {k}:
                 </span>
@@ -710,7 +710,7 @@ function ResponseViewer(p: BodySharedProps) {
               </div>
             ))}
             {Object.keys(r.headers).length === 0 && (
-              <p className="text-[13px] text-[var(--color-text-disabled)]">No headers</p>
+              <p className="text-sm text-[var(--color-text-disabled)]">No headers</p>
             )}
           </div>
         )}
@@ -724,7 +724,7 @@ function HistoryPanel(p: BodySharedProps) {
     return (
       <button
         onClick={() => p.setHistoryOpen(true)}
-        className="flex items-center gap-1 text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] px-2 py-1"
+        className="flex items-center gap-1 text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] px-2 py-1"
       >
         <ChevronUp size={12} /> History ({p.history.length})
       </button>
@@ -736,7 +736,7 @@ function HistoryPanel(p: BodySharedProps) {
       style={{ borderColor: "var(--color-border)" }}
     >
       <div className="flex items-center justify-between px-3 py-1.5">
-        <span className="text-[12px] font-semibold tracking-wider text-[var(--color-text-disabled)] uppercase flex items-center gap-1">
+        <span className="text-xs font-semibold tracking-wider text-[var(--color-text-disabled)] uppercase flex items-center gap-1">
           <History size={12} /> History
         </span>
         <div className="flex items-center gap-1">
@@ -744,7 +744,7 @@ function HistoryPanel(p: BodySharedProps) {
             <button
               onClick={p.onClearHistory}
               aria-label="Clear request history"
-              className="text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] px-1"
+              className="text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] px-1"
             >
               <Trash2 size={12} />
             </button>
@@ -752,7 +752,7 @@ function HistoryPanel(p: BodySharedProps) {
           <button
             onClick={() => p.setHistoryOpen(false)}
             aria-label="Collapse history"
-            className="text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)]"
+            className="text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)]"
           >
             <ChevronDown size={12} />
           </button>
@@ -760,7 +760,7 @@ function HistoryPanel(p: BodySharedProps) {
       </div>
       <div className="max-h-32 overflow-y-auto">
         {p.history.length === 0 ? (
-          <p className="text-[12px] text-[var(--color-text-disabled)] text-center py-2">
+          <p className="text-xs text-[var(--color-text-disabled)] text-center py-2">
             No requests yet
           </p>
         ) : (
@@ -771,16 +771,16 @@ function HistoryPanel(p: BodySharedProps) {
               className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--color-hover)]"
             >
               <span
-                className="text-[12px] font-bold flex-shrink-0"
+                className="text-xs font-bold flex-shrink-0"
                 style={{ color: METHOD_COLORS[h.method] }}
               >
                 {h.method}
               </span>
-              <span className="text-[13px] text-[var(--color-text-muted)] font-mono flex-1 min-w-0 truncate">
+              <span className="text-sm text-[var(--color-text-muted)] font-mono flex-1 min-w-0 truncate">
                 {h.url}
               </span>
               <span
-                className="text-[12px] font-mono flex-shrink-0"
+                className="text-xs font-mono flex-shrink-0"
                 style={{
                   color: h.status >= 200 && h.status < 300
                     ? "var(--color-live)"
@@ -792,7 +792,7 @@ function HistoryPanel(p: BodySharedProps) {
               >
                 {h.status}
               </span>
-              <span className="text-[12px] text-[var(--color-text-disabled)] flex-shrink-0" style={{ fontFeatureSettings: '"tnum" 1' }}>
+              <span className="text-xs text-[var(--color-text-disabled)] flex-shrink-0" style={{ fontFeatureSettings: '"tnum" 1' }}>
                 {h.durationMs}ms
               </span>
             </button>
@@ -810,14 +810,14 @@ function QuickUrls(p: BodySharedProps) {
       className="flex items-center gap-1 flex-wrap px-3 py-2 border-t"
       style={{ borderColor: "var(--color-border)" }}
     >
-      <span className="text-[12px] text-[var(--color-text-disabled)] mr-1">
+      <span className="text-xs text-[var(--color-text-disabled)] mr-1">
         Quick:
       </span>
       {p.quickUrls.map((u) => (
         <button
           key={u}
           onClick={() => p.setUrl(u)}
-          className="px-1.5 py-0.5 text-[12px] font-mono rounded border text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
+          className="px-1.5 py-0.5 text-xs font-mono rounded border text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
           style={{ borderColor: "var(--color-border)" }}
         >
           {u}
@@ -847,13 +847,13 @@ function TopBar(p: BodySharedProps) {
         }}
         placeholder="https://api.example.com/endpoint"
         spellCheck={false}
-        className="flex-1 min-w-0 h-9 px-2 text-[12px] font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
+        className="flex-1 min-w-0 h-9 px-2 text-xs font-mono bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
         style={{ borderColor: "var(--color-border)" }}
       />
       <button
         onClick={p.send}
         disabled={p.sending || !p.url.trim()}
-        className="h-9 px-3 text-[12px] font-medium rounded text-white bg-[var(--color-accent)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+        className="h-9 px-3 text-xs font-medium rounded text-white bg-[var(--color-accent)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
       >
         {p.sending ? (
           <span className="animate-pulse">Sending…</span>
@@ -887,7 +887,7 @@ function TabButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex items-center gap-1 px-2 py-1 text-[13px] rounded transition-colors",
+        "flex items-center gap-1 px-2 py-1 text-sm rounded transition-colors",
         active
           ? "bg-[var(--color-hover)] text-[var(--color-text-primary)]"
           : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]",
@@ -898,7 +898,7 @@ function TabButton({
       {label}
       {badge && (
         <span
-          className="px-1 text-[11px] rounded font-mono"
+          className="px-1 text-micro rounded font-mono"
           style={{
             background: "var(--color-elevated)",
             color: "var(--color-text-muted)",
@@ -934,7 +934,7 @@ function EmbeddedBody(p: BodySharedProps) {
 function FullPageBody(p: BodySharedProps & { onClose?: () => void }) {
   return (
     <div
-      className="w-[900px] h-[700px] max-w-[95vw] max-h-[95vh] flex flex-col rounded-[6px] overflow-hidden border"
+      className="w-[1100px] h-[720px] max-w-[92vw] max-h-[92vh] flex flex-col rounded-[var(--radius-lg)] overflow-hidden border"
       style={{
         background: "var(--color-elevated)",
         borderColor: "var(--color-border)",
@@ -945,7 +945,7 @@ function FullPageBody(p: BodySharedProps & { onClose?: () => void }) {
         className="flex items-center justify-between h-10 px-3 border-b"
         style={{ borderColor: "var(--color-border)" }}
       >
-        <span className="text-[12px] font-semibold text-[var(--color-text-primary)] flex items-center gap-1.5">
+        <span className="text-xs font-semibold text-[var(--color-text-primary)] flex items-center gap-1.5">
           <Code2 size={13} /> API Tester
         </span>
         <button

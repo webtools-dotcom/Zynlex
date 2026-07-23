@@ -45,7 +45,7 @@ const SHORTCUTS: Shortcut[] = [
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
     <kbd
-      className="inline-block min-w-[20px] px-1.5 py-0.5 text-[10px] font-mono rounded text-center"
+      className="inline-block min-w-[20px] px-1.5 py-0.5 text-micro font-mono rounded text-center"
       style={{
         background: "var(--color-elevated)",
         border: "1px solid var(--color-border)",
@@ -113,7 +113,7 @@ export function ShortcutHelp() {
                   <span key={j} className="flex items-center gap-1">
                     <Kbd>{k}</Kbd>
                     {j < s.keys.length - 1 && (
-                      <span className="text-[var(--color-text-disabled)] text-[10px]">+</span>
+                      <span className="text-[var(--color-text-disabled)] text-micro">+</span>
                     )}
                   </span>
                 ))}
@@ -129,7 +129,7 @@ export function ShortcutHelp() {
           className="flex justify-end px-4 py-2 border-t shrink-0"
           style={{ borderColor: "var(--color-border)" }}
         >
-          <span className="text-[10px] text-[var(--color-text-disabled)]">
+          <span className="text-micro text-[var(--color-text-disabled)]">
             Press <Kbd>Esc</Kbd> to close
           </span>
         </div>
