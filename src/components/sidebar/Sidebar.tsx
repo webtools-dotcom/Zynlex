@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense, lazy } from "react";
 import {
   Server, Bookmark, Clock, Activity, Code2, FileText, KeyRound, Binary,
-  FlaskConical, RefreshCw, Globe, Monitor, Shield,
+  FlaskConical, RefreshCw, Globe, Monitor, Shield, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui";
@@ -23,10 +23,12 @@ const Base64Tool = lazy(() => import("@/components/panels/Base64Tool").then(m =>
 const InspectorPanel = lazy(() => import("@/components/panels/InspectorPanel").then(m => ({ default: m.InspectorPanel })));
 const UserAgentPanel = lazy(() => import("@/components/panels/UserAgentPanel").then(m => ({ default: m.UserAgentPanel })));
 const HeadersPanel = lazy(() => import("@/components/panels/HeadersPanel").then(m => ({ default: m.HeadersPanel })));
+const DownloadsPanel = lazy(() => import("@/components/sidebar/DownloadsPanel").then(m => ({ default: m.DownloadsPanel })));
 const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
   { id: "servers",    Icon: Server,       label: "Live Servers" },
   { id: "bookmarks",  Icon: Bookmark,     label: "Bookmarks" },
   { id: "history",    Icon: Clock,        label: "History" },
+  { id: "downloads",  Icon: Download,     label: "Downloads" },
   { id: "network",    Icon: Activity,     label: "Network" },
   { id: "headers",    Icon: Shield,       label: "Header Injection" },
   { id: "inspector",  Icon: FlaskConical, label: "Inspector" },
@@ -272,6 +274,7 @@ export function Sidebar() {
           {activePanel === "servers" && <LiveServersPanel />}
           {activePanel === "bookmarks" && <BookmarksPanel />}
           {activePanel === "history" && <HistoryPanel />}
+          {activePanel === "downloads" && <DownloadsPanel />}
           {activePanel === "network" && <NetworkPanel key={activeTabId ?? "none"} />}
           {activePanel === "inspector" && <InspectorPanel />}
           {activePanel === "api" && <ApiTesterPanel />}

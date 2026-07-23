@@ -13,6 +13,7 @@
  * - Exposes navigate / goBack / goForward / reload actions
  */
 import { useEffect, useRef, useCallback, useMemo } from "react";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useUIStore } from "@/stores/ui";
@@ -35,11 +36,15 @@ import {
   onNewTabRequested,
   onInspectorData,
   setMemoryTarget,
+  setTabZoom,
   saveTabState,
   restoreTabState,
   onNetworkEntry,
+  onDownloadStarted,
+  onDownloadFinished,
   type BrowserBounds,
 } from "@/services/browser";
+import { useDownloadsStore } from "@/stores/downloads";
 import { useSettingsStore } from "@/stores/settings";
 import { useHistoryStore } from "@/stores/history";
 import { useInspectorStore } from "@/stores/inspector";
@@ -358,7 +363,9 @@ export function useWebviewBridge(
         // Fires on reload too, not just fresh navigation — so the network log
         // resets per page load instead of accumulating for the tab's whole
         // lifetime (it was hitting the 500-entry cap after a handful of reloads).
-        useNetworkStore.getState().clearTab(tabId);
+        if (!useNetworkStore.getState().preserveLog) {
+          useNetworkStore.getState().clearTab(tabId);
+        }
       } else {
         const elapsed = loadStartRef.current !== null
           ? Date.now() - loadStartRef.current
@@ -483,7 +490,18 @@ export function useWebviewBridge(
 
     const setNormal = () => {
       setMemoryTarget(activeTabId!, false).catch(() => {});
+      // Per-tab zoom memory: a recreated webview starts at 100%, and a live one
+      // may have been zoomed while another tab was showing.
+      const zoom = useTabsStore.getState().tabs[activeTabId!]?.zoom ?? 1;
+      if (zoom !== 1) setTabZoom(activeTabId!, zoom).catch(() => {});
     };
+
+    // Hide the outgoing webview on every path, not just the live-webview one.
+    // Tab webviews are siblings under the same window, so an un-hidden one stays
+    // on top and keeps rendering while the tab bar shows a different tab.
+    if (prevId && prevId !== activeTabId && createdTabsRef.current.has(prevId)) {
+      hideTabWebview(prevId).catch(() => {});
+    }
 
     const tab = tabs[activeTabId];
     if (tab?.discardedAt !== null) {
@@ -509,10 +527,7 @@ export function useWebviewBridge(
           createdTabsRef.current.delete(activeTabId);
         });
     } else if (createdTabsRef.current.has(activeTabId)) {
-      // Tab has a live webview — hide old, show new. No destroy/recreate.
-      if (prevId && prevId !== activeTabId) {
-        hideTabWebview(prevId).catch(() => {});
-      }
+      // Tab has a live webview — just show it. No destroy/recreate.
       showTabWebview(activeTabId, bounds)
         .then(() => {
           setNormal();
@@ -720,6 +735,35 @@ export function useWebviewBridge(
     return () => {
       cancelled = true;
       unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  // ── Download listeners ────────────────────────────────────────────
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    let cancelled = false;
+    const unlisteners: UnlistenFn[] = [];
+    const track = (p: Promise<UnlistenFn>) =>
+      p.then((fn) => {
+        if (cancelled) fn();
+        else unlisteners.push(fn);
+      });
+
+    track(
+      onDownloadStarted(({ url, destination }) => {
+        useDownloadsStore.getState().start(url, destination);
+        useUIStore.getState().pushToast(`Downloading ${destination.split(/[\\/]/).pop()}`, "info");
+      })
+    );
+    track(
+      onDownloadFinished(({ url, path, success }) => {
+        useDownloadsStore.getState().finish(url, path, success);
+      })
+    );
+
+    return () => {
+      cancelled = true;
+      unlisteners.forEach((fn) => fn());
     };
   }, []);
 

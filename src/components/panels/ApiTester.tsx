@@ -20,13 +20,18 @@
 import { useState, useRef, useMemo, useEffect } from "react";
 import {
   Send, Plus, X, Trash2, Clock, ChevronDown, ChevronUp,
-  History, Code2, FileText, Clipboard, Check,
+  History, Code2, FileText, Clipboard, Check, Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useServersStore } from "@/stores/servers";
 import { useApiHistoryStore } from "@/stores/apiHistory";
+import { useApiCollectionsStore, type SavedRequest } from "@/stores/apiCollections";
+import { useWorkspacesStore } from "@/stores/workspaces";
 import { apiFetch } from "@/services/browser";
 import type { HttpMethod, ApiHeader, ApiHistoryEntry } from "@/types";
+
+/** Fired by the sidebar collection list to load a saved request in here. */
+export const LOAD_REQUEST_EVENT = "xevo:load-api-request";
 
 const METHODS: HttpMethod[] = [
   "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
@@ -240,6 +245,21 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [embedded, onClose]);
+
+  // Load a saved request dispatched from the sidebar collection list.
+  useEffect(() => {
+    function onLoad(e: Event) {
+      const req = (e as CustomEvent<SavedRequest>).detail;
+      if (!req) return;
+      setMethod(req.method);
+      setUrl(req.url);
+      setHeaders(req.headers.length > 0 ? req.headers : defaultHeaders());
+      setBody(req.body);
+      setEditorTab("headers");
+    }
+    window.addEventListener(LOAD_REQUEST_EVENT, onLoad);
+    return () => window.removeEventListener(LOAD_REQUEST_EVENT, onLoad);
+  }, []);
 
   // Build a list of quick-pick URL suggestions from live servers
   const quickUrls = useMemo(
@@ -496,6 +516,77 @@ function MethodSelector({
   );
 }
 
+/**
+ * "Save to collection" — confirms in place with an inline name input.
+ * window.prompt is unreachable behind the child webviews (see ConfirmButton),
+ * so naming has to happen inside the panel that owns the button.
+ */
+function SaveRequestControl({ p }: { p: BodySharedProps }) {
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState("");
+  const wsId = useWorkspacesStore((s) => s.activeWorkspaceId);
+  const saveRequest = useApiCollectionsStore((s) => s.saveRequest);
+
+  function commit() {
+    const trimmed = name.trim();
+    if (!trimmed || !p.url.trim()) return;
+    saveRequest(wsId, {
+      name: trimmed,
+      method: p.method,
+      url: p.url,
+      headers: p.headers,
+      body: p.body,
+      folderId: null,
+    });
+    setName("");
+    setNaming(false);
+  }
+
+  if (!naming) {
+    return (
+      <button
+        onClick={() => setNaming(true)}
+        disabled={!p.url.trim()}
+        title="Save to collection"
+        className="flex items-center gap-1 px-2 h-7 text-xs rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Save size={13} /> Save
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          else if (e.key === "Escape") setNaming(false);
+        }}
+        placeholder="Request name"
+        className="w-40 px-2 py-1 text-xs bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border focus:border-[var(--color-accent)]"
+        style={{ borderColor: "var(--color-border)" }}
+      />
+      <button
+        onClick={commit}
+        disabled={!name.trim()}
+        className="px-2 h-7 text-xs rounded text-white bg-[var(--color-accent)] hover:opacity-90 disabled:opacity-40"
+      >
+        Save
+      </button>
+      <button
+        onClick={() => setNaming(false)}
+        aria-label="Cancel"
+        className="w-6 h-6 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:bg-[var(--color-hover)]"
+      >
+        <X size={13} />
+      </button>
+    </div>
+  );
+}
+
 function RequestEditor(p: BodySharedProps) {
   const canHaveBody = p.method !== "GET" && p.method !== "HEAD";
 
@@ -525,6 +616,8 @@ function RequestEditor(p: BodySharedProps) {
           icon={<Clipboard size={13} />}
           label="cURL Import"
         />
+        <div className="flex-1" />
+        <SaveRequestControl p={p} />
       </div>
 
       {/* Tab content */}

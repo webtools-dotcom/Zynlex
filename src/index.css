@@ -176,10 +176,15 @@
 }
 
 /* ── XEVO Global Resets ───────────────────────────────────── */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* Layered so Tailwind utilities (pl-*, mb-*, etc., emitted in @layer utilities)
+   can still override this — an unlayered rule here would win over every
+   utility class regardless of specificity, per CSS cascade-layer rules. */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 html {
@@ -223,13 +228,13 @@ input, textarea, [contenteditable], .selectable {
   --color-hover:    #e8e8e8;
   --color-active:   #d4d4d8;
 
-  --color-border:        #e4e4e7;
-  --color-border-subtle: #ebebef;
+  --color-border:        #d4d4d8;
+  --color-border-subtle: #e4e4e7;
 
   --color-text-primary:   #18181b;
-  --color-text-secondary: #52525b;
-  --color-text-muted:     #71717a;
-  --color-text-disabled:  #a1a1aa;
+  --color-text-secondary: #3f3f46;
+  --color-text-muted:     #52525b;
+  --color-text-disabled:  #71717a;
   --color-text-inverse:   #fafafa;
 
   --color-accent:       #3b82f6;
@@ -321,10 +326,14 @@ input, textarea, [contenteditable], .selectable {
 }
 
 /* ── Focus styles ──────────────────────────────────────────── */
-input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: var(--color-accent) !important;
-  box-shadow: 0 0 0 2px var(--color-accent-dim);
+/* Layered (see Global Resets above) so components with their own
+   focus ring / focus-within border utilities are not stomped by this default. */
+@layer base {
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px var(--color-accent-dim);
+  }
 }
 
 /* ── Scrollbar ────────────────────────────────────────────── */

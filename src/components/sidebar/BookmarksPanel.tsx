@@ -6,14 +6,15 @@
  * "Clear all" button at the bottom wipes the active workspace's
  * bookmarks. Clicking a row opens the URL in a new tab.
  */
-import { useState, useEffect } from "react";
-import { Bookmark, Trash2, ExternalLink } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Bookmark, Trash2, ExternalLink, FolderPlus, Upload, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBookmarksStore } from "@/stores/bookmarks";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { VirtualList } from "@/components/ui/VirtualList";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { useUIStore } from "@/stores/ui";
 
 function getHost(url: string): string {
   try {
@@ -44,9 +45,61 @@ export function BookmarksPanel() {
     return () => clearTimeout(t);
   }, [lastAddedId, clearLastAddedId]);
 
+  const folders = useBookmarksStore((s) => s.folders);
+  const { addFolder, removeFolder, moveBookmark, exportWorkspace, importWorkspace } =
+    useBookmarksStore();
+  const pushToast = useUIStore((s) => s.pushToast);
+  const [newFolder, setNewFolder] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const wsBookmarks = bookmarks
     .filter((b) => b.workspaceId === activeWorkspaceId)
     .sort((a, b) => b.createdAt - a.createdAt);
+
+  const wsFolders = useMemo(
+    () => folders.filter((f) => f.workspaceId === activeWorkspaceId),
+    [folders, activeWorkspaceId]
+  );
+
+  /** Root bookmarks first, then one header + its children per folder. */
+  const listItems = useMemo(() => {
+    type Row =
+      | { kind: "folder"; id: string; name: string }
+      | { kind: "bookmark"; bm: (typeof wsBookmarks)[number] };
+    const rows: Row[] = wsBookmarks
+      .filter((b) => !b.folderId)
+      .map((bm) => ({ kind: "bookmark" as const, bm }));
+    for (const f of wsFolders) {
+      rows.push({ kind: "folder", id: f.id, name: f.name });
+      for (const bm of wsBookmarks.filter((b) => b.folderId === f.id)) {
+        rows.push({ kind: "bookmark", bm });
+      }
+    }
+    return rows;
+  }, [wsBookmarks, wsFolders]);
+
+  function doExport() {
+    const json = JSON.stringify(exportWorkspace(activeWorkspaceId), null, 2);
+    // Blob + anchor: a plain platform download, no dialog plugin or capability.
+    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `xevo-bookmarks-${wsName.replace(/\s+/g, "-").toLowerCase()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function doImport(file: File) {
+    try {
+      const count = importWorkspace(activeWorkspaceId, JSON.parse(await file.text()));
+      pushToast(
+        count > 0 ? `Imported ${count} bookmark${count === 1 ? "" : "s"}` : "Nothing to import",
+        count > 0 ? "info" : "danger"
+      );
+    } catch {
+      pushToast("Import failed: not valid bookmark JSON", "danger");
+    }
+  }
 
   function openBookmark(url: string) {
     const id = addTab(activeWorkspaceId, { url });
@@ -74,19 +127,76 @@ export function BookmarksPanel() {
         <p className="text-xs font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
           {wsName} Bookmarks
         </p>
-        {wsBookmarks.length > 0 && (
-          <ConfirmButton
-            onConfirm={() => clearForWorkspace(activeWorkspaceId)}
-            title={`Remove all ${wsBookmarks.length} bookmark${wsBookmarks.length === 1 ? "" : "s"} from "${wsName}"`}
-            className="text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setNewFolder("")}
+            title="New folder"
+            aria-label="New folder"
+            className="text-[var(--color-text-disabled)] hover:text-[var(--color-accent)]"
           >
-            Clear all
-          </ConfirmButton>
-        )}
+            <FolderPlus size={12} />
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            title="Import bookmarks from JSON"
+            aria-label="Import bookmarks"
+            className="text-[var(--color-text-disabled)] hover:text-[var(--color-accent)]"
+          >
+            <Upload size={12} />
+          </button>
+          {wsBookmarks.length > 0 && (
+            <button
+              onClick={doExport}
+              title="Export bookmarks to JSON"
+              aria-label="Export bookmarks"
+              className="text-[var(--color-text-disabled)] hover:text-[var(--color-accent)]"
+            >
+              <Download size={12} />
+            </button>
+          )}
+          {wsBookmarks.length > 0 && (
+            <ConfirmButton
+              onConfirm={() => clearForWorkspace(activeWorkspaceId)}
+              title={`Remove all ${wsBookmarks.length} bookmark${wsBookmarks.length === 1 ? "" : "s"} from "${wsName}"`}
+              className="text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
+            >
+              Clear all
+            </ConfirmButton>
+          )}
+        </div>
       </div>
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void doImport(file);
+          e.target.value = "";
+        }}
+      />
+
+      {newFolder !== null && (
+        <input
+          autoFocus
+          value={newFolder}
+          onChange={(e) => setNewFolder(e.target.value)}
+          onBlur={() => setNewFolder(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && newFolder.trim()) {
+              addFolder(activeWorkspaceId, newFolder);
+              setNewFolder(null);
+            } else if (e.key === "Escape") setNewFolder(null);
+          }}
+          placeholder="Folder name"
+          className="mb-2 w-full px-2 py-1 text-sm bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border border-[var(--color-border)] focus:border-[var(--color-accent)]"
+        />
+      )}
+
       {/* Bookmark list */}
-      {wsBookmarks.length === 0 ? (
+      {wsBookmarks.length === 0 && wsFolders.length === 0 ? (
         <div className="text-center py-6">
           <Bookmark
             size={22}
@@ -101,8 +211,28 @@ export function BookmarksPanel() {
         </div>
       ) : (
         <div className="flex-1 min-h-0">
-          <VirtualList items={wsBookmarks} itemHeight={40}>
-            {({ style, item }) => {
+          <VirtualList items={listItems} itemHeight={40}>
+            {({ style, item: row }) => {
+              if (row.kind === "folder") {
+                return (
+                  <div
+                    style={style}
+                    className="group flex items-center gap-1.5 px-2 rounded bg-[var(--color-elevated)] mb-0.5"
+                  >
+                    <span className="flex-1 min-w-0 truncate text-micro font-semibold tracking-wide text-[var(--color-text-muted)] uppercase">
+                      {row.name}
+                    </span>
+                    <ConfirmButton
+                      onConfirm={() => removeFolder(row.id)}
+                      title="Delete folder (bookmarks move to root)"
+                      className="opacity-0 group-hover:opacity-100 text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
+                    >
+                      <Trash2 size={12} />
+                    </ConfirmButton>
+                  </div>
+                );
+              }
+              const item = row.bm;
               const isJustAdded = lastAddedId === item.id;
               return (
                 <div
@@ -144,6 +274,21 @@ export function BookmarksPanel() {
                         {getHost(item.url)}
                       </div>
                     </button>
+                  )}
+                  {wsFolders.length > 0 && (
+                    <select
+                      value={item.folderId ?? ""}
+                      onChange={(e) => moveBookmark(item.id, e.target.value || null)}
+                      aria-label="Move to folder"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-micro bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded outline-none border border-[var(--color-border)] max-w-20"
+                    >
+                      <option value="">(root)</option>
+                      {wsFolders.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
                   )}
                   <button
                     onClick={() => openBookmark(item.url)}

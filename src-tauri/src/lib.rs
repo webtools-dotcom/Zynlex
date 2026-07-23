@@ -54,6 +54,24 @@ pub fn run() {
             // the browser process early, and the main window's own webview
             // already does that.
 
+            // XEVO is Windows-only for v1.0. Every dev feature — network
+            // capture, header injection, cookies, tab titles/favicons, in-page
+            // shortcuts, zoom, hard reload, screenshots, memory targeting — is
+            // implemented against WebView2 COM behind #[cfg(windows)], with no
+            // WebKit fallbacks. A non-Windows build compiles and silently loses
+            // all of it, so refuse to start rather than pretend to work.
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = _app;
+                eprintln!(
+                    "XEVO is Windows-only for v1.0: every developer feature is built on \
+                     WebView2 COM APIs with no macOS/Linux equivalent implemented yet. \
+                     Refusing to start rather than launch a browser with none of them."
+                );
+                std::process::exit(1);
+            }
+
+            #[cfg(target_os = "windows")]
             Ok(())
         })
         .manage(BrowserState {
@@ -70,9 +88,12 @@ pub fn run() {
             commands::browser::browser_go_forward,
             commands::browser::browser_reload,
             commands::browser::browser_stop_loading,
+            commands::browser::browser_set_zoom,
+            commands::browser::browser_hard_reload,
             commands::browser::browser_bookmark_request,
             commands::browser::forward_shortcut,
             commands::browser::open_external_url,
+            commands::browser::open_download,
             commands::browser::update_tab_info,
             commands::browser::browser_find,
             commands::browser::browser_find_next,

@@ -10,23 +10,36 @@ export interface NetworkLogEntry {
   resourceType: string;
   durationMs: number;
   contentLength: number;
+  /** The request's Referer header. WebView2 exposes no true initiator. */
+  referrer: string;
   headers: Record<string, string>;
   body: string;
 }
 
 interface NetworkStore {
   entriesByTab: Record<string, NetworkLogEntry[]>;
+  /** While paused, incoming entries are dropped — capture keeps running. */
+  paused: boolean;
+  /** When true, a page load does not clear the tab's log. */
+  preserveLog: boolean;
   addEntry: (entry: NetworkLogEntry) => void;
   clearTab: (tabId: string) => void;
   clearAll: () => void;
+  setPaused: (paused: boolean) => void;
+  setPreserveLog: (preserve: boolean) => void;
 }
 
 const MAX_ENTRIES_PER_TAB = 500;
 
 export const useNetworkStore = create<NetworkStore>()((set) => ({
   entriesByTab: {},
+  paused: false,
+  preserveLog: false,
+  setPaused: (paused) => set({ paused }),
+  setPreserveLog: (preserveLog) => set({ preserveLog }),
   addEntry: (entry) =>
     set((s) => {
+      if (s.paused) return s;
       const tab = s.entriesByTab[entry.tabId] ?? [];
       const next = [...tab, entry].slice(-MAX_ENTRIES_PER_TAB);
       return {

@@ -13,6 +13,7 @@ const DEFAULTS: AppSettings = {
   customPorts: [],
   clearOnClose: false,
   compactMode: false,
+  bookmarkBarVisible: false,
   maxConcurrentWebviews: 10,
   userAgent: null,
 };

@@ -84,13 +84,15 @@ function CompactToggle({
       role="switch"
       aria-checked={value}
       className={
-        "w-9 h-5 rounded-full relative transition-colors " +
+        "inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent transition-colors " +
         (value ? "bg-[var(--color-accent)]" : "bg-[var(--color-border)]")
       }
     >
       <span
-        className="absolute top-0.5 w-4 h-4 rounded-full bg-[var(--color-text-primary)] transition-transform"
-        style={{ transform: value ? "translateX(18px)" : "translateX(2px)" }}
+        className={
+          "pointer-events-none block h-4 w-4 rounded-full bg-[var(--color-text-primary)] shadow transition-transform " +
+          (value ? "translate-x-4" : "translate-x-0")
+        }
       />
     </button>
   );
@@ -103,6 +105,7 @@ export function SettingsPanel() {
   const setCustomSearchUrl = useSettingsStore((s) => s.setCustomSearchUrl);
   const setPortScanInterval = useSettingsStore((s) => s.setPortScanInterval);
   const setCompactMode = useSettingsStore((s) => s.setCompactMode);
+  const update = useSettingsStore((s) => s.update);
   const toggleSettingsPanel = useUIStore((s) => s.toggleSettingsPanel);
 
   useEffect(() => {
@@ -173,6 +176,30 @@ export function SettingsPanel() {
         />
       </div>
 
+      <div className="flex justify-between items-center mt-3">
+        <div>
+          <span className="text-sm text-[var(--color-text-muted)] block">Bookmark Bar</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">Strip under the toolbar</span>
+        </div>
+        <CompactToggle
+          value={settings.bookmarkBarVisible}
+          onToggle={() => update({ bookmarkBarVisible: !settings.bookmarkBarVisible })}
+        />
+      </div>
+
+      <div className="flex justify-between items-center mt-3">
+        <div>
+          <span className="text-sm text-[var(--color-text-muted)] block">Vertical Tabs</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">Tab list as a left column</span>
+        </div>
+        <CompactToggle
+          value={settings.tabBarPosition === "left"}
+          onToggle={() =>
+            update({ tabBarPosition: settings.tabBarPosition === "left" ? "top" : "left" })
+          }
+        />
+      </div>
+
       {/* ── Search Engine ───────────────────────────────────────────── */}
       <SectionHeader>Search Engine</SectionHeader>
 
@@ -239,6 +266,56 @@ export function SettingsPanel() {
 
       <span className="text-xs text-[var(--color-text-disabled)] block mt-1">
         How often to scan for running dev servers
+      </span>
+
+      <div className="mt-3">
+        <span className="text-sm text-[var(--color-text-muted)] block mb-1">Custom Ports</span>
+        <div className="flex flex-wrap gap-1 mb-1">
+          {settings.customPorts.map((p) => (
+            <button
+              key={p}
+              onClick={() =>
+                update({ customPorts: settings.customPorts.filter((x) => x !== p) })
+              }
+              title={`Remove port ${p}`}
+              className="px-1.5 py-0.5 text-xs rounded font-mono bg-[var(--color-elevated)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-[var(--color-dead)] hover:border-[var(--color-dead)]"
+            >
+              {p} ×
+            </button>
+          ))}
+        </div>
+        <input
+          type="number"
+          min={1}
+          max={65535}
+          placeholder="Add a port, then press Enter"
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            const port = Number((e.target as HTMLInputElement).value);
+            if (!Number.isInteger(port) || port < 1 || port > 65535) return;
+            if (!settings.customPorts.includes(port)) {
+              update({ customPorts: [...settings.customPorts, port] });
+            }
+            (e.target as HTMLInputElement).value = "";
+          }}
+          className="w-full px-2 py-1 text-xs border rounded text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] outline-none focus:border-[var(--color-accent)]"
+          style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
+        />
+      </div>
+
+      {/* ── Home Page ───────────────────────────────────────────────── */}
+      <SectionHeader>Home Page</SectionHeader>
+
+      <input
+        type="text"
+        placeholder="xevo://home"
+        value={settings.homePage}
+        onChange={(e) => update({ homePage: e.target.value })}
+        className="w-full px-2 py-1 text-xs border rounded text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] outline-none focus:border-[var(--color-accent)]"
+        style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
+      />
+      <span className="text-xs text-[var(--color-text-disabled)] block mt-1">
+        Where new tabs land. Leave as <code>xevo://home</code> for the built-in start page.
       </span>
 
       {/* ── About ───────────────────────────────────────────────────── */}

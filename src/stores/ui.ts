@@ -71,6 +71,9 @@ interface UIStore {
   setOverlayHeight: (h: number) => void;
   pushToast: (message: string, kind?: ToastKind) => void;
   dismissToast: (id: string) => void;
+  /** Command-palette MRU, newest first, capped. */
+  recentPaletteIds: string[];
+  pushRecentPaletteId: (id: string) => void;
 
   enterViewportMode: () => void;
   exitViewportMode: () => void;
@@ -105,6 +108,7 @@ export const useUIStore = create<UIStore>()(
     overlayPanel: "none",
     overlayHeight: 0.4,
     toasts: [],
+    recentPaletteIds: [],
     viewportMode: false,
     viewports: [],
     selectedViewportId: null,
@@ -160,6 +164,9 @@ export const useUIStore = create<UIStore>()(
     },
     dismissToast: (id) => set((s) => {
       s.toasts = s.toasts.filter((t: Toast) => t.id !== id);
+    }),
+    pushRecentPaletteId: (id) => set((s) => {
+      s.recentPaletteIds = [id, ...s.recentPaletteIds.filter((x: string) => x !== id)].slice(0, 5);
     }),
 
     enterViewportMode: () => set((s) => { s.viewportMode = true; }),

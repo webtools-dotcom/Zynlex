@@ -3,6 +3,7 @@ interface StatusBarProps {
   loadTime: number | null;
   url: string;
   hoveredUrl: string | null;
+  zoom: number;
 }
 
 function getOrigin(url: string): string | null {
@@ -13,7 +14,7 @@ function getOrigin(url: string): string | null {
   }
 }
 
-export function StatusBar({ isLoading, loadTime, url, hoveredUrl }: StatusBarProps) {
+export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom }: StatusBarProps) {
   const origin = url ? getOrigin(url) : null;
 
   let leftContent: React.ReactNode = null;
@@ -49,6 +50,11 @@ export function StatusBar({ isLoading, loadTime, url, hoveredUrl }: StatusBarPro
     >
       {leftContent}
       <div className="flex-1" />
+      {zoom !== 1 && (
+        <span style={{ color: "var(--color-text-muted)" }}>
+          {Math.round(zoom * 100)}%
+        </span>
+      )}
       {origin && (
         <span style={{ color: "var(--color-text-disabled)" }}>{origin}</span>
       )}

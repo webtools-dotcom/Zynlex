@@ -20,8 +20,8 @@ const METHOD_COLORS: Record<string, string> = {
    fixed columns alone exceed that, so a 0-minimum let URL collapse to nothing. The row/header
    wrapper below scrolls horizontally once the panel is narrower than this, same as it would
    in any other network inspector. */
-const GRID_COLS = "2.75rem 2rem 2.25rem minmax(6rem,1fr) 3.5rem 2.5rem 1.75rem";
-const GRID_MIN_WIDTH = "25rem";
+const GRID_COLS = "2.75rem 2rem 2.25rem minmax(6rem,1fr) 6rem 3.5rem 2.5rem 1.75rem";
+const GRID_MIN_WIDTH = "31rem";
 
 const TYPE_COLORS: Record<string, string> = {
   document: "bg-blue-500/20 text-blue-300",
@@ -62,6 +62,34 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "api", label: "API" },
   { id: "slow", label: "Slow" },
 ];
+
+const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+
+/** Same 17 types Rust classifies, in the order they matter for triage. */
+const RESOURCE_TYPES = [
+  "document", "stylesheet", "script", "xhr", "fetch", "image", "media",
+  "font", "websocket", "manifest", "ping", "eventsource", "texttrack",
+  "signedexchange", "cspviolationreport", "other",
+];
+
+const STATUS_RANGES = [
+  { id: "2xx", label: "2xx", test: (c: number) => c >= 200 && c < 300 },
+  { id: "3xx", label: "3xx", test: (c: number) => c >= 300 && c < 400 },
+  { id: "4xx", label: "4xx", test: (c: number) => c >= 400 && c < 500 },
+  { id: "5xx", label: "5xx", test: (c: number) => c >= 500 },
+];
+
+function hostOnly(url: string): string {
+  if (!url) return "—";
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+const SELECT_CLASS =
+  "text-micro bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded outline-none border border-[var(--color-border)] px-1 py-0.5";
 
 function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () => void }) {
   const [tab, setTab] = useState<"headers" | "body" | "copy">("headers");
@@ -112,6 +140,12 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
               <span className="text-[var(--color-text-muted)]">Time:</span>
               <span>{formatDuration(entry.durationMs)}</span>
             </div>
+            {entry.referrer && (
+              <div className="flex gap-3">
+                <span className="text-[var(--color-text-muted)]">Referrer:</span>
+                <span className="break-all">{entry.referrer}</span>
+              </div>
+            )}
             <div className="pt-2 border-t border-[var(--color-border)]">
               <div className="text-[var(--color-text-muted)] mb-1">Response Headers:</div>
               {Object.keys(entry.headers).length === 0 ? (
@@ -198,6 +232,9 @@ function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSe
       <span className="truncate text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]" title={entry.url}>
         {entry.url}
       </span>
+      <span className="truncate text-[var(--color-text-muted)]" title={entry.referrer || undefined}>
+        {hostOnly(entry.referrer)}
+      </span>
       <span className="text-right tabular-nums whitespace-nowrap text-[var(--color-text-muted)]">
         {formatSize(entry.contentLength)}
       </span>
@@ -226,19 +263,38 @@ export function NetworkPanel() {
   const clearTab = useNetworkStore((s) => s.clearTab);
   const entries = activeTabId ? (entriesByTab[activeTabId] ?? []) : [];
 
+  const paused = useNetworkStore((s) => s.paused);
+  const setPaused = useNetworkStore((s) => s.setPaused);
+  const preserveLog = useNetworkStore((s) => s.preserveLog);
+  const setPreserveLog = useNetworkStore((s) => s.setPreserveLog);
+
   const [filter, setFilter] = useState<Filter>("all");
+  const [search, setSearch] = useState("");
+  const [methodFilter, setMethodFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLength = useRef(0);
 
+  // All filters compose: the chip narrows first, then each dropdown/search.
   const filtered = useMemo(() => {
-    switch (filter) {
-      case "errors": return entries.filter(entryIsError);
-      case "api": return entries.filter(entryIsApi);
-      case "slow": return entries.filter((e) => entryIsSlow(e));
-      default: return entries;
+    let out = entries;
+    if (filter === "errors") out = out.filter(entryIsError);
+    else if (filter === "api") out = out.filter(entryIsApi);
+    else if (filter === "slow") out = out.filter((e) => entryIsSlow(e));
+
+    if (methodFilter) out = out.filter((e) => e.method === methodFilter);
+    if (typeFilter) out = out.filter((e) => e.resourceType === typeFilter);
+    if (statusFilter) {
+      const range = STATUS_RANGES.find((r) => r.id === statusFilter);
+      if (range) out = out.filter((e) => range.test(e.statusCode));
     }
-  }, [entries, filter]);
+    const q = search.trim().toLowerCase();
+    if (q) out = out.filter((e) => e.url.toLowerCase().includes(q));
+
+    return out;
+  }, [entries, filter, methodFilter, typeFilter, statusFilter, search]);
 
   const totalSize = useMemo(() => {
     let sum = 0;
@@ -277,6 +333,17 @@ export function NetworkPanel() {
           {errorCount > 0 && <span className="text-[var(--color-dead)]">{errorCount} err</span>}
           {slowCount > 0 && <span className="text-[var(--color-warn)]">{slowCount} slow</span>}
           {apiCount > 0 && <span className="text-[var(--color-accent)]">{apiCount} API</span>}
+          <button
+            onClick={() => setPaused(!paused)}
+            title={paused ? "Resume capture" : "Pause capture"}
+            className={`px-1.5 py-0.5 rounded hover:bg-[var(--color-hover)] ${
+              paused
+                ? "text-[var(--color-warn)]"
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+            }`}
+          >
+            {paused ? "Paused" : "Pause"}
+          </button>
           {entries.length > 0 && activeTabId && (
             <button
               onClick={() => { clearTab(activeTabId); setSelectedId(null); prevLength.current = 0; }}
@@ -286,6 +353,58 @@ export function NetworkPanel() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Search + method/status/type filters */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-[var(--color-border)]">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter URL"
+          aria-label="Filter by URL"
+          className="flex-1 min-w-0 text-micro bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border border-[var(--color-border)] focus:border-[var(--color-accent)] px-1.5 py-0.5"
+        />
+        <select
+          value={methodFilter}
+          onChange={(e) => setMethodFilter(e.target.value)}
+          aria-label="Filter by method"
+          className={SELECT_CLASS}
+        >
+          <option value="">Method</option>
+          {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          aria-label="Filter by status range"
+          className={SELECT_CLASS}
+        >
+          <option value="">Status</option>
+          {STATUS_RANGES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+        </select>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          aria-label="Filter by resource type"
+          className={SELECT_CLASS}
+        >
+          <option value="">Type</option>
+          {RESOURCE_TYPES.map((t) => (
+            <option key={t} value={t}>{resourceTypeLabel(t)}</option>
+          ))}
+        </select>
+        <label
+          className="flex items-center gap-1 text-micro text-[var(--color-text-muted)] whitespace-nowrap cursor-pointer"
+          title="Keep the log across page loads"
+        >
+          <input
+            type="checkbox"
+            checked={preserveLog}
+            onChange={(e) => setPreserveLog(e.target.checked)}
+            className="accent-[var(--color-accent)]"
+          />
+          Preserve
+        </label>
       </div>
 
       {/* Filter Chips */}
@@ -322,6 +441,7 @@ export function NetworkPanel() {
           <span className="text-right">Status</span>
           <span>Type</span>
           <span>URL</span>
+          <span>Referrer</span>
           <span className="text-right">Size</span>
           <span className="text-right">Time</span>
           <span />

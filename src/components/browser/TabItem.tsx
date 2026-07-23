@@ -12,11 +12,13 @@ interface TabItemProps {
   onPointerDown: (e: React.PointerEvent) => void;
   isDropTarget: boolean;
   isDragging: boolean;
+  /** Left-column layout: full-width row, accent on the left edge instead of the bottom. */
+  vertical?: boolean;
 }
 
 export function TabItem({
   tab, isActive, onActivate, onClose, onContextMenu,
-  onPointerDown, isDropTarget, isDragging,
+  onPointerDown, isDropTarget, isDragging, vertical = false,
 }: TabItemProps) {
   const [faviconError, setFaviconError] = useState<boolean>(false);
 
@@ -50,24 +52,36 @@ export function TabItem({
       onPointerDown={onPointerDown}
       className={cn(
         "group relative flex items-center gap-1.5",
-        "min-w-[100px] max-w-[200px] h-[40px] px-3",
-        "cursor-grab select-none flex-shrink-0",
-        "border-b-2 border-r border-l-2 border-t-2 transition-colors",
+        "cursor-grab select-none flex-shrink-0 transition-colors",
+        vertical
+          ? "w-full h-9 px-2 border-l-2 border-b"
+          : "min-w-[100px] max-w-[200px] h-[40px] px-3 border-b-2 border-r border-l-2 border-t-2",
         isDragging && "opacity-40",
         isActive
           ? "bg-[var(--color-base)] text-[var(--color-text-primary)]"
           : "bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text-secondary)]",
       )}
-      style={{
-        borderBottomColor: isDropTarget
-          ? "var(--color-accent)"
-          : isActive
-            ? "var(--color-accent)"
-            : "transparent",
-        borderRightColor: "var(--color-border-subtle)",
-        borderLeftColor: isDropTarget ? "var(--color-accent)" : "transparent",
-        borderTopColor: isDropTarget ? "var(--color-accent)" : "transparent",
-      }}
+      style={
+        vertical
+          ? {
+              // Left edge carries the active/selected accent; the bottom hairline
+              // becomes the drop indicator, since drops are vertical here.
+              borderLeftColor: isActive ? "var(--color-accent)" : "transparent",
+              borderBottomColor: isDropTarget
+                ? "var(--color-accent)"
+                : "var(--color-border-subtle)",
+            }
+          : {
+              borderBottomColor: isDropTarget
+                ? "var(--color-accent)"
+                : isActive
+                  ? "var(--color-accent)"
+                  : "transparent",
+              borderRightColor: "var(--color-border-subtle)",
+              borderLeftColor: isDropTarget ? "var(--color-accent)" : "transparent",
+              borderTopColor: isDropTarget ? "var(--color-accent)" : "transparent",
+            }
+      }
     >
       {/* Favicon */}
       <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
