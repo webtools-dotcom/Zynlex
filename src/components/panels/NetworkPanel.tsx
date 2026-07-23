@@ -4,6 +4,7 @@ import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { entryToCurl, entryToCurlCompact, entryToFetch, copyToClipboard } from "@/lib/networkCopy";
+import { setNetworkCapture } from "@/services/browser";
 
 const METHOD_COLORS: Record<string, string> = {
   GET: "text-method-get",
@@ -276,6 +277,18 @@ export function NetworkPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLength = useRef(0);
+
+  // The Rust-side handlers stay registered per tab always, but do the actual
+  // capture work (COM reads, body fetch, IPC emit) only while this panel is
+  // mounted — closed panel costs nothing. This panel remounts on tab switch
+  // (key={activeTabId} in Sidebar.tsx), so this toggles off->on across a
+  // switch too; harmless and idempotent.
+  useEffect(() => {
+    setNetworkCapture(true).catch(() => {});
+    return () => {
+      setNetworkCapture(false).catch(() => {});
+    };
+  }, []);
 
   // All filters compose: the chip narrows first, then each dropdown/search.
   const filtered = useMemo(() => {

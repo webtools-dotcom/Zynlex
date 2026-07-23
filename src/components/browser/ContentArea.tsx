@@ -14,7 +14,8 @@ export function ContentArea({ onBridgeReady }: ContentAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bridge = useWebviewBridge(containerRef);
 
-  const { workspaces, activeWorkspaceId } = useWorkspacesStore();
+  const workspaces = useWorkspacesStore((s) => s.workspaces);
+  const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const tabs = useTabsStore((s) => s.tabs);
 
   const ws = workspaces[activeWorkspaceId];

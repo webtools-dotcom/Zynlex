@@ -25,14 +25,18 @@ function getHost(url: string): string {
 }
 
 export function BookmarksPanel() {
-  const { bookmarks, lastAddedId, removeBookmark, clearForWorkspace, clearLastAddedId } =
-    useBookmarksStore();
+  const bookmarks = useBookmarksStore((s) => s.bookmarks);
+  const lastAddedId = useBookmarksStore((s) => s.lastAddedId);
+  const removeBookmark = useBookmarksStore((s) => s.removeBookmark);
+  const clearForWorkspace = useBookmarksStore((s) => s.clearForWorkspace);
+  const clearLastAddedId = useBookmarksStore((s) => s.clearLastAddedId);
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const workspaces = useWorkspacesStore((s) => s.workspaces);
   const ws = workspaces[activeWorkspaceId];
   const wsName = ws?.name ?? "Workspace";
-  const { addTab } = useTabsStore();
-  const { addTabToWorkspace, setActiveTab } = useWorkspacesStore();
+  const addTab = useTabsStore((s) => s.addTab);
+  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
+  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState<string>("");
 
@@ -46,8 +50,11 @@ export function BookmarksPanel() {
   }, [lastAddedId, clearLastAddedId]);
 
   const folders = useBookmarksStore((s) => s.folders);
-  const { addFolder, removeFolder, moveBookmark, exportWorkspace, importWorkspace } =
-    useBookmarksStore();
+  const addFolder = useBookmarksStore((s) => s.addFolder);
+  const removeFolder = useBookmarksStore((s) => s.removeFolder);
+  const moveBookmark = useBookmarksStore((s) => s.moveBookmark);
+  const exportWorkspace = useBookmarksStore((s) => s.exportWorkspace);
+  const importWorkspace = useBookmarksStore((s) => s.importWorkspace);
   const pushToast = useUIStore((s) => s.pushToast);
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);

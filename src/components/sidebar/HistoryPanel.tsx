@@ -34,9 +34,13 @@ function groupByDate(entries: HistoryEntry[]) {
 }
 
 export function HistoryPanel() {
-  const { entries, removeEntry, clearAll } = useHistoryStore();
-  const { activeWorkspaceId, addTabToWorkspace, setActiveTab } = useWorkspacesStore();
-  const { addTab } = useTabsStore();
+  const entries = useHistoryStore((s) => s.entries);
+  const removeEntry = useHistoryStore((s) => s.removeEntry);
+  const clearAll = useHistoryStore((s) => s.clearAll);
+  const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
+  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
+  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
+  const addTab = useTabsStore((s) => s.addTab);
 
   const flatItems = useMemo(() => {
     const grouped = groupByDate(entries);

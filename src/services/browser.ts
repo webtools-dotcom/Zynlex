@@ -399,6 +399,12 @@ export function onNetworkEntry(
   return listen<NetworkEntryPayload>("browser://network-entry", (e) => callback(e.payload));
 }
 
+/** Gates the Rust-side capture work (COM reads, body fetch, IPC emit) — off
+ * unless the Network panel is mounted, so a closed panel costs nothing. */
+export async function setNetworkCapture(active: boolean): Promise<void> {
+  await invoke<void>("browser_set_network_capture", { active });
+}
+
 // ─── Header Injection (COM WebResourceRequested, per-tab rule sets) ──
 
 export interface HeaderRulePayload {

@@ -1,17 +1,20 @@
 use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl};
-use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
+
+/// Gates the network-capture work inside the WebResourceRequested/Received
+/// handlers. The handlers stay registered per tab, but do capture work only
+/// while the Network panel is mounted — set true on its mount, false on unmount
+/// (`browser_set_network_capture`). Header-rule injection is NOT gated by this:
+/// it is a separate always-on feature sharing the request handler.
+static NETWORK_CAPTURE_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 use crate::BrowserState;
 use crate::xevo_log;
 use tauri_plugin_opener::OpenerExt;
-
-// Shared data directory for all browser webviews. WebView2 automatically shares
-// browser/GPU/network processes when webviews use the same data directory.
-static SHARED_WEBVIEW_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 // Keyed by "{tabId}:{uri}". A VecDeque (not a single slot) because two concurrent
 // requests to the same URL are common (duplicate fetches, polling) — request order
@@ -92,18 +95,6 @@ fn url_matches(pattern: &str, uri: &str) -> bool {
     trailing_star || rest.is_empty()
 }
 
-fn shared_webview_data_dir(app: &AppHandle) -> PathBuf {
-    SHARED_WEBVIEW_DATA_DIR
-        .get_or_init(|| {
-            let mut path = app
-                .path()
-                .app_data_dir()
-                .unwrap_or_else(|_| PathBuf::from("."));
-            path.push("webview-data");
-            path
-        })
-        .clone()
-}
 
 // ─── Injected Scripts ────────────────────────────────────────────────
 
@@ -545,11 +536,19 @@ fn create_webview_for_tab(
 
     // decorations/resizable/inner_size/position are window concepts — a child
     // webview gets its geometry from add_child's position/size arguments below.
+    // No .data_directory() — a data directory that differs from the main window's
+    // spawns a second WebView2 environment, and with it a duplicate browser + GPU +
+    // network process set. Sharing the default keeps every webview in one tree.
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(url::Url::parse("about:blank").expect("about:blank must parse")))
-        .data_directory(shared_webview_data_dir(app))
         // Ctrl +/- and Ctrl+mousewheel zoom natively inside the page (WebView2
         // IsZoomControlEnabled). Builder attribute — only affects new webviews.
         .zoom_hotkeys_enabled(true)
+        // Matches tauri.conf.json's backgroundColor (#0f0f0f). Without this,
+        // WebView2's own default paints the strip newly exposed by a resize
+        // before the page repaints it — a flash against the dark chrome.
+        // Hardcoded to dark: in light theme this becomes a dark flash instead
+        // of a light one — wiring it to the theme store is a separate change.
+        .background_color(tauri::webview::Color(15, 15, 15, 255))
         .initialization_script(&tab_id_init)
         .initialization_script(CHROME_FEATURES_SCRIPT)
         .initialization_script(JSON_VIEWER_SCRIPT);
@@ -801,17 +800,33 @@ pub async fn browser_set_bounds(
     // Try Tauri's registry first, then fallback to our persistent handle map
     let wv = find_tab_webview(&app, &label);
     if let Some(wv) = wv {
-        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — webview found, calling set_position");
-        if let Err(e) = wv.set_position(Position::Logical(LogicalPosition::new(x, y))) {
-            xevo_log!("[XEVO-BOUNDS] browser_set_bounds — set_position ERROR: {}", e);
-            return Err(format!("set_position failed: {}", e));
+        // One set_bounds call instead of set_position + set_size: each of those is a
+        // separate message to the wry event loop, processed on separate iterations,
+        // so the webview visibly moved on one frame and resized on the next.
+        // set_bounds does both in a single message.
+        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — webview found, calling set_bounds");
+        let bounds = tauri::Rect {
+            position: Position::Logical(LogicalPosition::new(x, y)),
+            size: Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),
+        };
+        if let Err(e) = wv.set_bounds(bounds) {
+            xevo_log!("[XEVO-BOUNDS] browser_set_bounds — set_bounds ERROR: {}", e);
+            return Err(format!("set_bounds failed: {}", e));
         }
-        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — set_position OK, calling set_size");
-        if let Err(e) = wv.set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0)))) {
-            xevo_log!("[XEVO-BOUNDS] browser_set_bounds — set_size ERROR: {}", e);
-            return Err(format!("set_size failed: {}", e));
+        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — OK");
+
+        // Cache the content-area insets so a native window resize can reposition
+        // the active webview directly from Rust (see on_window_event in lib.rs),
+        // without waiting on the JS ResizeObserver → rAF → IPC round trip.
+        if let Some(main) = app.get_window("main") {
+            if let Ok(win_size) = main.inner_size() {
+                let scale = main.scale_factor().unwrap_or(1.0);
+                let win_w = win_size.width as f64 / scale;
+                let win_h = win_size.height as f64 / scale;
+                let insets = (x, y, win_w - x - width, win_h - y - height);
+                *state.content_insets.lock().unwrap_or_else(|e| e.into_inner()) = Some(insets);
+            }
         }
-        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — both OK");
     } else {
         xevo_log!("[XEVO-BOUNDS] browser_set_bounds — webview NOT FOUND for label: {}", label);
         // Diagnostic: dump all registered webview labels to understand why lookup failed
@@ -1240,6 +1255,12 @@ pub async fn browser_set_memory_target(
 
 // ─── Network Capture ──────────────────────────────────────────────
 
+/// Toggled by the Network panel on mount/unmount. See `NETWORK_CAPTURE_ACTIVE`.
+#[tauri::command]
+pub fn browser_set_network_capture(active: bool) {
+    NETWORK_CAPTURE_ACTIVE.store(active, Ordering::Relaxed);
+}
+
 pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHandle, tab_id: &str) {
     let app = app.clone();
     let tab_id = tab_id.to_string();
@@ -1313,6 +1334,12 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                     }
                 }
 
+                // Network-capture work below is rent the Network panel pays for
+                // only while it's open — skip it entirely otherwise.
+                if !NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+
                 let mut method_ptr = PWSTR::null();
                 let _ = request.Method(&mut method_ptr);
                 let method = if method_ptr.is_null() { String::new() } else { method_ptr.to_string().unwrap_or_default() };
@@ -1384,6 +1411,13 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
 
                 // Skip internal Tauri IPC calls — not useful in dev tools
                 if uri.starts_with("http://ipc.localhost") || uri.starts_with("tauri://localhost") {
+                    return Ok(());
+                }
+
+                // The expensive part of this handler — header iteration and a full
+                // GetContent body read — is rent the Network panel pays for only
+                // while it's open.
+                if !NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) {
                     return Ok(());
                 }
 
@@ -2189,12 +2223,14 @@ pub async fn create_viewport(
     let parsed_url = url::Url::parse(&url).map_err(|e| e.to_string())?;
 
     if let Some(webview) = find_tab_webview(&app, &label) {
-        webview
-            .set_position(Position::Logical(LogicalPosition::new(x, y)))
-            .map_err(|e| e.to_string())?;
-        webview
-            .set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))))
-            .map_err(|e| e.to_string())?;
+        // One set_bounds call instead of set_position + set_size — same fix as
+        // browser_set_bounds: each was a separate wry event-loop message, so the
+        // viewport webview visibly moved on one frame and resized on the next.
+        let bounds = tauri::Rect {
+            position: Position::Logical(LogicalPosition::new(x, y)),
+            size: Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),
+        };
+        webview.set_bounds(bounds).map_err(|e| e.to_string())?;
         webview.show().map_err(|e| e.to_string())?;
         return Ok(());
     }

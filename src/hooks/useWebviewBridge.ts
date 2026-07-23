@@ -152,10 +152,10 @@ export function useWebviewBridge(
     const last = lastBoundsRef.current;
     if (
       last &&
-      Math.abs(last.x - bounds.x) < 5 &&
-      Math.abs(last.y - bounds.y) < 5 &&
-      Math.abs(last.width - bounds.width) < 5 &&
-      Math.abs(last.height - bounds.height) < 5
+      Math.abs(last.x - bounds.x) < 1 &&
+      Math.abs(last.y - bounds.y) < 1 &&
+      Math.abs(last.width - bounds.width) < 1 &&
+      Math.abs(last.height - bounds.height) < 1
     ) {
       return;
     }
@@ -689,20 +689,28 @@ export function useWebviewBridge(
   }, []);
 
   // ── ResizeObserver: sync bounds when content area or window resizes ──
+  // rAF-throttled, not debounced: a debounce (clearTimeout+setTimeout) resets on
+  // every observer fire, so during a continuous drag it never actually runs — the
+  // chrome resizes live while the page sits still, then snaps once you stop. A
+  // rAF throttle instead coalesces bursts to one sync per frame and still fires
+  // on every frame throughout the drag.
   useEffect(() => {
     if (!IS_TAURI) return;
     const el = contentAreaRef.current;
     if (!el) return;
-    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+    let rafId: number | null = null;
     const observer = new ResizeObserver(() => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => { syncBounds(); }, 16);
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        syncBounds();
+      });
     });
     observer.observe(el);
     observer.observe(document.documentElement);
     syncBounds();
     return () => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
+      if (rafId !== null) cancelAnimationFrame(rafId);
       observer.disconnect();
     };
   }, [contentAreaRef, syncBounds]);

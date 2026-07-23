@@ -27,7 +27,11 @@ pub struct BrowserState {
     /// function's local variable goes out of scope (Tauri #14843).
     /// Key = label (e.g. "browser-tab-123"), value = cloneable handle.
     pub webviews: Mutex<HashMap<String, tauri::Webview>>,
-
+    /// Content-area insets in logical px — (left, top, right, bottom) — learned
+    /// from the last `browser_set_bounds` call. Lets a window resize reposition
+    /// the active child webview entirely in Rust, inside the native resize
+    /// event, instead of waiting on the JS → rAF → IPC → Tokio round trip.
+    pub content_insets: Mutex<Option<(f64, f64, f64, f64)>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -72,12 +76,51 @@ pub fn run() {
             }
 
             #[cfg(target_os = "windows")]
-            Ok(())
+            {
+                // Reposition the active child webview directly from Rust, inside
+                // the native resize event, instead of going through the JS
+                // ResizeObserver → rAF → invoke() → Tokio round trip (which put
+                // the page 3-5 frames behind the window during a drag-resize or
+                // maximize). Safe to call set_bounds re-entrantly here: Tauri's
+                // event loop drops its window-registry borrow before invoking
+                // window-event listeners (verified against tauri-runtime-wry
+                // 2.11.2's WindowEvent match arm).
+                use tauri::Manager;
+                if let Some(main) = _app.get_window("main") {
+                    let app_handle = _app.handle().clone();
+                    main.on_window_event(move |event| {
+                        if let tauri::WindowEvent::Resized(physical_size) = event {
+                            let state = app_handle.state::<BrowserState>();
+                            let insets = *state.content_insets.lock().unwrap_or_else(|e| e.into_inner());
+                            let Some((left, top, right, bottom)) = insets else { return };
+                            let label = state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                            let Some(label) = label else { return };
+                            let Some(wv) = commands::browser::find_tab_webview(&app_handle, &label) else { return };
+
+                            let Some(win) = app_handle.get_window("main") else { return };
+                            let scale = win.scale_factor().unwrap_or(1.0);
+                            let win_w = physical_size.width as f64 / scale;
+                            let win_h = physical_size.height as f64 / scale;
+
+                            let bounds = tauri::Rect {
+                                position: tauri::Position::Logical(tauri::LogicalPosition::new(left, top)),
+                                size: tauri::Size::Logical(tauri::LogicalSize::new(
+                                    (win_w - left - right).max(1.0),
+                                    (win_h - top - bottom).max(1.0),
+                                )),
+                            };
+                            let _ = wv.set_bounds(bounds);
+                        }
+                    });
+                }
+                Ok(())
+            }
         })
         .manage(BrowserState {
             active_tab_label: Mutex::new(None),
             user_agent: Mutex::new(None),
             webviews: Mutex::new(HashMap::new()),
+            content_insets: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             commands::browser::browser_create_tab,
@@ -100,6 +143,7 @@ pub fn run() {
             commands::browser::browser_stop_find,
             commands::browser::browser_find_callback,
             commands::browser::browser_set_theme,
+            commands::browser::browser_set_network_capture,
             commands::browser::browser_hide_tab,
             commands::browser::browser_show_tab,
             commands::browser::browser_set_user_agent,

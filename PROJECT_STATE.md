@@ -1,7 +1,7 @@
 # XEVO Project State
 
-## Version: v1.39.1
-## Status: CORE gap closure (`CORE_GAPS.md`) items 1-9 shipped, item 10 partial. TS, Rust and `pnpm build` all clean.
+## Version: v1.41.1
+## Status: CORE gaps closed; RAM/perf pass done (idle RAM 1117 MB → 857 MB, resize/drag latency fixed, network capture gated to panel-open). TS, Rust and `pnpm build` all clean.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -14,8 +14,9 @@
 - **Tab-per-child-webview architecture:** each tab is a child `Webview` (label `browser-{tabId}`) created via `Window::add_child` on the main window, lazily on first navigation. Tab switch = hide/show only, no reload, full state preserved.
 - Parent is the main window's `Window` (not `WebviewWindow`) — z-order, move, resize-clip, minimize/restore are OS-native.
 - Tabs inactive >10 min are discarded (destroyed, recreated + reloaded on next switch). Pinned/active tabs exempt. Soft cap of 10 concurrent webviews (`maxConcurrentWebviews`), oldest background tab discarded when exceeded.
-- All browser webviews share one WebView2 `data_directory` (shared browser/GPU/network processes).
+- No webview sets `data_directory` — every webview, main window included, uses Tauri's default, which is what actually keeps them in one WebView2 environment (one browser/GPU/network process set). Setting it on tab webviews only made tabs share with *each other* and spawned a second, duplicate process tree; removing it cut idle RAM 1117 MB → 857 MB.
 - Bounds are logical (CSS) pixels, window-relative — not screen coordinates.
+- **Window resizes reposition the active child webview entirely in Rust**, via `on_window_event` in `lib.rs`'s `setup`, using content-area insets cached from the last `browser_set_bounds` call (`BrowserState.content_insets`). This runs inline inside the native `WindowEvent::Resized` handler — Tauri's event loop drops its window-registry borrow before invoking listeners, so a re-entrant `set_bounds` call from there is safe (verified against `tauri-runtime-wry` 2.11.2's event-loop match arm). Do not move this back to a JS `ResizeObserver` → `invoke()` path — that route is 3-5 frames slower (rAF + IPC + Tokio + event-loop queueing) and is what made the page visibly lag the window during a drag-resize or maximize. The JS `ResizeObserver` still exists and still drives *layout* changes (sidebar, panels) that aren't window resizes.
 - **Remote-page IPC is intentionally never used.** Tauri v2 rejects `__TAURI_INTERNALS__.invoke` from `https://` content unless a capability declares `remote.urls`, which would force allow-listing every command and expose tab-scoped commands to any page. Anything that needs data out of a tab (Inspector reads, tab title/favicon, in-page shortcuts) goes through native WebView2 COM APIs instead (`ExecuteScript`, `DocumentTitleChanged`, `AcceleratorKeyPressed`) — Rust-initiated, never page-initiated. Do not reintroduce page-originated IPC calls.
 
 ## FEATURES
@@ -51,10 +52,11 @@
 
 ### Performance & Memory
 - React.lazy for all panels; manualChunks in vite; init scripts split (CORE/HEADER/NETWORK).
-- WebView2 `SetMemoryUsageTargetLevel`: background tabs → LOW, active → NORMAL, all → LOW on minimize.
+- WebView2 `SetMemoryUsageTargetLevel`: background tabs → LOW, active → NORMAL. (No minimize handler calls this — grepped `lib.rs`, nothing found; a prior claim that minimize sets all tabs LOW was stale and removed.)
 - `scripts/measure.ps1` sums the working set of XEVO plus its whole `msedgewebview2` child tree — measuring `xevo.exe` alone understates RAM badly, since renderers live in the children. Takes `-Name chrome` to compare against another browser.
 - A `TrySuspend`/`Resume` freeze tier was attempted and **reverted** — it crashed the app (exit `0xcfffffff`) on tab create/close churn. Root cause not yet found; do not retry without a way to reproduce and step through it.
-- Network capture OFF by default, enabled on panel mount, 500ms batch flush.
+- Network capture is genuinely gated on the Network panel being mounted now — `NETWORK_CAPTURE_ACTIVE` (an `AtomicBool` in `browser.rs`) is checked inside both the `WebResourceRequested` and `WebResourceResponseReceived` COM handlers, which stay registered per tab always; the panel's mount/unmount effect flips it via `browser_set_network_capture`. Previously this line was aspirational — the handlers ran their full cost (header iteration, a full `GetContent` body read, two IPC emits per request) on every request of every tab regardless of whether the panel was ever opened. Header-rule injection is a separate always-on feature in the same request handler and is NOT gated by this. 500ms batch flush unchanged.
+- Bounds-sync perf pass: `browser_set_bounds` and `create_viewport` collapsed `set_position`+`set_size` (two separate wry event-loop messages, so the webview visibly moved then resized a frame apart) into one `set_bounds` call. Sidebar's `width` CSS transition removed — the webview has no matching animation, so it used to slide while the page snapped. Sidebar drag threshold 5px→1px, ResizeObserver switched from a debounce (which never fires mid-drag) to a real rAF throttle. Tab webviews now set `background_color` matching the dark chrome, so a resize's newly-exposed strip no longer flashes WebView2's default before repaint.
 
 ### Persistence
 - Session restore: tabs persisted (`xevo-session` key) with only durable fields (`id,url,title,favicon,isPinned,workspaceId,createdAt,zoom`); every transient field excluded. Tabs restore in the discarded state and lazily recreate on activation.
