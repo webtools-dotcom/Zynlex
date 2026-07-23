@@ -37,12 +37,12 @@ export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
     >
       {/* Platform label */}
       <div
-        className="flex items-center gap-1.5 px-2 py-1 text-[12px] font-semibold text-white"
+        className="flex items-center gap-1.5 px-2 py-1 text-xs font-semibold text-white"
         style={{ backgroundColor: platformColors[platform] }}
       >
         <Globe size={12} />
         <span className="uppercase tracking-wider">{platform}</span>
-        <span className="ml-auto opacity-70 text-[11px]">Preview</span>
+        <span className="ml-auto opacity-70 text-micro">Preview</span>
       </div>
 
       {/* Image */}
@@ -62,12 +62,12 @@ export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
       {/* Content */}
       <div className="px-2 py-1.5" style={{ background: "var(--color-elevated)" }}>
         {(platform === "facebook" || platform === "linkedin") && (
-          <span className="text-[11px] text-[var(--color-text-disabled)] uppercase tracking-wider block">
+          <span className="text-micro text-[var(--color-text-disabled)] uppercase tracking-wider block">
             {domain}
           </span>
         )}
         <h3
-          className="text-[13px] font-semibold leading-tight mt-0.5 line-clamp-2"
+          className="text-sm font-semibold leading-tight mt-0.5 line-clamp-2"
           style={{ color: platform === "twitter" || platform === "discord" ? "var(--color-text-primary)" : "#1a1a2e" }}
         >
           {platform === "twitter"
@@ -77,12 +77,12 @@ export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
               : title.slice(0, 100)}
         </h3>
         {description && (
-          <p className="text-[12px] text-[var(--color-text-muted)] mt-0.5 line-clamp-2 leading-snug">
+          <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-2 leading-snug">
             {description.slice(0, 200)}
           </p>
         )}
         {(platform === "twitter" || platform === "discord") && (
-          <span className="text-[11px] text-[var(--color-text-disabled)] mt-0.5 block">
+          <span className="text-micro text-[var(--color-text-disabled)] mt-0.5 block">
             {domain}
           </span>
         )}

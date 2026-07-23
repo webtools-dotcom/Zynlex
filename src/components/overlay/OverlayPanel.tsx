@@ -89,7 +89,7 @@ export function OverlayPanel({ apiTesterContent, notesContent }: OverlayPanelPro
         className="flex items-center justify-between h-8 px-2 border-b flex-shrink-0"
         style={{ borderColor: "var(--color-border-subtle)" }}
       >
-        <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+        <span className="text-micro font-semibold text-[var(--color-text-muted)]">
           {overlayPanel === "api-tester" ? "API Tester" : "Notes"}
         </span>
         <button

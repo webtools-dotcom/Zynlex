@@ -28,10 +28,10 @@ function RuleRow({
 }) {
   const isWildcard = rule.enabled && (rule.pattern.trim() === "" || rule.pattern.trim() === "*");
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-mono hover:bg-[var(--color-hover)] border-b border-[var(--color-border)] group">
+    <div className="flex items-center gap-1.5 px-2 py-1 text-micro font-mono hover:bg-[var(--color-hover)] border-b border-[var(--color-border)] group">
       <button
         onClick={onToggle}
-        className="shrink-0 text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+        className="shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
         title={rule.enabled ? "Disable" : "Enable"}
       >
         {rule.enabled ? (
@@ -48,23 +48,23 @@ function RuleRow({
           <AlertTriangle size={11} />
         </span>
       )}
-      <span className="truncate flex-1 min-w-0 text-[var(--color-muted-foreground)]" title={rule.pattern}>
+      <span className="truncate flex-1 min-w-0 text-[var(--color-text-muted)]" title={rule.pattern}>
         {rule.pattern}
       </span>
-      <span className="text-[var(--color-muted-foreground)] shrink-0">→</span>
+      <span className="text-[var(--color-text-muted)] shrink-0">→</span>
       <span className="text-cyan-300 shrink-0 truncate max-w-[120px]" title={rule.name}>
         {rule.name}
       </span>
-      <span className="text-[var(--color-muted-foreground)] shrink-0">:</span>
+      <span className="text-[var(--color-text-muted)] shrink-0">:</span>
       <input
         value={rule.value}
         onChange={(e) => onEditValue(e.target.value)}
         title="Click to edit"
-        className="text-[var(--color-muted-foreground)] bg-transparent w-[80px] shrink-0 outline-none focus:w-[160px] focus:bg-[var(--color-hover)] focus:text-[var(--color-foreground)] rounded px-0.5 transition-all"
+        className="text-[var(--color-text-muted)] bg-transparent w-[80px] shrink-0 outline-none focus:w-[160px] focus:bg-[var(--color-hover)] focus:text-[var(--color-text-primary)] rounded px-0.5 transition-all"
       />
       <button
         onClick={onDelete}
-        className="opacity-0 group-hover:opacity-100 text-[var(--color-muted-foreground)] hover:text-red-400 px-0.5 shrink-0 transition-opacity"
+        className="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-red-400 px-0.5 shrink-0 transition-opacity"
         title="Delete rule"
       >
         <Trash2 size={11} />
@@ -105,26 +105,26 @@ function AddRuleForm({
         value={pattern}
         onChange={(e) => setPattern(e.target.value)}
         placeholder="URL pattern (defaults to current tab's origin)"
-        className="bg-[var(--color-hover)] text-[11px] font-mono px-2 py-1 rounded border border-[var(--color-border)] outline-none focus:border-[var(--color-accent)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)]"
+        className="bg-[var(--color-hover)] text-micro font-mono px-2 py-1 rounded border border-[var(--color-border)] outline-none focus:border-[var(--color-accent)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
       />
       <div className="flex gap-1.5">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Header name"
-          className="flex-1 bg-[var(--color-hover)] text-[11px] font-mono px-2 py-1 rounded border border-[var(--color-border)] outline-none focus:border-[var(--color-accent)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)]"
+          className="flex-1 bg-[var(--color-hover)] text-micro font-mono px-2 py-1 rounded border border-[var(--color-border)] outline-none focus:border-[var(--color-accent)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
         />
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="Value"
-          className="flex-1 bg-[var(--color-hover)] text-[11px] font-mono px-2 py-1 rounded border border-[var(--color-border)] outline-none focus:border-[var(--color-accent)] text-[var(--color-foreground)] placeholder:text-[var(--color-muted-foreground)]"
+          className="flex-1 bg-[var(--color-hover)] text-micro font-mono px-2 py-1 rounded border border-[var(--color-border)] outline-none focus:border-[var(--color-accent)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
         />
       </div>
       <button
         type="submit"
         disabled={!name || !value}
-        className="flex items-center justify-center gap-1 text-[10px] px-2 py-1 rounded bg-[var(--color-accent-dim)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center justify-center gap-1 text-micro px-2 py-1 rounded bg-[var(--color-accent-dim)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         <Plus size={11} /> Add Rule
       </button>
@@ -169,7 +169,7 @@ export function HeadersPanel() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--color-border)]">
-        <span className="text-[11px] font-medium text-[var(--color-muted-foreground)]">
+        <span className="text-micro font-medium text-[var(--color-text-muted)]">
           {rules.length} rule{rules.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -178,7 +178,7 @@ export function HeadersPanel() {
 
       <div className="flex-1 overflow-y-auto">
         {rules.length === 0 ? (
-          <div className="text-[11px] text-[var(--color-muted-foreground)] px-3 py-4 italic">
+          <div className="text-micro text-[var(--color-text-muted)] px-3 py-4 italic">
             No header injection rules. Add one above. Note: WebSocket connections aren't
             covered — only regular HTTP/HTTPS requests.
           </div>

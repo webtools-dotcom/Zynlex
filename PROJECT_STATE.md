@@ -1,8 +1,8 @@
 # XEVO Project State
 
-## Version: v1.37.0
-## Last Updated: 2026-07-22
-## Status: Bug-audit remediation pass (Inspector, API Tester, port scanner, network capture, header rules, webview-creation race, debug logging), plus a follow-up fix replacing remote-page IPC with native WebView2 events, plus a draggable sidebar resize. Both TS and Rust compile clean against the current `Window::add_child` architecture.
+## Version: v1.38.0
+## Last Updated: 2026-07-23
+## Status: UI scale + density rework (rem type scale, dense-panel restructure, dead-token fixes). Previously: bug-audit remediation pass (Inspector, API Tester, port scanner, network capture, header rules, webview-creation race, debug logging), plus a follow-up fix replacing remote-page IPC with native WebView2 events, plus a draggable sidebar resize. Both TS and Rust compile clean against the current `Window::add_child` architecture.
 
 ## ENVIRONMENT
 - OS: Windows
@@ -13,6 +13,64 @@
 - Tauri crate: 2.11.2
 
 ## COMPLETED ✅
+
+### UI Scale + Density Rework (v1.38.0)
+The UI read as small and, in the dense panels, messy. Three distinct causes, all fixed:
+
+**Dead design tokens (the root cause of "messy").** `var(--color-muted-foreground)` (36 uses)
+and `var(--color-foreground)` (12 uses) in NetworkPanel and HeadersPanel were never defined —
+`index.css` defines the shadcn names `--muted-foreground`/`--foreground`, and `@theme` generates
+`--color-text-*`. An undefined custom property makes the declaration invalid at computed-value
+time, so `color` fell back to *inherited*: every muted label in those panels rendered at full
+primary white and the network log had no text hierarchy at all. Same class of bug in
+`var(--color-success, #22c55e)` / `--color-danger` / `--color-warning` (masked by fallbacks) and
+a hardcoded `#f59e0b`. All now point at real tokens; a repo-wide audit confirms zero unresolved
+`--color-*`/`--xevo-*`/`--radius-*`/`--text-*` references.
+
+**Type scale is now rem-based.** Added a 5-step scale to `@theme` (`--text-micro` 0.6875rem →
+`--text-lg` 1rem) replacing 261 hardcoded `text-[Npx]` classes across 28 files. Root font-size
+14px → 16px. **There is deliberately no `base` step**: `--color-base` already claims the
+`.text-base` utility name in Tailwind v4 (the `text-*` namespace serves both font-size and
+text-color, and the color wins), so the 0.875rem step is `--text-md`. The one pre-existing
+`text-base` usage was silently setting *color*, not size. Row heights +4px, `--radius-md` 4→6px.
+
+**Density is one variable.** `html.xevo-compact { font-size: 14px }` replaces the old
+`.xevo-compact` block that patched two heights and could not scale type. Compact now reproduces
+the pre-v1.38 size exactly. `compactMode` stays a boolean — a 3-way enum would mean touching
+types, store, Settings UI, and migrating persisted settings for one extra step.
+
+**Network log restructure.** Header row and entry rows were independent flex rows with
+mismatched widths, so columns drifted. Both now share a single `GRID_COLS` constant via
+`grid-template-columns`. Per-row `border-b` (a hairline every ~21px, the panel's dominant
+visual texture) replaced with a zebra tint; selected state is an accent inset instead of the
+same grey as hover. Method/status colors moved off the raw Tailwind palette onto the existing
+`--color-method-*` / `--color-status-*` tokens, which were defined but unused. Four type sizes
+(9/10/11/13px) collapsed to two.
+
+**Known caveat:** `TYPE_COLORS` in NetworkPanel still uses the raw Tailwind palette — 12
+categorical resource-type hues with no token equivalents. They do not respond to the light theme.
+
+**Verified in a standalone `pnpm dev` preview** (no Tauri backend, so `invoke()` calls no-op —
+layout/tokens only): default 240px sidebar made the network table's fixed grid columns
+(308px+) exceed the panel width, and `minmax(0,1fr)` let the URL column collapse to 0px —
+worse than the old flex layout, which shrank gracefully instead of disappearing. Fixed by
+tightening the fixed columns, giving URL a real `minmax(6rem,1fr)`, and wrapping header+rows
+in one `overflow-x-auto` region sharing a `GRID_MIN_WIDTH` (24rem) so both scroll together and
+stay column-aligned — same behavior as Chrome DevTools' Network tab at narrow widths. Confirmed
+via computed styles: muted labels now render `#a1a1aa` (not inherited white), header grid
+matches row grid exactly, URL column holds a real 124px instead of 0.
+
+**Two more fixes from a real `tauri dev` screenshot (github.com, 167 requests):** Size/Time
+cells had no `whitespace-nowrap`, so values like "42.1 KB" wrapped to two lines and broke the
+fixed row height — every few rows was visibly taller, staggering the whole list. Added nowrap
+and widened Size 3rem→3.5rem, Time 2.25rem→2.5rem. Separately, the same screenshots showed
+request counts climbing across reloads (140 → 500+, capping at `MAX_ENTRIES_PER_TAB`) — a
+pre-existing bug, not something this pass introduced: `entriesByTab` in `stores/network.ts`
+is keyed only by tabId and nothing ever cleared it short of closing the tab, so the log was
+scoped to the tab's whole lifetime instead of the current page load. Fixed by clearing the
+tab's entries in `useWebviewBridge.ts`'s `onLoadingChanged` handler on the `loading: true`
+edge, which fires on reload as well as fresh navigation — matches standard devtools behavior
+(no "preserve log" toggle; wasn't asked for, not added).
 
 ### Draggable sidebar resize (v1.37.0)
 Sidebar width was fixed and hard-clamped to 420px. Added a drag handle on the sidebar's right

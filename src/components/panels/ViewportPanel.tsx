@@ -187,7 +187,7 @@ export function ViewportControlsPanel() {
                     setSelectedCategory(selectedCategory === key ? "" : key)
                   }
                   className={cn(
-                    "w-7 h-7 flex items-center justify-center rounded text-[12px] transition-colors",
+                    "w-7 h-7 flex items-center justify-center rounded text-xs transition-colors",
                     selectedCategory === key
                       ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
                       : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]"
@@ -205,11 +205,11 @@ export function ViewportControlsPanel() {
                       <button
                         key={p.label}
                         onClick={() => addPreset(p)}
-                        className="w-full text-left px-2 py-1 text-[12px] text-[var(--color-text-muted)] hover:bg-[var(--color-hover)] transition-colors flex items-center gap-2"
+                        className="w-full text-left px-2 py-1 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-hover)] transition-colors flex items-center gap-2"
                       >
                         <Plus size={12} className="shrink-0 opacity-50" />
                         <span>{p.label}</span>
-                        <span className="ml-auto text-[11px] text-[var(--color-text-disabled)] font-mono">
+                        <span className="ml-auto text-micro text-[var(--color-text-disabled)] font-mono">
                           {p.width}x{p.height}
                         </span>
                       </button>
@@ -221,7 +221,7 @@ export function ViewportControlsPanel() {
           })}
         </div>
 
-        <span className="text-[11px] text-[var(--color-text-disabled)] ml-auto">
+        <span className="text-micro text-[var(--color-text-disabled)] ml-auto">
           {viewports.length} viewport{viewports.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -243,10 +243,10 @@ export function ViewportControlsPanel() {
                 background: "var(--color-elevated)",
               }}
             >
-              <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-muted)]">
+              <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-text-muted)]">
                 {vp.label}
               </span>
-              <span className="text-[11px] font-mono text-[var(--color-text-disabled)]">
+              <span className="text-micro font-mono text-[var(--color-text-disabled)]">
                 {vp.width}x{vp.height}
               </span>
               <button
@@ -301,7 +301,7 @@ function ViewportToolbar() {
     }
   }
 
-  const btnCls = "w-8 h-8 flex items-center justify-center rounded text-[12px] transition-colors";
+  const btnCls = "w-8 h-8 flex items-center justify-center rounded text-xs transition-colors";
   const activeCls = "bg-[var(--color-accent-dim)] text-[var(--color-accent)]";
   const inactiveCls = "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]";
 
@@ -314,7 +314,7 @@ function ViewportToolbar() {
       }}
     >
       {/* Selected device label */}
-      <span className="text-[12px] text-[var(--color-text-muted)] font-medium truncate max-w-[120px]">
+      <span className="text-xs text-[var(--color-text-muted)] font-medium truncate max-w-[120px]">
         {selected ? selected.label : "No viewport"}
       </span>
 
@@ -330,12 +330,12 @@ function ViewportToolbar() {
             onChange={(e) => setWidthInput(e.target.value)}
             onBlur={commitSize}
             onKeyDown={(e) => { if (e.key === "Enter") commitSize(); }}
-            className="w-12 h-7 text-[12px] text-center font-mono rounded border bg-transparent text-[var(--color-text-muted)]"
+            className="w-12 h-7 text-xs text-center font-mono rounded border bg-transparent text-[var(--color-text-muted)]"
             style={{ borderColor: "var(--color-border-subtle)" }}
             min={120}
             max={3840}
           />
-          <span className="text-[11px] text-[var(--color-text-disabled)]">×</span>
+          <span className="text-micro text-[var(--color-text-disabled)]">×</span>
           {/* Height input */}
           <input
             type="number"
@@ -343,7 +343,7 @@ function ViewportToolbar() {
             onChange={(e) => setHeightInput(e.target.value)}
             onBlur={commitSize}
             onKeyDown={(e) => { if (e.key === "Enter") commitSize(); }}
-            className="w-12 h-7 text-[12px] text-center font-mono rounded border bg-transparent text-[var(--color-text-muted)]"
+            className="w-12 h-7 text-xs text-center font-mono rounded border bg-transparent text-[var(--color-text-muted)]"
             style={{ borderColor: "var(--color-border-subtle)" }}
             min={120}
             max={3840}
@@ -369,7 +369,7 @@ function ViewportToolbar() {
         <select
           value={viewportZoom}
           onChange={(e) => setViewportZoom(Number(e.target.value))}
-          className="h-7 text-[12px] font-mono rounded border bg-transparent text-[var(--color-text-muted)] px-1 pr-4 appearance-none cursor-pointer"
+          className="h-7 text-xs font-mono rounded border bg-transparent text-[var(--color-text-muted)] px-1 pr-4 appearance-none cursor-pointer"
           style={{ borderColor: "var(--color-border-subtle)" }}
         >
           {ZOOM_OPTIONS.map((z) => (
@@ -623,7 +623,7 @@ export function ViewportSurface() {
 
     if (matches && !zoomWarning) {
       return (
-        <span className="flex items-center gap-0.5 text-[11px] text-green-400" title={`Actual: ${m.innerWidth}×${m.innerHeight} DPR:${m.devicePixelRatio}`}>
+        <span className="flex items-center gap-0.5 text-micro text-green-400" title={`Actual: ${m.innerWidth}×${m.innerHeight} DPR:${m.devicePixelRatio}`}>
           <Check size={11} />
         </span>
       );
@@ -634,7 +634,7 @@ export function ViewportSurface() {
       : `Expected ${zoomedW}×${zoomedH}, actual ${m.innerWidth}×${m.innerHeight}`;
 
     return (
-      <span className="flex items-center gap-0.5 text-[11px] text-amber-400" title={tooltip}>
+      <span className="flex items-center gap-0.5 text-micro text-amber-400" title={tooltip}>
         <AlertTriangle size={11} />
       </span>
     );
@@ -654,10 +654,10 @@ export function ViewportSurface() {
               size={24}
               className="mx-auto mb-2 text-[var(--color-text-disabled)] opacity-30"
             />
-            <p className="text-[11px] text-[var(--color-text-muted)]">
+            <p className="text-micro text-[var(--color-text-muted)]">
               No viewports
             </p>
-            <p className="text-[12px] text-[var(--color-text-disabled)] mt-1">
+            <p className="text-xs text-[var(--color-text-disabled)] mt-1">
               Click a device preset in the sidebar to add one
             </p>
           </div>
@@ -687,7 +687,7 @@ export function ViewportSurface() {
                 >
                   {/* Card header */}
                   <div
-                    className="flex items-center gap-1 px-2 py-1 text-[12px] flex-shrink-0"
+                    className="flex items-center gap-1 px-2 py-1 text-xs flex-shrink-0"
                     style={{
                       background: "var(--color-surface)",
                       borderBottom: "1px solid var(--color-border-subtle)",
@@ -695,14 +695,14 @@ export function ViewportSurface() {
                     }}
                   >
                     <span className="font-medium truncate">{vp.label}</span>
-                    <span className="text-[11px] font-mono text-[var(--color-text-disabled)]">
+                    <span className="text-micro font-mono text-[var(--color-text-disabled)]">
                       {vp.width}×{vp.height}
                     </span>
                     {/* Metrics badge */}
                     {getMetricsBadge(vp)}
                     {/* Zoom warning */}
                     {viewportZoom < 1 && (
-                      <span className="text-[11px] text-[var(--color-text-disabled)]">
+                      <span className="text-micro text-[var(--color-text-disabled)]">
                         @{Math.round(viewportZoom * 100)}%
                       </span>
                     )}
@@ -734,7 +734,7 @@ export function ViewportSurface() {
                       overflow: "hidden",
                     }}
                   >
-                    <div className="absolute inset-0 flex items-center justify-center text-[12px] text-[var(--color-text-disabled)] pointer-events-none">
+                    <div className="absolute inset-0 flex items-center justify-center text-xs text-[var(--color-text-disabled)] pointer-events-none">
                       {vp.url || activeUrl}
                     </div>
                   </div>

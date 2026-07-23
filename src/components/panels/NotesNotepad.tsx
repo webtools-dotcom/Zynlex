@@ -154,7 +154,7 @@ export function NotesNotepad() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
-              className="flex-1 text-[12px] bg-transparent outline-none text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
+              className="flex-1 text-xs bg-transparent outline-none text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
             />
           </div>
           <button
@@ -171,7 +171,7 @@ export function NotesNotepad() {
         <div className="flex-1 overflow-y-auto">
           {filteredNotes.length === 0 ? (
             <div className="px-2 py-4 text-center">
-              <p className="text-[12px] text-[var(--color-text-disabled)]">
+              <p className="text-xs text-[var(--color-text-disabled)]">
                 {searchQuery ? "No matches" : "No notes"}
               </p>
             </div>
@@ -195,7 +195,7 @@ export function NotesNotepad() {
                     />
                   )}
                   <span
-                    className={`text-[12px] font-medium truncate ${
+                    className={`text-xs font-medium truncate ${
                       selectedId === note.id
                         ? "text-[var(--color-accent)]"
                         : "text-[var(--color-text-muted)]"
@@ -207,7 +207,7 @@ export function NotesNotepad() {
                     <Pin size={10} className="text-[var(--color-text-disabled)] flex-shrink-0" />
                   )}
                 </div>
-                <span className="text-[12px] text-[var(--color-text-disabled)]">
+                <span className="text-xs text-[var(--color-text-disabled)]">
                   {note.content
                     ? stripHtml(note.content).slice(0, 40) + (stripHtml(note.content).length > 40 ? "..." : "")
                     : "Empty"}
@@ -227,12 +227,12 @@ export function NotesNotepad() {
               <input
                 value={selectedNote.title}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                className="flex-1 text-[13px] font-semibold bg-transparent outline-none text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
+                className="flex-1 text-sm font-semibold bg-transparent outline-none text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
                 placeholder="Untitled"
               />
               <div className="flex items-center gap-1.5">
                 {saveStatus && (
-                  <span className="text-[12px] text-[var(--color-text-disabled)] flex items-center gap-1">
+                  <span className="text-xs text-[var(--color-text-disabled)] flex items-center gap-1">
                     <Save size={11} />
                     {saveStatus === "saving" ? "Saving..." : "Saved"}
                   </span>
@@ -306,7 +306,7 @@ export function NotesNotepad() {
                     setSelectedId(null);
                   }}
                   title="Delete this note"
-                  className="text-[12px] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
+                  className="text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
                 >
                   Delete
                 </ConfirmButton>
@@ -334,7 +334,7 @@ export function NotesNotepad() {
 
             {/* Footer */}
             <div
-              className="flex items-center justify-between px-3 py-1 border-t text-[12px] text-[var(--color-text-disabled)]"
+              className="flex items-center justify-between px-3 py-1 border-t text-xs text-[var(--color-text-disabled)]"
               style={{ borderColor: "var(--color-border-subtle)" }}
             >
               <span>{charCount} chars</span>
@@ -346,7 +346,7 @@ export function NotesNotepad() {
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <FileText size={24} className="mx-auto mb-2 text-[var(--color-text-disabled)] opacity-30" />
-              <p className="text-[12px] text-[var(--color-text-disabled)]">
+              <p className="text-xs text-[var(--color-text-disabled)]">
                 Select a note or create a new one
               </p>
             </div>

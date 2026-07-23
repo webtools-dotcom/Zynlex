@@ -165,11 +165,11 @@ export function FindBar() {
         spellCheck={false}
         autoCorrect="off"
         autoCapitalize="off"
-        className="w-[200px] bg-transparent outline-none text-[13px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] font-mono"
+        className="w-[200px] bg-transparent outline-none text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] font-mono"
       />
       {matchText && (
         <span
-          className="text-[11px] font-mono text-[var(--color-text-disabled)] min-w-[60px] text-right select-none tabular-nums"
+          className="text-micro font-mono text-[var(--color-text-disabled)] min-w-[60px] text-right select-none tabular-nums"
           aria-live="polite"
         >
           {matchText}

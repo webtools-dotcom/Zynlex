@@ -166,7 +166,7 @@ function MenuItem({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="w-full text-left text-[12px] px-2 h-7 rounded transition-colors"
+      className="w-full text-left text-xs px-2 h-7 rounded transition-colors"
       style={{
         background: "transparent",
         color: disabled ? "var(--color-text-disabled)" : "var(--color-text-muted)",

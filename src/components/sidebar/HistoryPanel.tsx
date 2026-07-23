@@ -60,7 +60,7 @@ export function HistoryPanel() {
     <div className="p-2 flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-1 mb-2 flex-shrink-0">
-        <p className="text-[12px] font-bold tracking-[0.09em] text-[var(--color-text-muted)] uppercase">
+        <p className="text-xs font-bold tracking-[0.09em] text-[var(--color-text-muted)] uppercase">
           History
         </p>
         {entries.length > 0 && (
@@ -78,10 +78,10 @@ export function HistoryPanel() {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center py-4">
             <Clock size={22} className="mx-auto mb-1.5 text-[var(--color-text-disabled)] opacity-40" />
-            <p className="text-[13px] text-[var(--color-text-muted)]">
+            <p className="text-sm text-[var(--color-text-muted)]">
               No history yet
             </p>
-            <p className="text-[12px] text-[var(--color-text-disabled)] mt-0.5">
+            <p className="text-xs text-[var(--color-text-disabled)] mt-0.5">
               Pages you visit will appear here
             </p>
           </div>
@@ -92,7 +92,7 @@ export function HistoryPanel() {
             {({ style, item }) =>
               item.__isHeader ? (
                 <div style={style} className="flex items-center px-1">
-                  <span className="text-[11px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+                  <span className="text-micro font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
                     {item.label}
                   </span>
                 </div>
@@ -125,13 +125,13 @@ export function HistoryPanel() {
                         ) : (
                           <Globe size={12} className="text-[var(--color-text-disabled)] flex-shrink-0" />
                         )}
-                        <span className="text-[13px] text-[var(--color-text-muted)] truncate font-medium">
+                        <span className="text-sm text-[var(--color-text-muted)] truncate font-medium">
                           {entry.title || domain}
                         </span>
                       </div>
                     </button>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <span className="text-[10px] text-[var(--color-text-disabled)]">
+                      <span className="text-micro text-[var(--color-text-disabled)]">
                         {relativeTime(entry.timestamp)}
                       </span>
                       <button

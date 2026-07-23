@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
         >
           <AlertTriangle
             size={40}
-            className="text-[var(--color-warning, #f59e0b)]"
+            className="text-[var(--color-warn)]"
           />
           <div className="text-center">
             <p

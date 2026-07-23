@@ -11,7 +11,7 @@ import { useUIStore } from "@/stores/ui";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[12px] uppercase tracking-wider text-[var(--color-text-disabled)] mt-5 mb-2 pt-4 border-t border-[var(--color-border-subtle)] first:mt-0 first:pt-0 first:border-t-0">
+    <div className="text-xs uppercase tracking-wider text-[var(--color-text-disabled)] mt-5 mb-2 pt-4 border-t border-[var(--color-border-subtle)] first:mt-0 first:pt-0 first:border-t-0">
       {children}
     </div>
   );

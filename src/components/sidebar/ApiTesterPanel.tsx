@@ -29,7 +29,7 @@ export function ApiTesterPanel() {
     <div className="p-2 flex flex-col gap-2">
       {/* Header */}
       <div className="flex items-center justify-between px-1">
-        <p className="text-[12px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+        <p className="text-xs font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
           API Tester
         </p>
       </div>
@@ -41,10 +41,10 @@ export function ApiTesterPanel() {
       >
         <Code2 size={18} className="text-[var(--color-accent)] flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] text-[var(--color-text-primary)] font-medium">
+          <div className="text-sm text-[var(--color-text-primary)] font-medium">
             Open API Tester
           </div>
-          <div className="text-[12px] text-[var(--color-text-disabled)]">
+          <div className="text-xs text-[var(--color-text-disabled)]">
             Full editor in a centered window
           </div>
         </div>
@@ -53,14 +53,14 @@ export function ApiTesterPanel() {
 
       {/* Method reference cheat sheet */}
       <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] p-2">
-        <div className="text-[11px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase mb-1.5">
+        <div className="text-micro font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase mb-1.5">
           Methods
         </div>
         <div className="grid grid-cols-2 gap-1">
           {Object.entries(METHOD_COLORS).map(([m, c]) => (
             <div
               key={m}
-              className="flex items-center gap-1.5 text-[12px] font-mono"
+              className="flex items-center gap-1.5 text-xs font-mono"
             >
               <span
                 className="w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -77,7 +77,7 @@ export function ApiTesterPanel() {
         <div className="flex items-center justify-between px-2 py-1.5 border-b border-[var(--color-border)]">
           <div className="flex items-center gap-1.5">
             <Clock size={12} className="text-[var(--color-text-disabled)]" />
-            <span className="text-[11px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+            <span className="text-micro font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
               Recent ({history.length})
             </span>
           </div>
@@ -94,10 +94,10 @@ export function ApiTesterPanel() {
         </div>
         {history.length === 0 ? (
           <div className="px-2 py-3 text-center">
-            <p className="text-[12px] text-[var(--color-text-disabled)]">
+            <p className="text-xs text-[var(--color-text-disabled)]">
               No requests yet
             </p>
-            <p className="text-[11px] text-[var(--color-text-disabled)] mt-0.5">
+            <p className="text-micro text-[var(--color-text-disabled)] mt-0.5">
               Open the tester and send one
             </p>
           </div>
@@ -110,16 +110,16 @@ export function ApiTesterPanel() {
                 className="w-full flex items-center gap-1.5 px-2 py-1 text-left hover:bg-[var(--color-hover)] transition-colors"
               >
                 <span
-                  className="text-[11px] font-bold flex-shrink-0"
+                  className="text-micro font-bold flex-shrink-0"
                   style={{ color: METHOD_COLORS[h.method] ?? "#999" }}
                 >
                   {h.method}
                 </span>
-                <span className="text-[12px] text-[var(--color-text-muted)] font-mono flex-1 min-w-0 truncate">
+                <span className="text-xs text-[var(--color-text-muted)] font-mono flex-1 min-w-0 truncate">
                   {h.url}
                 </span>
                 <span
-                  className="text-[11px] font-mono flex-shrink-0"
+                  className="text-micro font-mono flex-shrink-0"
                   style={{
                     color:
                       h.status >= 200 && h.status < 300

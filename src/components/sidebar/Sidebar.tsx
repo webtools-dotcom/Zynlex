@@ -81,7 +81,7 @@ function LiveServersPanel() {
   return (
     <div className="p-2.5">
       <div className="flex items-center justify-between px-1 mb-2">
-        <p className="text-[11px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
+        <p className="text-micro font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
           Live Servers
         </p>
         <div className="flex items-center gap-1">
@@ -99,12 +99,12 @@ function LiveServersPanel() {
             <RefreshCw size={12} className={isScanning ? "animate-spin" : ""} />
           </button>
           {isScanning && (
-            <span className="text-[11px] text-[var(--color-text-disabled)] animate-pulse">
+            <span className="text-micro text-[var(--color-text-disabled)] animate-pulse">
               scanning…
             </span>
           )}
           {!isScanning && lastScanAt && (
-            <span className="text-[11px] text-[var(--color-text-disabled)]">
+            <span className="text-micro text-[var(--color-text-disabled)]">
               {Math.round((Date.now() - lastScanAt) / 1000)}s ago
             </span>
           )}
@@ -113,11 +113,11 @@ function LiveServersPanel() {
 
       {visible.length === 0 ? (
         <div className="text-center py-4">
-          <p className="text-[13px] text-[var(--color-text-muted)]">
+          <p className="text-sm text-[var(--color-text-muted)]">
             {isScanning ? "Scanning ports..." : "No servers detected"}
           </p>
           {!isScanning && (
-            <p className="text-[12px] text-[var(--color-text-disabled)] mt-1">
+            <p className="text-xs text-[var(--color-text-disabled)] mt-1">
               Start a dev server on localhost
             </p>
           )}
@@ -146,24 +146,24 @@ function LiveServersPanel() {
 
             {/* Port + label */}
             <span className="flex-1 min-w-0">
-              <span className="text-[13px] font-[var(--font-mono)] font-medium text-[var(--color-text-muted)] group-hover:text-[var(--color-text-primary)] transition-colors tabular-nums">
+              <span className="text-sm font-[var(--font-mono)] font-medium text-[var(--color-text-muted)] group-hover:text-[var(--color-text-primary)] transition-colors tabular-nums">
                 :{server.port}
               </span>
               {(server.label || server.title) && (
-                <span className="text-[12px] text-[var(--color-text-disabled)] ml-1.5 truncate">
+                <span className="text-xs text-[var(--color-text-disabled)] ml-1.5 truncate">
                   {server.label ?? server.title}
                 </span>
               )}
             </span>
 
             {server.protocol === "https" && (
-              <span className="text-[11px] opacity-60 flex-shrink-0" style={{ color: "var(--color-live)" }}>
+              <span className="text-micro opacity-60 flex-shrink-0" style={{ color: "var(--color-live)" }}>
                 https
               </span>
             )}
 
             {server.isPinned && (
-              <span className="text-[11px] opacity-60 flex-shrink-0" style={{ color: "var(--color-accent)" }}>
+              <span className="text-micro opacity-60 flex-shrink-0" style={{ color: "var(--color-accent)" }}>
                 •
               </span>
             )}
@@ -238,7 +238,7 @@ export function Sidebar() {
         className="px-3 h-[32px] flex items-center border-b flex-shrink-0"
         style={{ borderColor: "var(--color-border-subtle)" }}
       >
-        <span className="text-[11px] font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
+        <span className="text-micro font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
           {wsName}
         </span>
       </div>

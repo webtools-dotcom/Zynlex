@@ -208,12 +208,12 @@ export function CommandPalette() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search tabs and commands..."
-            className="flex-1 ml-3 bg-transparent outline-none text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
+            className="flex-1 ml-3 bg-transparent outline-none text-md text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
             style={{ fontFamily: "var(--font-ui)" }}
           />
           {query === "" && (
             <kbd
-              className="px-1.5 py-0.5 text-[10px] border rounded-[2px]"
+              className="px-1.5 py-0.5 text-micro border rounded-[2px]"
               style={{
                 background: "var(--color-elevated)",
                 borderColor: "var(--color-border)",
@@ -227,7 +227,7 @@ export function CommandPalette() {
 
         <div ref={listRef} role="listbox" className="max-h-[320px] overflow-y-auto">
           {results.length === 0 ? (
-            <div className="py-8 text-center text-[13px] text-[var(--color-text-disabled)]">
+            <div className="py-8 text-center text-sm text-[var(--color-text-disabled)]">
               {query ? `No results for "${query}"` : "Start typing to search..."}
             </div>
           ) : (
@@ -252,12 +252,12 @@ export function CommandPalette() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] text-[var(--color-text-primary)] truncate">{item.label}</div>
+                  <div className="text-sm text-[var(--color-text-primary)] truncate">{item.label}</div>
                 </div>
 
                 {item.type === "tab" ? (
                   <span
-                    className="text-[11px] px-1 py-0.5 border rounded-[2px] shrink-0"
+                    className="text-micro px-1 py-0.5 border rounded-[2px] shrink-0"
                     style={{
                       background: "var(--color-elevated)",
                       borderColor: "var(--color-border)",
@@ -267,7 +267,7 @@ export function CommandPalette() {
                     TAB
                   </span>
                 ) : (
-                  <span className="text-[11px] text-[var(--color-text-disabled)] shrink-0">
+                  <span className="text-micro text-[var(--color-text-disabled)] shrink-0">
                     {item.sublabel}
                   </span>
                 )}

@@ -61,7 +61,7 @@ export function NotesSidebarPanel() {
     <div className="p-2 flex flex-col gap-2">
       {/* Header */}
       <div className="flex items-center justify-between px-1">
-        <p className="text-[12px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+        <p className="text-xs font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
           Notes
         </p>
         <div className="flex items-center gap-1">
@@ -91,10 +91,10 @@ export function NotesSidebarPanel() {
       >
         <FileText size={18} className="text-[var(--color-accent)] flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] text-[var(--color-text-primary)] font-medium">
+          <div className="text-sm text-[var(--color-text-primary)] font-medium">
             Open Notes
           </div>
-          <div className="text-[12px] text-[var(--color-text-disabled)]">
+          <div className="text-xs text-[var(--color-text-disabled)]">
             Full notepad above the webview
           </div>
         </div>
@@ -103,16 +103,16 @@ export function NotesSidebarPanel() {
       {/* Quick notes list */}
       <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] overflow-hidden">
         <div className="flex items-center px-2 py-1.5 border-b border-[var(--color-border)]">
-          <span className="text-[11px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+          <span className="text-micro font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
             Quick Notes ({wsNotes.length})
           </span>
         </div>
         {wsNotes.length === 0 ? (
           <div className="px-2 py-3 text-center">
-            <p className="text-[12px] text-[var(--color-text-disabled)]">
+            <p className="text-xs text-[var(--color-text-disabled)]">
               No notes yet
             </p>
-            <p className="text-[11px] text-[var(--color-text-disabled)] mt-0.5">
+            <p className="text-micro text-[var(--color-text-disabled)] mt-0.5">
               Click + to add one
             </p>
           </div>
@@ -143,7 +143,7 @@ export function NotesSidebarPanel() {
                             );
                           if (e.key === "Escape") setEditingTitle(null);
                         }}
-                        className="w-full text-[12px] bg-transparent border-b border-[var(--color-accent)] outline-none text-[var(--color-text-primary)]"
+                        className="w-full text-xs bg-transparent border-b border-[var(--color-accent)] outline-none text-[var(--color-text-primary)]"
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
@@ -155,14 +155,14 @@ export function NotesSidebarPanel() {
                               style={{ background: COLOR_HEX[note.color] }}
                             />
                           )}
-                          <span className="text-[13px] text-[var(--color-text-muted)] font-medium block truncate">
+                          <span className="text-sm text-[var(--color-text-muted)] font-medium block truncate">
                             {note.title || "Untitled"}
                           </span>
                           {note.isPinned && (
                             <Pin size={10} className="text-[var(--color-text-disabled)] flex-shrink-0" />
                           )}
                         </div>
-                        <span className="text-[11px] text-[var(--color-text-disabled)]">
+                        <span className="text-micro text-[var(--color-text-disabled)]">
                           {relativeTime(note.updatedAt)}
                         </span>
                       </>
@@ -175,7 +175,7 @@ export function NotesSidebarPanel() {
                         togglePin(note.id);
                       }}
                       title={note.isPinned ? "Unpin" : "Pin"}
-                      className={`text-[10px] ${note.isPinned ? "text-[var(--color-accent)]" : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)]"}`}
+                      className={`text-micro ${note.isPinned ? "text-[var(--color-accent)]" : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)]"}`}
                     >
                       pin
                     </button>
@@ -185,7 +185,7 @@ export function NotesSidebarPanel() {
                         setEditingTitle(note.id);
                       }}
                       title="Rename"
-                      className="text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] text-[10px]"
+                      className="text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] text-micro"
                     >
                       edit
                     </button>
@@ -205,7 +205,7 @@ export function NotesSidebarPanel() {
                 {expandedId === note.id && editingTitle !== note.id && (
                   <div className="px-2 pb-2">
                     <div
-                      className="w-full text-[12px] bg-[rgba(255,255,255,0.02)] border border-[var(--color-border)] rounded p-1.5 text-[var(--color-text-muted)] outline-none max-h-20 overflow-y-auto"
+                      className="w-full text-xs bg-[rgba(255,255,255,0.02)] border border-[var(--color-border)] rounded p-1.5 text-[var(--color-text-muted)] outline-none max-h-20 overflow-y-auto"
                       dangerouslySetInnerHTML={{
                         __html: note.content || '<span style="opacity:0.5">Empty</span>'
                       }}

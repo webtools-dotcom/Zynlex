@@ -35,9 +35,9 @@ function CopyIcon({ text }: { text: string }) {
       title="Copy"
     >
       {copied ? (
-        <ClipboardCheck size={12} className="text-[var(--color-success, #22c55e)]" />
+        <ClipboardCheck size={12} className="text-[var(--color-live)]" />
       ) : (
-        <span className="text-[11px]">copy</span>
+        <span className="text-micro">copy</span>
       )}
     </button>
   );
@@ -164,10 +164,10 @@ function MetaSubTab() {
   return (
     <div className="px-2 py-1">
       {/* Score bar */}
-      <div className="flex items-center gap-2 mb-2 text-[12px] font-medium">
-        <span className="text-[var(--color-success, #22c55e)]">{passCount} pass</span>
-        {warnCount > 0 && <span className="text-[#f59e0b]">{warnCount} warn</span>}
-        {errCount > 0 && <span className="text-[var(--color-danger, #ef4444)]">{errCount} fail</span>}
+      <div className="flex items-center gap-2 mb-2 text-xs font-medium">
+        <span className="text-[var(--color-live)]">{passCount} pass</span>
+        {warnCount > 0 && <span className="text-[var(--color-warn)]">{warnCount} warn</span>}
+        {errCount > 0 && <span className="text-[var(--color-dead)]">{errCount} fail</span>}
       </div>
 
       {/* Validation list */}
@@ -175,16 +175,16 @@ function MetaSubTab() {
         {validations.map((v) => (
           <div key={v.field} className="flex items-start gap-1.5" title={v.message}>
             {v.status === "valid" ? (
-              <CheckCircle2 size={11} className="text-[var(--color-success, #22c55e)] shrink-0 mt-0.5" />
+              <CheckCircle2 size={11} className="text-[var(--color-live)] shrink-0 mt-0.5" />
             ) : v.status === "warning" ? (
-              <AlertTriangle size={11} className="text-[#f59e0b] shrink-0 mt-0.5" />
+              <AlertTriangle size={11} className="text-[var(--color-warn)] shrink-0 mt-0.5" />
             ) : (
-              <XCircle size={11} className="text-[var(--color-danger, #ef4444)] shrink-0 mt-0.5" />
+              <XCircle size={11} className="text-[var(--color-dead)] shrink-0 mt-0.5" />
             )}
-            <span className="text-[12px] text-[var(--color-text-primary)]">
+            <span className="text-xs text-[var(--color-text-primary)]">
               {v.field}
             </span>
-            <span className="text-[11px] text-[var(--color-text-disabled)] ml-auto shrink-0">
+            <span className="text-micro text-[var(--color-text-disabled)] ml-auto shrink-0">
               {v.message}
             </span>
           </div>
@@ -193,11 +193,11 @@ function MetaSubTab() {
 
       {/* Canonical */}
       {meta.canonical && (
-        <div className="mb-2 text-[13px]">
+        <div className="mb-2 text-sm">
           <span className="text-[var(--color-text-muted)]">Canonical: </span>
           <a
             href={meta.canonical}
-            className="text-[var(--color-accent)] hover:underline font-mono text-[12px] break-all"
+            className="text-[var(--color-accent)] hover:underline font-mono text-xs break-all"
           >
             {meta.canonical}
           </a>
@@ -209,7 +209,7 @@ function MetaSubTab() {
         <div className="mb-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Info size={12} className="text-[var(--color-text-muted)]" />
-            <p className="text-[12px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+            <p className="text-xs font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
               Image Diagnostics
             </p>
           </div>
@@ -217,18 +217,18 @@ function MetaSubTab() {
             <button
               onClick={() => runImageDiag(ogImage)}
               disabled={diagResult?.status === "loading"}
-              className="text-[12px] bg-[var(--color-accent-dim)] text-[var(--color-accent)] px-1.5 py-0.5 rounded hover:bg-[var(--color-accent)] hover:text-white transition-colors disabled:opacity-50"
+              className="text-xs bg-[var(--color-accent-dim)] text-[var(--color-accent)] px-1.5 py-0.5 rounded hover:bg-[var(--color-accent)] hover:text-white transition-colors disabled:opacity-50"
             >
               {diagResult?.status === "loading" ? "Checking…" : "Run diagnostics"}
             </button>
             {diagResult && diagResult.status !== "loading" && (
-              <span className={diagResult.status === "valid" ? "text-[#22c55e]" : diagResult.status === "warning" ? "text-[#f59e0b]" : "text-[#ef4444]"}>
-                <span className="text-[11px]">{diagResult.message}</span>
+              <span className={diagResult.status === "valid" ? "text-[#22c55e]" : diagResult.status === "warning" ? "text-[var(--color-warn)]" : "text-[#ef4444]"}>
+                <span className="text-micro">{diagResult.message}</span>
               </span>
             )}
           </div>
           {diagResult && diagResult.width && (
-            <p className="text-[11px] text-[var(--color-text-muted)] font-mono">
+            <p className="text-micro text-[var(--color-text-muted)] font-mono">
               {diagResult.width}×{diagResult.height} · {Math.round(diagResult.sizeKB ?? 0)}KB
             </p>
           )}
@@ -240,7 +240,7 @@ function MetaSubTab() {
         <div className="mb-2">
           <div className="flex items-center gap-1.5 mb-1">
             <Globe size={12} className="text-[var(--color-text-muted)]" />
-            <p className="text-[12px] font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
+            <p className="text-xs font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase">
               Social Previews
             </p>
           </div>
@@ -262,7 +262,7 @@ function MetaSubTab() {
               else next.add("ldjson");
               return next;
             })}
-            className="flex items-center gap-1 text-[12px] font-semibold uppercase tracking-widest text-[var(--color-text-muted)] cursor-pointer w-full text-left py-0.5"
+            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)] cursor-pointer w-full text-left py-0.5"
           >
             <Code size={12} />
             <span>Structured Data (JSON-LD)</span>
@@ -273,7 +273,7 @@ function MetaSubTab() {
               {meta.ldJson.map((item, i) => (
                 <pre
                   key={i}
-                  className="text-[11px] font-mono text-[var(--color-text-muted)] whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto p-1 rounded"
+                  className="text-micro font-mono text-[var(--color-text-muted)] whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto p-1 rounded"
                   style={{ background: "var(--color-surface)" }}
                 >
                   {JSON.stringify(item, null, 2)}
@@ -289,7 +289,7 @@ function MetaSubTab() {
         <div key={group.key} className="mb-2">
           <button
             onClick={() => toggleGroup(group.key)}
-            className="flex items-center gap-1 text-[12px] font-semibold uppercase tracking-widest text-[var(--color-text-muted)] cursor-pointer w-full text-left py-0.5"
+            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)] cursor-pointer w-full text-left py-0.5"
           >
             <span>{collapsedGroups.has(group.key) ? "▸" : "▾"}</span>
             <span>{group.label}</span>
@@ -300,11 +300,11 @@ function MetaSubTab() {
               {group.items.map((item, i) => {
                 const name = item.name || (item as unknown as Record<string, string>).property || "";
                 return (
-                  <div key={`${group.key}-${i}`} className="group flex items-start gap-2 py-0.5">
-                    <span className="w-[30%] shrink-0 text-[12px] font-mono text-[var(--color-text-muted)] truncate">
+                  <div key={`${group.key}-${i}`} className="group flex items-start gap-2 py-1 rounded-[var(--radius-sm)] hover:bg-[var(--color-hover)]">
+                    <span className="w-[9.5rem] shrink-0 text-xs font-mono text-[var(--color-text-disabled)] truncate" title={name}>
                       {name}
                     </span>
-                    <span className="flex-1 min-w-0 text-[12px] font-mono text-[var(--color-text-primary)] break-all line-clamp-3">
+                    <span className="flex-1 min-w-0 text-xs font-mono text-[var(--color-text-primary)] break-all line-clamp-3">
                       {item.content}
                     </span>
                     <CopyIcon text={item.content} />
@@ -386,12 +386,12 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
     <div className="px-2 py-1">
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[13px] text-[var(--color-text-muted)]">
+        <span className="text-sm text-[var(--color-text-muted)]">
           {cookies.length} cookie{cookies.length !== 1 ? "s" : ""}
         </span>
         <ConfirmButton
           onConfirm={handleClearAll}
-          className="text-[12px] text-[var(--color-danger, #ef4444)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
+          className="text-xs text-[var(--color-dead)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
         >
           Clear All
         </ConfirmButton>
@@ -399,7 +399,7 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
 
       {/* Cookie list */}
       {cookies.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-disabled)] italic text-center py-4">
+        <p className="text-sm text-[var(--color-text-disabled)] italic text-center py-4">
           No cookies on this page.
         </p>
       ) : (
@@ -419,34 +419,34 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
                 }
               }}
             >
-              <span className="text-[13px] font-mono font-medium text-[var(--color-text-primary)]">
+              <span className="text-sm font-mono font-medium text-[var(--color-text-primary)]">
                 {cookie.name}
               </span>
               {cookie.httpOnly && (
-                <span className="text-[10px] px-1 rounded bg-[#f59e0b]/15 text-[#f59e0b]" title="HttpOnly">
+                <span className="text-micro px-1 rounded bg-[var(--color-warn)]/15 text-[var(--color-warn)]" title="HttpOnly">
                   HTTP
                 </span>
               )}
               {cookie.secure && (
-                <span className="text-[10px] px-1 rounded bg-[#22c55e]/15 text-[#22c55e]" title="Secure">
+                <span className="text-micro px-1 rounded bg-[#22c55e]/15 text-[#22c55e]" title="Secure">
                   SEC
                 </span>
               )}
-              <span className="text-[12px] font-mono text-[var(--color-text-muted)] truncate max-w-[120px]">
+              <span className="text-xs font-mono text-[var(--color-text-muted)] truncate max-w-[120px]">
                 {cookie.value}
               </span>
               <CopyIcon text={`${cookie.name}=${cookie.value}`} />
               <ConfirmButton
                 onConfirm={() => handleDelete(cookie)}
                 confirmLabel="del?"
-                className="opacity-0 group-hover:opacity-100 text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-danger, #ef4444)] cursor-pointer transition-all"
+                className="opacity-0 group-hover:opacity-100 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-dead)] cursor-pointer transition-all"
               >
                 del
               </ConfirmButton>
             </div>
             {expandedIdx === idx && (
               <div className="px-2 pb-2 border-t border-[var(--color-border-subtle)]">
-                <div className="mt-1 text-[11px] font-mono text-[var(--color-text-muted)] space-y-0.5">
+                <div className="mt-1 text-micro font-mono text-[var(--color-text-muted)] space-y-0.5">
                   <div>domain: {cookie.domain || "—"}</div>
                   <div>path: {cookie.path || "—"}</div>
                   <div>
@@ -461,18 +461,18 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
                   rows={3}
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
-                  className="w-full mt-1 px-2 py-1 text-[12px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none"
+                  className="w-full mt-1 px-2 py-1 text-xs font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none"
                 />
                 <div className="flex gap-2 mt-1">
                   <button
                     onClick={() => handleSave(cookie, editValue)}
-                    className="text-[12px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white cursor-pointer"
+                    className="text-xs px-2 py-0.5 rounded bg-[var(--color-accent)] text-white cursor-pointer"
                   >
                     Save
                   </button>
                   <button
                     onClick={() => setExpandedIdx(null)}
-                    className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
+                    className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -487,7 +487,7 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
       {!showAdd ? (
         <button
           onClick={() => setShowAdd(true)}
-          className="mt-2 text-[12px] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
+          className="mt-2 text-xs text-[var(--color-accent)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
         >
           + Add Cookie
         </button>
@@ -498,20 +498,20 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
             placeholder="Cookie name"
             value={addName}
             onChange={(e) => setAddName(e.target.value)}
-            className="w-full h-7 px-2 text-[12px] rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] mb-1"
+            className="w-full h-7 px-2 text-xs rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] mb-1"
           />
           <textarea
             rows={2}
             placeholder="Cookie value"
             value={addValue}
             onChange={(e) => setAddValue(e.target.value)}
-            className="w-full px-2 py-1 text-[12px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none mb-1"
+            className="w-full px-2 py-1 text-xs font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none mb-1"
           />
           <div className="flex gap-2">
             <button
               onClick={handleAdd}
               disabled={!addName.trim()}
-              className="text-[12px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white disabled:opacity-40 cursor-pointer"
+              className="text-xs px-2 py-0.5 rounded bg-[var(--color-accent)] text-white disabled:opacity-40 cursor-pointer"
             >
               Add
             </button>
@@ -521,7 +521,7 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
                 setAddName("");
                 setAddValue("");
               }}
-              className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
+              className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
             >
               Cancel
             </button>
@@ -632,7 +632,7 @@ function StorageSubTab({
         <div className="flex gap-2">
           <button
             onClick={() => setStorageSubTab("localStorage")}
-            className={`text-[12px] cursor-pointer transition-colors ${
+            className={`text-xs cursor-pointer transition-colors ${
               storageSubTab === "localStorage"
                 ? "text-[var(--color-text-primary)] border-b border-[var(--color-accent)]"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
@@ -642,7 +642,7 @@ function StorageSubTab({
           </button>
           <button
             onClick={() => setStorageSubTab("sessionStorage")}
-            className={`text-[12px] cursor-pointer transition-colors ${
+            className={`text-xs cursor-pointer transition-colors ${
               storageSubTab === "sessionStorage"
                 ? "text-[var(--color-text-primary)] border-b border-[var(--color-accent)]"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
@@ -651,14 +651,14 @@ function StorageSubTab({
             Session Storage
           </button>
         </div>
-        <span className="text-[12px] text-[var(--color-text-disabled)]">
+        <span className="text-xs text-[var(--color-text-disabled)]">
           Using {formatBytes(totalSize)}
         </span>
       </div>
 
       {/* Items */}
       {items.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-disabled)] italic text-center py-4">
+        <p className="text-sm text-[var(--color-text-disabled)] italic text-center py-4">
           No items in {storageSubTab === "localStorage" ? "localStorage" : "sessionStorage"}.
         </p>
       ) : (
@@ -678,10 +678,10 @@ function StorageSubTab({
                 }
               }}
             >
-              <span className="text-[13px] font-mono font-medium text-[var(--color-text-primary)] truncate max-w-[100px]">
+              <span className="text-sm font-mono font-medium text-[var(--color-text-primary)] truncate max-w-[100px]">
                 {item.key}
               </span>
-              <span className="flex-1 min-w-0 text-[12px] font-mono text-[var(--color-text-muted)] truncate">
+              <span className="flex-1 min-w-0 text-xs font-mono text-[var(--color-text-muted)] truncate">
                 {formatValue(item.value).split("\n")[0]}
               </span>
               <CopyIcon text={item.value} />
@@ -690,7 +690,7 @@ function StorageSubTab({
                   e.stopPropagation();
                   handleDelete(item.key);
                 }}
-                className="opacity-0 group-hover:opacity-100 text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-danger, #ef4444)] cursor-pointer transition-all"
+                className="opacity-0 group-hover:opacity-100 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-dead)] cursor-pointer transition-all"
               >
                 del
               </button>
@@ -701,18 +701,18 @@ function StorageSubTab({
                   rows={4}
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
-                  className="w-full mt-1 px-2 py-1 text-[12px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none"
+                  className="w-full mt-1 px-2 py-1 text-xs font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none"
                 />
                 <div className="flex gap-2 mt-1">
                   <button
                     onClick={() => handleSave(item.key, editValue)}
-                    className="text-[12px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white cursor-pointer"
+                    className="text-xs px-2 py-0.5 rounded bg-[var(--color-accent)] text-white cursor-pointer"
                   >
                     Save
                   </button>
                   <button
                     onClick={() => setExpandedIdx(null)}
-                    className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
+                    className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -727,7 +727,7 @@ function StorageSubTab({
       {!showAdd ? (
         <button
           onClick={() => setShowAdd(true)}
-          className="mt-2 text-[12px] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
+          className="mt-2 text-xs text-[var(--color-accent)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
         >
           + Add Item
         </button>
@@ -738,20 +738,20 @@ function StorageSubTab({
             placeholder="Key"
             value={addKey}
             onChange={(e) => setAddKey(e.target.value)}
-            className="w-full h-7 px-2 text-[12px] rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] mb-1"
+            className="w-full h-7 px-2 text-xs rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] mb-1"
           />
           <textarea
             rows={3}
             placeholder="Value"
             value={addValue}
             onChange={(e) => setAddValue(e.target.value)}
-            className="w-full px-2 py-1 text-[12px] font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none mb-1"
+            className="w-full px-2 py-1 text-xs font-mono rounded border bg-[var(--color-surface)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] resize-none mb-1"
           />
           <div className="flex gap-2">
             <button
               onClick={handleAdd}
               disabled={!addKey.trim()}
-              className="text-[12px] px-2 py-0.5 rounded bg-[var(--color-accent)] text-white disabled:opacity-40 cursor-pointer"
+              className="text-xs px-2 py-0.5 rounded bg-[var(--color-accent)] text-white disabled:opacity-40 cursor-pointer"
             >
               Add
             </button>
@@ -761,7 +761,7 @@ function StorageSubTab({
                 setAddKey("");
                 setAddValue("");
               }}
-              className="text-[12px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
+              className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer"
             >
               Cancel
             </button>
@@ -773,7 +773,7 @@ function StorageSubTab({
       {items.length > 0 && (
         <ConfirmButton
           onConfirm={handleClear}
-          className="mt-2 w-full text-[12px] text-[var(--color-danger, #ef4444)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors py-1"
+          className="mt-2 w-full text-xs text-[var(--color-dead)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors py-1"
         >
           Clear All
         </ConfirmButton>
@@ -866,7 +866,7 @@ export function InspectorPanel() {
             size={28}
             className="mx-auto mb-2 text-[var(--color-text-disabled)]"
           />
-          <p className="text-[12px] text-[var(--color-text-muted)]">
+          <p className="text-xs text-[var(--color-text-muted)]">
             Navigate to a page to use the Inspector.
           </p>
         </div>
@@ -889,7 +889,7 @@ export function InspectorPanel() {
             <button
               key={st.key}
               onClick={() => useInspectorStore.getState().setActiveSubTab(st.key)}
-              className={`text-[12px] font-semibold uppercase tracking-wide px-2 py-1.5 cursor-pointer transition-colors ${
+              className={`text-xs font-semibold uppercase tracking-wide px-2 py-1.5 cursor-pointer transition-colors ${
                 activeSubTab === st.key
                   ? "text-[var(--color-text-primary)] border-b-2 border-[var(--color-accent)]"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
@@ -913,7 +913,7 @@ export function InspectorPanel() {
 
       {/* Error banner */}
       {error && (
-        <div className="px-2 py-1 text-[12px] text-[#f59e0b] bg-[#f59e0b]/10 border-b border-[#f59e0b]/30 flex items-center gap-2">
+        <div className="px-2 py-1 text-xs text-[var(--color-warn)] bg-[var(--color-warn)]/10 border-b border-[var(--color-warn)]/30 flex items-center gap-2">
           <span className="shrink-0">⚠</span>
           <span className="flex-1 truncate">{error}</span>
           <button

@@ -34,7 +34,7 @@ function WorkspaceIcon({ workspace, isActive, tabCount, onClick, onContextMenu }
       }}
       className={cn(
         "relative w-9 h-9 rounded-[4px] flex items-center justify-center",
-        "text-[13px] font-semibold transition-colors duration-80",
+        "text-sm font-semibold transition-colors duration-80",
         "hover:opacity-90 select-none",
         !isActive && "hover:bg-[var(--color-hover)]",
       )}
@@ -44,7 +44,7 @@ function WorkspaceIcon({ workspace, isActive, tabCount, onClick, onContextMenu }
       </span>
       {tabCount > 0 && !isActive && (
         <span
-          className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold leading-none"
+          className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-micro flex items-center justify-center font-bold leading-none"
           style={{ background: "var(--color-elevated)", color: "var(--color-text-primary)" }}
         >
           {tabCount > 9 ? "9+" : tabCount}

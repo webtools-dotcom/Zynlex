@@ -54,17 +54,30 @@
   --font-ui:   "Inter", "system-ui", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 
+  /* Type scale — rem, so root font-size drives density.
+     NB: no "base" step — --color-base already claims that utility name. */
+  --text-micro: 0.6875rem;  /* eyebrows, badges, keycaps */
+  --text-micro--line-height: 1.45;
+  --text-xs:    0.75rem;    /* secondary meta, URLs, values */
+  --text-xs--line-height: 1.45;
+  --text-sm:    0.8125rem;  /* default UI text, list rows */
+  --text-sm--line-height: 1.5;
+  --text-md:    0.875rem;   /* panel body, inputs, buttons */
+  --text-md--line-height: 1.5;
+  --text-lg:    1rem;       /* panel + overlay titles */
+  --text-lg--line-height: 1.4;
+
   /* Spacing scale (dense, tool-grade) */
-  --spacing-row-xs:  24px;
-  --spacing-row-sm:  28px;
-  --spacing-row-md:  32px;
-  --spacing-row-lg:  36px;
-  --spacing-row-xl:  40px;
+  --spacing-row-xs:  28px;
+  --spacing-row-sm:  32px;
+  --spacing-row-md:  36px;
+  --spacing-row-lg:  40px;
+  --spacing-row-xl:  44px;
 
   /* Radius */
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 9px;
 
   /* Motion */
   --duration-instant:  0ms;
@@ -169,12 +182,20 @@
   padding: 0;
 }
 
+html {
+  font-size: 16px;
+}
+
+/* Density — the only knob. Every size is rem, so this scales the whole UI. */
+html.xevo-compact {
+  font-size: 14px;
+}
+
 html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
   font-family: var(--font-ui);
-  font-size: 14px;
   line-height: 1.5;
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
@@ -335,12 +356,6 @@ input:focus, textarea:focus, select:focus {
 .xevo-settings-panel {
   animation: xevo-settings-slide-in var(--duration-normal) var(--ease-out);
 }
-
-/* ── Compact mode ────────────────────────────────────────── */
-.xevo-compact .h-9  { height: 30px; }
-.xevo-compact .h-11 { height: 34px; }
-.xevo-compact .w-12 { width:  48px; }
-.xevo-compact .py-2 { padding-top: 8px; padding-bottom: 8px; }
 
 /* ── Command palette open ───────────────────────────────── */
 @keyframes paletteIn {

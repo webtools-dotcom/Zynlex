@@ -30,7 +30,7 @@ function ToastItem({ toast }: { toast: Toast }) {
       }}
     >
       <Icon size={14} className="flex-shrink-0" />
-      <span className="text-[12px] font-mono truncate">{toast.message}</span>
+      <span className="text-xs font-mono truncate">{toast.message}</span>
     </button>
   );
 }
