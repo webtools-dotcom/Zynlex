@@ -80,7 +80,6 @@ interface WorkspacesStore {
   setActiveTab: (wsId: string, tabId: string | null) => void;
   reorderTabs: (wsId: string, tabIds: string[]) => void;
   reorderWorkspaces: (order: string[]) => void;
-  resetAllWorkspaceTabs: () => void;
 }
 
 export const useWorkspacesStore = create<WorkspacesStore>()(
@@ -157,15 +156,6 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
       reorderWorkspaces: (order) => {
         set((s) => { s.workspaceOrder = order; });
       },
-
-      resetAllWorkspaceTabs: () => {
-        set((s) => {
-          for (const ws of Object.values(s.workspaces)) {
-            ws.tabIds = [];
-            ws.activeTabId = null;
-          }
-        });
-      },
     })),
     {
       name: "xevo-workspaces",
@@ -215,16 +205,12 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
         workspaceOrder: s.workspaceOrder,
         activeWorkspaceId: s.activeWorkspaceId,
       }),
+      // Tab references are kept across restarts (session restore). Stale ids
+      // with no matching tab in the session snapshot are dropped on read by
+      // getLiveWorkspaceTabIds() in lib/workspaceTabs.ts.
       onRehydrateStorage: () => (_state, error) => {
         if (error) {
           console.error("[XEVO] Workspace persistence hydration failed:", error);
-          return;
-        }
-        // Clear all tab references on startup — start fresh every time
-        try {
-          useWorkspacesStore.getState().resetAllWorkspaceTabs();
-        } catch (err) {
-          console.warn("[XEVO] Failed to reset workspace tabs:", err);
         }
       },
     }

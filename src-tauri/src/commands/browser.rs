@@ -1,4 +1,4 @@
-use tauri::webview::{PageLoadEvent, WebviewBuilder};
+use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -530,6 +530,8 @@ fn create_webview_for_tab(
     let tab_id_load = tab_id.to_string();
     let app_for_load = app.clone();
     let app_for_new_window = app.clone();
+    let tab_id_download = tab_id.to_string();
+    let app_for_download = app.clone();
 
     // Per-tab init script that sets __XEVO_TAB_ID
     let tab_id_init = format!("window.__XEVO_TAB_ID = \"{}\";", tab_id);
@@ -545,6 +547,9 @@ fn create_webview_for_tab(
     // webview gets its geometry from add_child's position/size arguments below.
     let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(url::Url::parse("about:blank").expect("about:blank must parse")))
         .data_directory(shared_webview_data_dir(app))
+        // Ctrl +/- and Ctrl+mousewheel zoom natively inside the page (WebView2
+        // IsZoomControlEnabled). Builder attribute — only affects new webviews.
+        .zoom_hotkeys_enabled(true)
         .initialization_script(&tab_id_init)
         .initialization_script(CHROME_FEATURES_SCRIPT)
         .initialization_script(JSON_VIEWER_SCRIPT);
@@ -588,6 +593,29 @@ fn create_webview_for_tab(
                     "url": url.to_string()
                 }));
                 tauri::webview::NewWindowResponse::Deny
+            })
+            // Downloads go to the OS default destination. Tauri's DownloadEvent
+            // exposes no progress callback, so the UI shows started → finished,
+            // not a percentage.
+            .on_download(move |_webview, event| {
+                match event {
+                    DownloadEvent::Requested { url, destination } => {
+                        let _ = app_for_download.emit("xevo://download-started", serde_json::json!({
+                            "tabId": tab_id_download,
+                            "url": url.to_string(),
+                            "destination": destination.to_string_lossy(),
+                        }));
+                    }
+                    DownloadEvent::Finished { url, path, success } => {
+                        let _ = app_for_download.emit("xevo://download-finished", serde_json::json!({
+                            "url": url.to_string(),
+                            "path": path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                            "success": success,
+                        }));
+                    }
+                    _ => {}
+                }
+                true
             });
 
     // Position/size are relative to the main window's client area, not the
@@ -830,6 +858,65 @@ pub async fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String
     Ok(())
 }
 
+/// Cache-bypassing reload (Ctrl+Shift+R).
+///
+/// Neither wry nor `ICoreWebView2::Reload()` offers an ignore-cache option, and
+/// `location.reload(true)` has been a no-op in Chromium for years — so this goes
+/// through the DevTools protocol, the same channel `browser_screenshot` uses.
+/// Fire-and-forget: CDP reports completion, but there is nothing to report back.
+#[tauri::command]
+pub async fn browser_hard_reload(app: AppHandle, tab_id: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let label = webview_label_for_tab(&tab_id);
+        let wv = match find_tab_webview(&app, &label) {
+            Some(wv) => wv,
+            None => return Ok(()),
+        };
+        wv.with_webview(move |platform| {
+            #[cfg(windows)]
+            unsafe {
+                use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
+                use windows_core::HSTRING;
+                let core = match platform.controller().CoreWebView2() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        xevo_log!("[xevo] hard reload: CoreWebView2 failed: {e:?}");
+                        return;
+                    }
+                };
+                let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+                    |_result: windows_core::Result<()>, _json: String| -> windows_core::Result<()> {
+                        Ok(())
+                    },
+                ));
+                let _ = core.CallDevToolsProtocolMethod(
+                    &HSTRING::from("Page.reload"),
+                    &HSTRING::from(r#"{"ignoreCache":true}"#),
+                    &handler,
+                );
+            }
+        })
+        .map_err(|e| format!("browser_hard_reload failed: {e}"))?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, tab_id);
+        Err("Hard reload is only supported on Windows".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn browser_set_zoom(app: AppHandle, tab_id: String, factor: f64) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = find_tab_webview(&app, &label) {
+        wv.set_zoom(factor.clamp(0.25, 5.0))
+            .map_err(|e| format!("browser_set_zoom failed: {e}"))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn browser_stop_loading(app: AppHandle, tab_id: String) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
@@ -860,6 +947,17 @@ pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
     app.opener()
         .open_url(&url, None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+/// Open a downloaded file, or reveal it in the OS file manager.
+#[tauri::command]
+pub fn open_download(app: AppHandle, path: String, reveal: bool) -> Result<(), String> {
+    let opener = app.opener();
+    if reveal {
+        opener.reveal_item_in_dir(&path).map_err(|e| e.to_string())
+    } else {
+        opener.open_path(&path, None::<&str>).map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
@@ -1289,6 +1387,19 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                     return Ok(());
                 }
 
+                // ICoreWebView2WebResourceRequest exposes no initiator/originator —
+                // only the request headers. So the panel's column is the Referer
+                // header, labelled "Referrer", not a true initiator chain.
+                let referrer = request
+                    .Headers()
+                    .ok()
+                    .and_then(|h| {
+                        let mut value = PWSTR::null();
+                        h.GetHeader(&HSTRING::from("Referer"), &mut value).ok()?;
+                        if value.is_null() { None } else { value.to_string().ok() }
+                    })
+                    .unwrap_or_default();
+
                 let mut status_code: i32 = 0;
                 let _ = response.StatusCode(&mut status_code);
 
@@ -1384,6 +1495,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                         "resourceType": resource_type,
                         "durationMs": duration_ms,
                         "contentLength": content_length,
+                        "referrer": referrer,
                         "headers": headers,
                         "body": body_str,
                     }));
@@ -1481,6 +1593,17 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                     Some("ctrl+shift+t")
                 } else if ctrl && shift && !alt && vkey == 0x09 {
                     Some("ctrl+shift+tab")
+                } else if ctrl && shift && !alt && vkey == 0x52 {
+                    Some("ctrl+shift+r")
+                } else if ctrl && shift && !alt && (0x31..=0x39).contains(&vkey) {
+                    // Ctrl+Shift+1..9 → switch workspace. Table, not format!, so
+                    // the whole match stays &'static str.
+                    const WS: [&str; 9] = [
+                        "ctrl+shift+1", "ctrl+shift+2", "ctrl+shift+3",
+                        "ctrl+shift+4", "ctrl+shift+5", "ctrl+shift+6",
+                        "ctrl+shift+7", "ctrl+shift+8", "ctrl+shift+9",
+                    ];
+                    Some(WS[(vkey - 0x31) as usize])
                 } else if ctrl && shift && !alt && (vkey == 0xBF || vkey == 0x6F) {
                     Some("ctrl+?")
                 } else if ctrl && !shift && !alt {
@@ -1491,6 +1614,7 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                         0x42 => Some("ctrl+b"),
                         0xBC => Some("ctrl+,"),
                         0x4C => Some("ctrl+l"),
+                        0x48 => Some("ctrl+h"),
                         0x31 => Some("ctrl+1"),
                         0x32 => Some("ctrl+2"),
                         0x33 => Some("ctrl+3"),
@@ -1500,6 +1624,12 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                         0x37 => Some("ctrl+7"),
                         0x38 => Some("ctrl+8"),
                         0x39 => Some("ctrl+9"),
+                        // Zoom: forwarded (and SetHandled) so the app's per-tab
+                        // zoom store stays the single source of truth. Ctrl+wheel
+                        // is still handled natively by zoom_hotkeys_enabled.
+                        0xBB | 0x6B => Some("ctrl+="),
+                        0xBD | 0x6D => Some("ctrl+-"),
+                        0x30 | 0x60 => Some("ctrl+0"),
                         _ => None,
                     }
                 } else {

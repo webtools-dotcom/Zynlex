@@ -37,10 +37,14 @@ It contains:
 
 **You must update this after every completed task.** Since you just did the work, you know exactly what changed. Write it down. The next session — whether it's another agent or a new chat — depends on this being accurate. If you skip this update, you are creating a lie that will cause future failures. Also update the worktree at the end with the exact repo structure.
 
+**This file is a snapshot, not a diary. There are no session boundaries in it — never append a new dated section.** Find the existing bullet for the feature/area you touched and edit it in place (or add one new bullet under the right topical list if none exists). If your change makes an existing bullet inaccurate, rewrite that bullet — don't leave the old one and add a new one next to it.
+
 **Formatting rules when updating:**
-- DO write: feature/bug summary (1-3 lines), version number, root cause if non-obvious, architecture decision, known caveat
-- DO NOT write: session-by-session history (that's what TASKS.md is for), file paths, "cargo check clean" / "pnpm tsc --noEmit" lines, import changes, debug logging add/remove cycles, pixel-level UI dimension details
+- **One line per feature or fix. Two only if there is a single genuinely non-obvious gotcha worth one extra clause** (e.g. "must stay in `@layer base`, cascade layers beat specificity"). No root-cause narratives, no "deviation from the plan" notes, no verification walkthroughs, no version-by-version history.
+- DO write: what the feature/fix is, current version number, one-clause gotcha if truly non-obvious
+- DO NOT write: session-by-session history (that's what TASKS.md is for), file paths, "cargo check clean" / "pnpm tsc --noEmit" lines, import changes, debug logging add/remove cycles, pixel-level UI dimension details, multi-paragraph debugging stories
 - Group related changes into one entry — do not list each sub-step
+- If the file is growing (over ~200 lines), that itself is a bug in how you're updating it — go back and compress rather than adding more
 - Keep the file as a "current state + architecture" reference, not a second changelog
 ---
 

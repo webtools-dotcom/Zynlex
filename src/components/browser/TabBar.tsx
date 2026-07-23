@@ -13,7 +13,11 @@ type BridgeType = ReturnType<typeof useWebviewBridge>;
 
 interface TabBarProps {
   bridge?: BridgeType | null;
+  /** Left-column layout (settings.tabBarPosition === "left"). */
+  vertical?: boolean;
 }
+
+export const VERTICAL_TAB_BAR_WIDTH = 200;
 
 interface ContextMenuState {
   tabId: string;
@@ -21,7 +25,7 @@ interface ContextMenuState {
   y: number;
 }
 
-export function TabBar({ bridge = null }: TabBarProps = {}) {
+export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
   const {
     workspaces, activeWorkspaceId,
     addTabToWorkspace, removeTabFromWorkspace, setActiveTab, reorderTabs,
@@ -40,6 +44,7 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
   const isDragging = useRef(false);
   const dragTabIdRef = useRef<string | null>(null);
   const dragOffsetX = useRef(0);
+  const dragOffsetY = useRef(0);
   const dragGhostRef = useRef<HTMLDivElement | null>(null);
   const tabRectsRef = useRef<Map<string, DOMRect>>(new Map());
   const dropTargetRef = useRef<string | null>(null);
@@ -77,6 +82,7 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
     isDragging.current = true;
     dragTabIdRef.current = tabId;
     dragOffsetX.current = e.clientX - rect.left;
+    dragOffsetY.current = e.clientY - rect.top;
 
     // Cache all tab rects for hit testing during move
     const rects = new Map<string, DOMRect>();
@@ -115,9 +121,16 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging.current || !dragGhostRef.current) return;
 
-    // Move ghost element
-    const ghostX = e.clientX - dragOffsetX.current;
-    dragGhostRef.current.style.left = `${ghostX}px`;
+    // Same hit-testing logic in both layouts — only the axis changes.
+    if (vertical) {
+      dragGhostRef.current.style.top = `${e.clientY - dragOffsetY.current}px`;
+    } else {
+      dragGhostRef.current.style.left = `${e.clientX - dragOffsetX.current}px`;
+    }
+
+    const pos = vertical ? e.clientY : e.clientX;
+    const startOf = (r: DOMRect) => (vertical ? r.top : r.left);
+    const endOf = (r: DOMRect) => (vertical ? r.bottom : r.right);
 
     // Find which tab we're hovering over using cached rects
     const rects = tabRectsRef.current;
@@ -125,7 +138,7 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
 
     for (const [tabId, rect] of rects) {
       if (tabId === dragTabIdRef.current) continue;
-      if (e.clientX >= rect.left && e.clientX <= rect.right) {
+      if (pos >= startOf(rect) && pos <= endOf(rect)) {
         newTarget = tabId;
         break;
       }
@@ -136,7 +149,7 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
       const allIds = [...rects.keys()];
       if (allIds.length > 0) {
         const lastRect = rects.get(allIds[allIds.length - 1]);
-        if (lastRect && e.clientX > lastRect.right) {
+        if (lastRect && pos > endOf(lastRect)) {
           newTarget = "__end__";
         }
       }
@@ -147,7 +160,7 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
       dropTargetRef.current = newTarget;
       setDropTarget(newTarget);
     }
-  }, []);
+  }, [vertical]);
 
   const handlePointerUp = useCallback((_e: React.PointerEvent) => {
     if (!isDragging.current) return;
@@ -216,6 +229,69 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
     if (tabIds.length === 0) openNewTab();
   }, [activeWorkspaceId, openNewTab, tabIds.length]);
 
+  const tabItems = tabIds.map((tabId) => {
+    const tab = tabs[tabId];
+    if (!tab) return null;
+    return (
+      <TabItem
+        key={tabId}
+        tab={tab}
+        vertical={vertical}
+        isActive={tabId === activeTabId}
+        onActivate={() => setActiveTab(activeWorkspaceId, tabId)}
+        onClose={() => handleCloseTab(tabId)}
+        onContextMenu={(e) => handleContextMenu(tabId, e)}
+        onPointerDown={(e) => handlePointerDown(tabId, e)}
+        isDropTarget={dropTarget === tabId && draggingTabId !== tabId}
+        isDragging={draggingTabId === tabId}
+      />
+    );
+  });
+
+  if (vertical) {
+    return (
+      <div
+        className="flex flex-col flex-shrink-0 h-full overflow-hidden border-r"
+        data-tab-bar="true"
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        style={{
+          width: VERTICAL_TAB_BAR_WIDTH,
+          background: "var(--color-surface)",
+          borderColor: "var(--color-border-subtle)",
+        }}
+      >
+        <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+          {tabItems}
+        </div>
+
+        <button
+          onClick={openNewTab}
+          title="New tab (Ctrl+T)"
+          aria-label="New tab"
+          className="flex-shrink-0 h-9 flex items-center justify-center gap-1.5 text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors border-t"
+          style={{
+            borderColor: dropTarget === "__end__" ? "var(--color-accent)" : "var(--color-border)",
+            borderTopWidth: dropTarget === "__end__" ? 2 : 1,
+          }}
+        >
+          <Plus size={14} /> New tab
+        </button>
+
+        {contextMenu && (
+          <TabContextMenu
+            tabId={contextMenu.tabId}
+            workspaceId={activeWorkspaceId}
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu(null)}
+            bridge={bridge}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className="h-[40px] flex items-stretch flex-shrink-0 overflow-hidden"
@@ -232,23 +308,7 @@ export function TabBar({ bridge = null }: TabBarProps = {}) {
         className="flex items-stretch flex-1 overflow-x-auto"
         style={{ scrollbarWidth: "none" }}
       >
-        {tabIds.map((tabId) => {
-          const tab = tabs[tabId];
-          if (!tab) return null;
-          return (
-            <TabItem
-              key={tabId}
-              tab={tab}
-              isActive={tabId === activeTabId}
-              onActivate={() => setActiveTab(activeWorkspaceId, tabId)}
-              onClose={() => handleCloseTab(tabId)}
-              onContextMenu={(e) => handleContextMenu(tabId, e)}
-              onPointerDown={(e) => handlePointerDown(tabId, e)}
-              isDropTarget={dropTarget === tabId && draggingTabId !== tabId}
-              isDragging={draggingTabId === tabId}
-            />
-          );
-        })}
+        {tabItems}
       </div>
 
       <button

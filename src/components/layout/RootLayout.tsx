@@ -3,10 +3,12 @@ import { usePortScanner } from "@/hooks/usePortScanner";
 import { WorkspaceSwitcher } from "@/components/sidebar/WorkspaceSwitcher";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { TabBar } from "@/components/browser/TabBar";
+import { WindowControls } from "@/components/browser/WindowControls";
 import { Toolbar } from "@/components/browser/Toolbar";
 import { BrowserChrome } from "@/components/browser/BrowserChrome";
 import { LoadingBar } from "@/components/browser/LoadingBar";
 import { StatusBar } from "@/components/browser/StatusBar";
+import { BookmarkBar } from "@/components/browser/BookmarkBar";
 import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutHelp } from "@/components/ShortcutHelp";
@@ -16,6 +18,7 @@ import { ViewportSurface } from "@/components/panels/ViewportPanel";
 import { useUIStore } from "@/stores/ui";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
+import { useSettingsStore } from "@/stores/settings";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useViewportSync } from "@/hooks/useViewportSync";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
@@ -43,6 +46,9 @@ export function RootLayout() {
   const loadTime = activeTab?.loadTime ?? null;
   const url = activeTab?.url ?? "";
 
+  const bookmarkBarVisible = useSettingsStore((s) => s.settings.bookmarkBarVisible);
+  const verticalTabs = useSettingsStore((s) => s.settings.tabBarPosition) === "left";
+
   const [bridge, setBridge] = useState<BridgeType | null>(null);
   const handleBridgeReady = useCallback((b: BridgeType) => {
     setBridge(b);
@@ -64,8 +70,24 @@ export function RootLayout() {
       >
         <PortScannerMount />
 
-        {/* Tab Bar — 36px, window drag region */}
-        <TabBar bridge={bridge} />
+        {/* Tab Bar — 36px, window drag region. In vertical mode the tabs move
+            to a left column, so the top strip keeps only the drag region and
+            the window controls. */}
+        {verticalTabs ? (
+          <div
+            className="h-[40px] flex items-stretch flex-shrink-0"
+            data-tauri-drag-region="deep"
+            style={{
+              background: "var(--color-surface)",
+              borderBottom: "1px solid var(--color-border-subtle)",
+            }}
+          >
+            <div className="flex-1" />
+            <WindowControls />
+          </div>
+        ) : (
+          <TabBar bridge={bridge} />
+        )}
 
         {/* Toolbar — 40px, nav buttons + address bar */}
         <Toolbar
@@ -75,11 +97,13 @@ export function RootLayout() {
           onReload={bridge?.reload ?? null}
         />
         <LoadingBar isLoading={isLoading} />
+        {bookmarkBarVisible && <BookmarkBar />}
 
         {/* Sidebar + Content area */}
         <div className="flex flex-1 overflow-hidden min-h-0">
           <WorkspaceSwitcher />
           <Sidebar />
+          {verticalTabs && <TabBar bridge={bridge} vertical />}
           <div className="relative flex flex-col flex-1 overflow-hidden min-w-0">
             <BrowserChrome onBridgeReady={handleBridgeReady} />
             {viewportMode && (
@@ -92,7 +116,13 @@ export function RootLayout() {
         </div>
 
         {/* Status Bar — 24px */}
-        <StatusBar isLoading={isLoading} loadTime={loadTime} url={url} hoveredUrl={null} />
+        <StatusBar
+          isLoading={isLoading}
+          loadTime={loadTime}
+          url={url}
+          hoveredUrl={null}
+          zoom={activeTab?.zoom ?? 1}
+        />
 
         {/* Overlays */}
         {commandPaletteOpen && <CommandPalette />}

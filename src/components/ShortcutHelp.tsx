@@ -40,6 +40,12 @@ const SHORTCUTS: Shortcut[] = [
   { keys: ["Ctrl", "9"],             description: "Switch to Tab 9" },
   { keys: ["Ctrl", "Tab"],           description: "Next Tab" },
   { keys: ["Ctrl", "Shift", "Tab"],  description: "Previous Tab" },
+  { keys: ["Ctrl", "Shift", "R"],    description: "Hard Reload (bypass cache)" },
+  { keys: ["Ctrl", "H"],             description: "History Panel" },
+  { keys: ["Ctrl", "Shift", "1-9"],  description: "Switch Workspace" },
+  { keys: ["Ctrl", "+"],             description: "Zoom In" },
+  { keys: ["Ctrl", "-"],             description: "Zoom Out" },
+  { keys: ["Ctrl", "0"],             description: "Reset Zoom" },
 ];
 
 function Kbd({ children }: { children: React.ReactNode }) {

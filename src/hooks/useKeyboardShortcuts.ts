@@ -43,11 +43,51 @@ import {
   getLiveWorkspaceTabIds,
 } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
-import { closeTabWebview, takeScreenshot } from "@/services/browser";
+import { closeTabWebview, takeScreenshot, setTabZoom, hardReload } from "@/services/browser";
 import { copyToClipboard } from "@/lib/screenshot";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
+
+/** Chrome's zoom ladder. Clamped by browser_set_zoom to 0.25..5 as well. */
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
+
+function hardReloadActiveTab() {
+  const wsState = useWorkspacesStore.getState();
+  const tabId = getLiveWorkspaceActiveTabId(
+    wsState.workspaces[wsState.activeWorkspaceId],
+    useTabsStore.getState().tabs
+  );
+  if (tabId) hardReload(tabId).catch(() => {});
+}
+
+function switchWorkspace(index: number) {
+  const { workspaceOrder, setActiveWorkspace } = useWorkspacesStore.getState();
+  const target = workspaceOrder[index];
+  if (target) setActiveWorkspace(target);
+}
+
+/** dir: -1 zoom out, +1 zoom in, 0 reset to 100%. */
+function applyZoom(dir: -1 | 0 | 1) {
+  const wsState = useWorkspacesStore.getState();
+  const wsId = wsState.activeWorkspaceId;
+  const tabId = getLiveWorkspaceActiveTabId(
+    wsState.workspaces[wsId],
+    useTabsStore.getState().tabs
+  );
+  if (!tabId) return;
+
+  let next = 1;
+  if (dir !== 0) {
+    const current = useTabsStore.getState().tabs[tabId]?.zoom ?? 1;
+    let i = ZOOM_STEPS.findIndex((z) => Math.abs(z - current) < 0.001);
+    if (i === -1) i = ZOOM_STEPS.indexOf(1);
+    next = ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, Math.max(0, i + dir))];
+  }
+
+  useTabsStore.getState().updateTab(tabId, { zoom: next });
+  setTabZoom(tabId, next).catch(() => {});
+}
 
 // Shared shortcut handler — called from both keydown and global shortcut.
 function handleShortcut(shortcut: string, bridge: BridgeType | null) {
@@ -164,6 +204,37 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
         }
       }
     }
+    return;
+  }
+
+  if (shortcut === "ctrl+shift+r") {
+    hardReloadActiveTab();
+    return;
+  }
+
+  if (shortcut === "ctrl+h") {
+    useUIStore.getState().setActivePanel("history");
+    useUIStore.getState().setSidebarOpen(true);
+    return;
+  }
+
+  if (/^ctrl\+shift\+[1-9]$/.test(shortcut)) {
+    switchWorkspace(parseInt(shortcut.slice(-1), 10) - 1);
+    return;
+  }
+
+  if (shortcut === "ctrl+=" || shortcut === "ctrl++") {
+    applyZoom(1);
+    return;
+  }
+
+  if (shortcut === "ctrl+-") {
+    applyZoom(-1);
+    return;
+  }
+
+  if (shortcut === "ctrl+0") {
+    applyZoom(0);
     return;
   }
 
@@ -339,12 +410,49 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         return;
       }
 
+      // ── Ctrl/Cmd+Shift+R → hard reload (bypass cache) ────────────
+      if (mod && e.shiftKey && !e.altKey && (e.key === "R" || e.key === "r")) {
+        e.preventDefault();
+        hardReloadActiveTab();
+        return;
+      }
+
+      // ── Ctrl/Cmd+H → history panel ───────────────────────────────
+      if (mod && !e.shiftKey && !e.altKey && e.key === "h") {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName?.toLowerCase();
+        if (tag === "input" || tag === "textarea") return;
+        e.preventDefault();
+        useUIStore.getState().setActivePanel("history");
+        useUIStore.getState().setSidebarOpen(true);
+        return;
+      }
+
+      // ── Ctrl/Cmd+Shift+1..9 → switch workspace ───────────────────
+      // Must come before the Ctrl+1..9 tab handler, which ignores shift.
+      if (mod && e.shiftKey && !e.altKey && /^[1-9!@#$%^&*(]$/.test(e.key)) {
+        const digit = "!@#$%^&*(".indexOf(e.key);
+        const index = digit === -1 ? parseInt(e.key, 10) - 1 : digit;
+        if (index >= 0) {
+          e.preventDefault();
+          switchWorkspace(index);
+          return;
+        }
+      }
+
       // ── Ctrl/Cmd+R → reload ──────────────────────────────────────
       if (mod && !e.shiftKey && !e.altKey && (e.key === "r" || e.key === "R")) {
         if (bridge) {
           e.preventDefault();
           bridge.reload();
         }
+        return;
+      }
+
+      // ── Ctrl/Cmd +/-/0 → zoom in / out / reset ───────────────────
+      if (mod && !e.altKey && (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "0")) {
+        e.preventDefault();
+        applyZoom(e.key === "0" ? 0 : e.key === "-" ? -1 : 1);
         return;
       }
 

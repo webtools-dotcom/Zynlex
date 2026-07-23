@@ -1,293 +1,98 @@
 # XEVO Project State
 
-## Version: v1.38.0
-## Last Updated: 2026-07-23
-## Status: UI scale + density rework (rem type scale, dense-panel restructure, dead-token fixes). Previously: bug-audit remediation pass (Inspector, API Tester, port scanner, network capture, header rules, webview-creation race, debug logging), plus a follow-up fix replacing remote-page IPC with native WebView2 events, plus a draggable sidebar resize. Both TS and Rust compile clean against the current `Window::add_child` architecture.
+## Version: v1.39.1
+## Status: CORE gap closure (`CORE_GAPS.md`) items 1-9 shipped, item 10 partial. TS, Rust and `pnpm build` all clean.
 
 ## ENVIRONMENT
 - OS: Windows
 - Node: v24.16.0
 - Rust: rustc 1.96.0
 - pnpm: 11.5.0
-- Tauri CLI: 2.11.2
-- Tauri crate: 2.11.2
-
-## COMPLETED ✅
-
-### UI Scale + Density Rework (v1.38.0)
-The UI read as small and, in the dense panels, messy. Three distinct causes, all fixed:
-
-**Dead design tokens (the root cause of "messy").** `var(--color-muted-foreground)` (36 uses)
-and `var(--color-foreground)` (12 uses) in NetworkPanel and HeadersPanel were never defined —
-`index.css` defines the shadcn names `--muted-foreground`/`--foreground`, and `@theme` generates
-`--color-text-*`. An undefined custom property makes the declaration invalid at computed-value
-time, so `color` fell back to *inherited*: every muted label in those panels rendered at full
-primary white and the network log had no text hierarchy at all. Same class of bug in
-`var(--color-success, #22c55e)` / `--color-danger` / `--color-warning` (masked by fallbacks) and
-a hardcoded `#f59e0b`. All now point at real tokens; a repo-wide audit confirms zero unresolved
-`--color-*`/`--xevo-*`/`--radius-*`/`--text-*` references.
-
-**Type scale is now rem-based.** Added a 5-step scale to `@theme` (`--text-micro` 0.6875rem →
-`--text-lg` 1rem) replacing 261 hardcoded `text-[Npx]` classes across 28 files. Root font-size
-14px → 16px. **There is deliberately no `base` step**: `--color-base` already claims the
-`.text-base` utility name in Tailwind v4 (the `text-*` namespace serves both font-size and
-text-color, and the color wins), so the 0.875rem step is `--text-md`. The one pre-existing
-`text-base` usage was silently setting *color*, not size. Row heights +4px, `--radius-md` 4→6px.
-
-**Density is one variable.** `html.xevo-compact { font-size: 14px }` replaces the old
-`.xevo-compact` block that patched two heights and could not scale type. Compact now reproduces
-the pre-v1.38 size exactly. `compactMode` stays a boolean — a 3-way enum would mean touching
-types, store, Settings UI, and migrating persisted settings for one extra step.
-
-**Network log restructure.** Header row and entry rows were independent flex rows with
-mismatched widths, so columns drifted. Both now share a single `GRID_COLS` constant via
-`grid-template-columns`. Per-row `border-b` (a hairline every ~21px, the panel's dominant
-visual texture) replaced with a zebra tint; selected state is an accent inset instead of the
-same grey as hover. Method/status colors moved off the raw Tailwind palette onto the existing
-`--color-method-*` / `--color-status-*` tokens, which were defined but unused. Four type sizes
-(9/10/11/13px) collapsed to two.
-
-**Known caveat:** `TYPE_COLORS` in NetworkPanel still uses the raw Tailwind palette — 12
-categorical resource-type hues with no token equivalents. They do not respond to the light theme.
-
-**Verified in a standalone `pnpm dev` preview** (no Tauri backend, so `invoke()` calls no-op —
-layout/tokens only): default 240px sidebar made the network table's fixed grid columns
-(308px+) exceed the panel width, and `minmax(0,1fr)` let the URL column collapse to 0px —
-worse than the old flex layout, which shrank gracefully instead of disappearing. Fixed by
-tightening the fixed columns, giving URL a real `minmax(6rem,1fr)`, and wrapping header+rows
-in one `overflow-x-auto` region sharing a `GRID_MIN_WIDTH` (24rem) so both scroll together and
-stay column-aligned — same behavior as Chrome DevTools' Network tab at narrow widths. Confirmed
-via computed styles: muted labels now render `#a1a1aa` (not inherited white), header grid
-matches row grid exactly, URL column holds a real 124px instead of 0.
-
-**Two more fixes from a real `tauri dev` screenshot (github.com, 167 requests):** Size/Time
-cells had no `whitespace-nowrap`, so values like "42.1 KB" wrapped to two lines and broke the
-fixed row height — every few rows was visibly taller, staggering the whole list. Added nowrap
-and widened Size 3rem→3.5rem, Time 2.25rem→2.5rem. Separately, the same screenshots showed
-request counts climbing across reloads (140 → 500+, capping at `MAX_ENTRIES_PER_TAB`) — a
-pre-existing bug, not something this pass introduced: `entriesByTab` in `stores/network.ts`
-is keyed only by tabId and nothing ever cleared it short of closing the tab, so the log was
-scoped to the tab's whole lifetime instead of the current page load. Fixed by clearing the
-tab's entries in `useWebviewBridge.ts`'s `onLoadingChanged` handler on the `loading: true`
-edge, which fires on reload as well as fresh navigation — matches standard devtools behavior
-(no "preserve log" toggle; wasn't asked for, not added).
-
-### Draggable sidebar resize (v1.37.0)
-Sidebar width was fixed and hard-clamped to 420px. Added a drag handle on the sidebar's right
-edge (mouse drag + arrow-key nudge) wired to the store's existing `sidebarWidth`/
-`setSidebarWidth`, and raised the clamp ceiling to `max(480, window width - 420)`. No bridge
-changes needed — the existing content-area ResizeObserver already re-syncs the child webview
-bounds on any layout change.
-
-### Full Codebase Audit + Remediation Pass (v1.35.0)
-Read-only audit produced a feature inventory and root-cause bug list, then every finding
-except the open-source-readiness checklist was fixed:
-- **Inspector panel was broken end-to-end (real root cause)**: the earlier "removed a stray
-  `JSON.parse()`" fix was a symptom patch — the actual break was that injected JS in tab
-  webviews called `window.__TAURI_INTERNALS__.invoke('inspector_data', ...)` from a remote
-  (`https://`) page, and Tauri v2 silently rejects all IPC from remote origins unless a
-  capability declares `remote.urls` (the app's only capability is local-only). The call was
-  never rejected loudly because the injected script's `.catch(() => {})` swallowed it, so
-  `isLoading` never cleared and every sub-tab stayed empty. Fixed by moving inspector reads
-  off page-originated IPC entirely: `browser_eval_inspector` now runs the script via
-  `ICoreWebView2::ExecuteScript` and reads the JSON result straight back in Rust, then emits
-  `xevo://inspector-data` itself. The `inspector_data` command is gone — nothing calls into
-  it from a page anymore. All 3 sub-tabs (meta/cookies/localStorage/sessionStorage) and their
-  mutations now work.
-- **Same remote-IPC problem also killed tab titles/favicons and in-page keyboard shortcuts**:
-  `update_tab_info` and `forward_shortcut` were invoked the same broken way from the shared
-  `CORE_SCRIPT` injected into every tab. Replaced with native WebView2 events —
-  `DocumentTitleChanged` for title/favicon/URL, `AcceleratorKeyPressed` for shortcut capture —
-  registered per-tab alongside the existing network-capture handler. `CORE_SCRIPT` is deleted;
-  no injected JS calls into Tauri IPC from page content anymore.
-- **"Run diagnostics" on og:image never worked**: it called `fetch(url)` from the main
-  window, blocked by the app's CSP (`connect-src ... http://localhost:*`) and CORS for any
-  external image host. Now reads dimensions via `new Image()` (CSP already allows
-  `img-src https:`) and gets size/content-type via a HEAD request through the existing
-  `api_fetch` Rust command, degrading gracefully if the server rejects HEAD.
-
-### Cookie inspector rebuilt on the native cookie manager (v1.36.0)
-The cookie panel read and wrote `document.cookie`, which has two fatal limits for a devtool:
-it cannot see HttpOnly cookies at all (exactly the ones that matter when debugging auth),
-and it exposes no domain/path — so deletion had to guess. A cookie is only removed by a write
-whose **domain and path match the ones it was set with**, and the delete script always wrote
-host-only `path=/`. Result: `del` worked on JS-set cookies and silently no-opped on every
-`Domain=.example.com` cookie; "Clear All" had the same flaw, and editing a value created a
-host-only duplicate instead of overwriting. Replaced entirely with
-`ICoreWebView2CookieManager` (`read_cookies` / `mutate_cookies` in `browser.rs`):
-HttpOnly cookies are now listed and editable, each entry carries domain/path/expiry/
-secure/sameSite/session, deletion targets the exact cookie object, and an edit mutates the
-real cookie so its other attributes survive. "Clear All" deletes only the cookies visible to
-the current page — deliberately not `DeleteAllCookies()`, which would wipe every site in the
-shared WebView2 profile. Manager/URL resolution and the async-COM failure path are shared
-helpers (`get_cookie_manager`, `cookie_op_failed`) — `read_cookies` and `mutate_cookies` no
-longer duplicate that setup.
-
-### `window.confirm()` replaced everywhere (v1.36.0)
-Tab webviews are native child HWNDs stacked above the main window's webview, so a WebView2
-script dialog renders *behind* the page — the confirm text was visible in the strip above the
-webview but OK/Cancel were unreachable, making every destructive action impossible to confirm.
-CSS z-index cannot fix this. Added `src/components/ui/ConfirmButton.tsx`, which confirms in
-place (`Sure? / No`, Escape or ~4s idle to disarm) inside the panel that owns the button —
-never inside the webview's rectangle, so occlusion is structurally impossible and no webview
-hide/show flicker is needed. Applied to all six sites: Inspector (cookies + storage), History,
-Bookmarks, Notes, and the workspace context menu. `window.confirm` must not be reintroduced.
-- **API Tester was localhost-only**: it used the main window's `fetch()`, bound by the app's
-  own CSP (`connect-src ... http://localhost:*`) and CORS. Added a Rust `api_fetch` command
-  (reqwest + rustls) so requests go out as a real HTTP client instead.
-- **Port scanner ran every scan twice**: `usePortScanner()` was mounted in two places, each
-  running its own mount+interval scan loop. Added a module-level primary-instance guard.
-- **HTTPS dev servers scanned as `http://`**: the scanner only spoke plaintext HTTP, so a TLS
-  server's alert/handshake response was mislabeled `tcp` and opened as `http://`. Added a
-  cheap TLS-record-byte sniff (no TLS client library needed) — has a unit test.
-- **Network capture leaked**: per-request timing metadata was never cleared for
-  cancelled/aborted requests or closed tabs, and two concurrent requests to the same URL
-  clobbered each other's timing. Re-keyed as a per-URL FIFO queue, swept on tab close; the
-  frontend's network log now also clears on a tab's real close (not on discard).
-- **Header injection rules defaulted to `*`**, so a rule meant for one API (e.g. an auth
-  token) silently attached to every request the tab made, including third-party scripts.
-  New rules now default to the active tab's origin, and any enabled wildcard rule shows a
-  warning icon.
-- **Webview-creation race could permanently blank a tab**: `browser_create_tab` treated a
-  handle still visible immediately after its own `destroy()` call as "already exists" and
-  silently no-op'd, while the frontend had already marked the tab as created. Now waits for
-  the destroy to actually settle before proceeding, and the frontend releases its reserved
-  slot on failure instead of leaking it.
-- **48 unconditional `eprintln!` + assorted `console.log` traces** ran on every window-move
-  frame even in release builds (which have no console to read). Gated behind a debug-only
-  `xevo_log!` macro / removed.
-- Minor cleanup: extracted the 6×-repeated bounds-computation block in
-  `useWebviewBridge.ts` into `getActiveBounds()`, removed dead `settingsOpen`/`UIState`
-  fields, removed a stale `vite-review.json` tool-output artifact.
-
-### Window-Follow Architecture Migration: WebviewWindow → add_child (v1.34.0)
-- **Problem:** tab webviews were top-level *owner* windows (`WebviewWindowBuilder::parent()`), which Windows leaves in screen coordinates and never moves with the main window. This forced a JS `onMoved`+`onResized` follower that missed maximize/unmaximize (`SWP_NOMOVE`), a per-edge screen-coordinate fudge constant (`WEBVIEW_EDGE_INSET`), and ~125 lines of minimize/restore/orphan-recovery in `lib.rs`.
-- **Root cause vs. old assumption:** the v0.9.6 pivot away from `Window::add_child` (citing Issue #10079, "not planned") was based on `.parent()` not creating a true child window on Windows — not on `add_child` itself being broken. Re-spiked `add_child` on Tauri 2.11.2 / wry 0.55.1: input, focus, scroll, CDP screenshot, and WebView2 memory-target COM calls all work identically on `Webview` vs `WebviewWindow`.
-- **Fix:** migrated tab + viewport webviews from owner-window `.parent()` to true child webviews via `Window::add_child` (window-relative coordinates). Deleted the JS move-follower, `WEBVIEW_EDGE_INSET`, and the `lib.rs` minimize/orphan block — window moves are now free (OS-native); only resize still needs `ResizeObserver` sync (unchanged, was already reliable).
-- **Lesson:** a Tauri issue closed "not planned" doesn't mean the underlying primitive doesn't work — it meant a *different* API (`.parent()`) had the problem. Worth re-verifying old architectural pivots against current Tauri/wry versions before assuming a limitation is permanent.
-
-### Header Injection — Fixed & Hardened (v1.33.0)
-- **Root cause found:** matcher used `uri.contains(&rule.pattern)`; the panel's default
-  pattern `"*"` can never match via `.contains()`, so `SetHeader` was never reached. COM
-  `SetHeader` itself was never broken — a prior debugging session mistook `httpbin.org`
-  returning `"headers": {}` for every request as proof of a COM/CDP bug, when it was just
-  bad test data. See `header_issue-report.md`.
-- **Fix:** replaced with `url_matches()`, a scheme-stripped, anchored glob matcher.
-- **Hardening after a real-world-workflow audit:**
-  - `HEADER_RULES` now keyed by `tabId` instead of one global rule set — closes a
-    cross-workspace leak (switching workspaces only hides webviews, so an inactive
-    workspace's tabs stayed alive and could pick up another workspace's rules)
-  - Anchored matching closes a cross-origin leak (a pattern could match a substring inside
-    a foreign origin's query string)
-  - Inline value editing in the panel (no more delete/recreate on token refresh)
-  - Internal-scheme guard so rules never touch Tauri's own IPC traffic
-- Sidebar position moved between Network and Inspector.
-
-### UI Scaling (v1.25.0)
-- **Chrome scaling (11 files):** base font 13→14px, tabbar 36→40px, toolbar 40→44px, addressbar 44→48px, statusbar 24→28px, findbar 32→36px, sidebar width 210→240px, workspace switcher 48→56px, sidebar header 28→32px, icons +3-4px across all chrome components
-- **Panel text scaling (16+ files):** All sidebar panels and overlay panels bumped from text-[9px]/[10px]/[11px] → [11px]/[12px]/[13px]; icon sizes +2px; button containers scaled proportionally
-- All changes verified: `tsc --noEmit` clean
-
-### Memory Optimization via WebView2 SetMemoryUsageTargetLevel (v1.26.0)
-- **Problem:** Background tabs retain full Chromium render process caches, consuming unnecessary RAM
-- **Solution:** Extracted `pub fn apply_memory_target(wv, low)` helper in `browser.rs` — uses `ICoreWebView2_19::SetMemoryUsageTargetLevel` via COM QI cast
-- **Tab switch:** Outgoing tab → LOW, incoming tab → NORMAL. Empty-tab branch sets all to LOW.
-- **Minimize/restore:** Minimize sets all browser webviews to LOW; restore sets active tab to NORMAL, leaves others at LOW
-
-### Network Panel (v1.32.x)
-All requests from browser webviews captured via native WebView2 COM handlers, registered AFTER build (with `about:blank`) but BEFORE navigation. Rust captures method/URL/status/headers/body (8KB chunks, 64KB cap), resource type (17 types: document, stylesheet, image, script, xhr, fetch, font, etc.), and timing via `Instant`. Frontend: summary bar, filter chips (All/Errors/API/Slow), color-coded rows, detail pane with Headers/Body/Copy (cURL + fetch()). Zustand store with per-tab scoping, 500-entry cap. Network logging OFF by default (enabled on panel mount), 500ms batch flush, response body capped at 5KB.
-
-### Earlier sessions (v0.9–v1.24.1)
-Scaffolded Tauri 2 + React 19 + TypeScript with Tailwind v4, shadcn/ui, and Zustand v5. Early sessions (v0.9–v0.9.11) went through multiple architectural iterations for the browser webview — started with `Window::add_child` child webviews, then pivoted to persistent `WebviewWindow` with `parent` (v0.9.6) after discovering Tauri 2's child-webview limitations on Windows (Issue #10079, "not planned"). This became the **tab-per-WebviewWindow architecture**: each tab gets its own `WebviewWindow` (label `browser-{tabId}`), created lazily on first navigation, hidden/shown on switch with full state preservation. 30+ Rust commands built covering navigation, find, ports, header injection, inspector, UA switching, screenshot, viewport, tab state, etc. 12+ sidebar panels: Live Servers, Bookmarks, History, Network, API Tester, Notes (rich text), JWT Decoder, Base64 Tool, Headers, Inspector (meta/cookies/storage), Viewport, UA Switcher, Social Preview. Browser chrome: drag-to-reorder tabs, address bar with search engine support, find-in-page (Ctrl+F via injected JS), loading bar, status bar, command palette (Ctrl+K), shortcut help (Ctrl+?), overlay panel system.
+- Tauri CLI / crate: 2.11.2
 
 ## ARCHITECTURE NOTE (CURRENT)
-- **Tab-per-child-webview architecture:** Each tab gets its own child `Webview` (label `browser-{tabId}`) created via `Window::add_child` on the main window, lazily on first navigation via `browser_create_tab`. Tab switching hides the old webview and shows the new one — no navigation, no reload, full state preservation.
-- Parent is the main window's `Window` (not a `WebviewWindow`) — as a true child, z-order, move, resize-clip, minimize and restore are all handled natively by the OS, not by app code.
-- **Lifecycle rule:** Webviews are created once per tab (on first URL navigation) and closed when the tab is closed. Tab switch = hide/show only.
-- **Tab discarding:** Tabs inactive >10 minutes are destroyed. On switch, the webview is recreated and the page reloads. Pinned tabs and active tab are exempt.
-- **Cap concurrent webviews:** Soft limit of 10 (configurable via `maxConcurrentWebviews`). When exceeded, oldest background tab is discarded.
-- **Shared WebView2 environment:** All browser webviews use the same `data_directory` path, so WebView2 shares browser/GPU/network processes across tabs.
-- **Init scripts:** per-tab `__XEVO_TAB_ID` setter, plus CHROME_FEATURES_SCRIPT (find-in-page, bookmark shortcut) and JSON_VIEWER_SCRIPT (collapsible JSON viewer). Tab info (title/favicon) and global keyboard shortcuts are native WebView2 events now, not injected JS — see "Remote-page IPC" below.
-- **Remote-page IPC is intentionally never used.** Tauri v2 rejects all `__TAURI_INTERNALS__.invoke` calls from `https://` page content unless a capability declares `remote.urls` — and doing that flips `has_app_acl` on, forcing every command in the app to be explicitly allow-listed and exposing tab-scoped commands to any page that can guess a `tabId`. Anything that needs data out of a tab (Inspector reads, tab title/favicon, in-page shortcuts) goes through native WebView2 COM APIs instead (`ExecuteScript`, `DocumentTitleChanged`, `AcceleratorKeyPressed`) — Rust-initiated, never page-initiated.
-- Bounds are in LOGICAL (CSS) pixels, WINDOW-RELATIVE (main window client area) — not screen coordinates. Frontend `getBounds()` returns `rect.left, rect.top` directly (no `window.screenX/screenY`). Rust passes these to `add_child(builder, Position::Logical(...), Size::Logical(...))` on creation, `set_position`/`set_size` after. The OS scales to physical via DPI.
-- Hidden by `Webview::hide()`. Shown by `Webview::show()`.
-- Events (`browser://url-changed`, `browser://loading`, `browser://tab-info`) include `tabId` in payload for correct routing.
-- **Free side benefits:**
-  - **Back/forward history works natively** — each webview has its own `window.history`
-  - **Window MOVE is free** — the OS moves child webviews with the parent; no JS follower needed
-  - **Window resize** still goes through `browser_set_bounds` (`ResizeObserver` → `set_position`/`set_size`) since resize is a real content-area change, not a move
-  - **Tab state is fully preserved** — DOM, scroll, forms, JS state, video survive tab switches
-
-## KNOWN ISSUES
-- **Main window is opaque** (no `transparent` key in tauri.conf.json). The tab webview IS transparent so content-area background shows through unpainted pixels.
-- **Tab webview is built with `transparent: true`** — may show white flash on first creation before page paints.
-- **JSON viewer depth limit 8, max 500 items/array** — deeper structures show truncation markers.
-- **Theme has brief dark flash on first paint** — `:root { color-scheme: dark }` active before React effect sets correct data-theme.
-- **Settings panel uses absolute positioning** — overlays right edge, does not reflow webview.
-- **Command palette and ShortcutHelp mounted outside content wrapper** — fixed over full window, z-9999.
-- **Compact mode CSS uses class-name overrides** — `.h-9`, `.h-11` overrides inside `.xevo-compact` could affect other elements with same classes.
-- **Tab drag uses pointer events** — HTML5 DnD broken in WebView2.
-- **In-page link clicks can pollute history** — SPA routing fires multiple onUrlChanged events.
-- **Global shortcuts fire even when XEVO not focused** — OS-level hotkeys. Intended trade-off.
-- **Network log captures fetch/XHR only** — assets, images, fonts not captured. By design.
-- **Header injection doesn't cover WebSockets** — WebView2 doesn't fire `WebResourceRequested` for WebSocket handshakes. Not fixable app-side.
+- **Tab-per-child-webview architecture:** each tab is a child `Webview` (label `browser-{tabId}`) created via `Window::add_child` on the main window, lazily on first navigation. Tab switch = hide/show only, no reload, full state preserved.
+- Parent is the main window's `Window` (not `WebviewWindow`) — z-order, move, resize-clip, minimize/restore are OS-native.
+- Tabs inactive >10 min are discarded (destroyed, recreated + reloaded on next switch). Pinned/active tabs exempt. Soft cap of 10 concurrent webviews (`maxConcurrentWebviews`), oldest background tab discarded when exceeded.
+- All browser webviews share one WebView2 `data_directory` (shared browser/GPU/network processes).
+- Bounds are logical (CSS) pixels, window-relative — not screen coordinates.
+- **Remote-page IPC is intentionally never used.** Tauri v2 rejects `__TAURI_INTERNALS__.invoke` from `https://` content unless a capability declares `remote.urls`, which would force allow-listing every command and expose tab-scoped commands to any page. Anything that needs data out of a tab (Inspector reads, tab title/favicon, in-page shortcuts) goes through native WebView2 COM APIs instead (`ExecuteScript`, `DocumentTitleChanged`, `AcceleratorKeyPressed`) — Rust-initiated, never page-initiated. Do not reintroduce page-originated IPC calls.
 
 ## FEATURES
 
 ### Browser Chrome
-- **Settings Panel** (v0.6): Theme (dark/light/system), search engine (+custom with %s), scan interval, compact mode. Ctrl+, or gear icon.
-- **Command Palette** (v0.7): Ctrl+K, fuzzy search, 80ms fade-in animation.
-- **Find in Page** (v1.0.0): Ctrl+F. JS-based (Tauri 2 has no native find API). Match highlighting, cycling, 150ms debounce.
-- **Tab Context Menu**: Via Portal. Close, close others, close right.
-- **Tab Drag-to-Reorder**: Pointer events. Full-size ghost preview. Pinned always front.
-- **Status Bar** (v1.1.0): Load time, loading pulse, origin.
-- **Keyboard Shortcuts**: Ctrl+F/D/K/L/?, Ctrl+Shift+S/T, Escape (close find or stop loading).
-- **Compact Mode** (v0.6): CSS class overrides for reduced chrome height.
+- Settings Panel: theme (dark/light/system), search engine (+custom `%s`), scan interval, compact mode.
+- Command Palette (Ctrl+K): fuzzy search across tabs, bookmarks, history, workspaces, servers, requests; grouped results, 5-entry MRU.
+- Find in Page (Ctrl+F): JS-based, match highlighting/cycling.
+- Tab bar: drag-to-reorder (pointer events, HTML5 DnD is broken in WebView2), context menu (close/close others/close right), pinning, vertical mode (`tabBarPosition: "left"`).
+- Bookmark bar: toggleable, folders, JSON import/export (Blob+anchor, re-ids on import so double-import can't collide).
+- Status bar: load time, loading pulse, origin, zoom indicator when ≠100%.
+- Address bar: scheme-derived security indicator (lock/not-secure/wrench for localhost).
+- Keyboard shortcuts: Ctrl+F/D/K/L/H/?, Ctrl+Shift+S/T/1-9, Escape. Full list in Ctrl+? sheet.
+- Zoom: native Ctrl+mousewheel (WebView2), Ctrl+/-/0 forwarded from page, per-tab persisted. Known gap: mousewheel zoom doesn't update the store, so the status bar can lag that one input path.
+- Hard reload: goes through CDP `Page.reload({ignoreCache:true})` — neither wry nor WebView2 exposes an ignore-cache reload API directly.
 
 ### Sidebar Panels
-- **Bookmarks** (v1.0.0): Ctrl+D toggle. Zustand store, workspace-scoped, inline rename.
-- **History** (v1.6.0): Zustand+persist, 100-entry FIFO, grouped by date.
-- **Network Log** (v1.32.x): Native WebView2 COM capture. 17 resource types, timing, response body. Summary bar, filter chips, color-coded rows, detail pane (Headers/Body/Copy). Per-tab scoping.
-- **API Tester** (v1.0.0): Postman-style. Method selector, URL, Headers/Body/cURL Import. fetch() with timing. Response viewer. Request history (50). Embedded + modal.
-- **Notes** (v1.6.0–v1.7.0): Rich text (`@tolipovjs/rich-text`). Pin/color, auto-save, export Markdown.
-- **JWT Decoder / Base64 Tool** (v1.1.0): Decode, expiry countdown. Encode/decode toggle.
-- **Header Injection**: Custom rules per workspace, enforced per-tab via native WebView2 COM interception (`WebResourceRequested`). Live on next request in any open tab, no reload needed. Inline value editing.
-- **UA Switcher**: 9 presets (desktop/mobile/bot). Injects UA override script. `browser_set_user_agent` command.
-- **Inspector Panel**: Meta validation, SocialPreview (FB/Twitter/LinkedIn/Discord), image diagnostics. Cookie inspector via native `ICoreWebView2CookieManager` — includes HttpOnly cookies, shows domain/path/expiry/secure/sameSite, exact-match delete and attribute-preserving edit.
-- **Viewport Panel**: 7 Rust commands. Mobile/tablet/laptop presets. CSS Grid layout, scroll sync.
-- **Screenshot Tool** (v1.0.0): Ctrl+Shift+S. DevTools Protocol Page.captureScreenshot via COM API. PrintWindow fallback. Toast in webview DOM.
-
-### Developer Features
-- **JSON Auto-Formatter** (v1.0.0): Collapsible tree, depth limit 8, max 500 items/array.
-- **Overlay Panel System** (v1.6.0): Split-view overlay above webview. Drag-to-resize. Webview height reduces when open. Used by API Tester and Notes.
-- **Home Page** (v1.0.0): Centered column, search input, Live Servers grid, Bookmarks list.
+- Bookmarks, History (100-entry FIFO), Notes (rich text, pin/color/export MD), JWT Decoder, Base64 Tool.
+- Network Log: native WebView2 COM capture (fetch/XHR only, not assets/images/fonts — by design), 17 resource types, timing, response body (5KB cap), filter chips, pause/resume, URL search, method/status/resource-type filters, preserve-log toggle, per-tab scoping, 500-entry cap.
+- API Tester: Postman-style, method/URL/headers/body/cURL import, `api_fetch` Rust command (reqwest+rustls, bypasses app CSP/CORS), collections (folders, save/load/duplicate/move), 100-entry history.
+- Header Injection: per-tab rules via WebView2 `WebResourceRequested`, anchored glob matching, defaults to active tab's origin (wildcard rules show a warning icon), inline value editing, internal-scheme guard.
+- UA Switcher: 9 presets, injects override script.
+- Inspector: meta validation, social preview (FB/Twitter/LinkedIn/Discord), image diagnostics via `new Image()` + HEAD request (not `fetch`, which CSP blocks). Cookie inspector via native `ICoreWebView2CookieManager` — sees HttpOnly cookies, exact domain/path-match delete and attribute-preserving edit. "Clear All" only clears cookies visible to the current page, never `DeleteAllCookies()`.
+- Viewport Panel: mobile/tablet/laptop presets, CSS Grid layout, scroll sync.
+- Downloads Panel: native `on_download` events, Open/Show-in-folder/Clear history. No live progress % (Tauri's `DownloadEvent` has no progress callback — would need WebView2 COM `ICoreWebView2DownloadOperation`).
+- Screenshot Tool (Ctrl+Shift+S): CDP `Page.captureScreenshot`, PrintWindow fallback.
+- All destructive actions use in-panel `ConfirmButton` (Sure?/No, Escape or ~4s to disarm) — never `window.confirm()`, which renders behind the child webview and is unreachable.
 
 ### UI & Theming
-- **Light + System Theme** (v1.0.0): Full light palette. System mode uses prefers-color-scheme media query + change listener.
-- **Tailwind v4 Design System** (v1.8.0–v1.9.0): @theme block, reduced-motion rule. Unauthorized shadows removed. tauri-controls (macOS left, Win/Linux right).
-- **UI Scaling** (v1.25.0): Base font 13→14px, all chrome and panel elements scaled (~30 files).
-- **Accessibility**: ARIA roles, tabIndex + keyboard handlers throughout. Tooltip delay 500ms (WCAG).
+- Light/dark/system theme, rem-based type scale (`--text-micro`→`--text-lg`, root 16px), compact mode is a single `html.xevo-compact { font-size: 14px }` override.
+- All colors/spacing go through `@theme` tokens — no raw hex, no undefined `--color-*` custom properties (both were past bugs, see Gotchas).
+- Accessibility: ARIA roles, tabIndex + keyboard handlers throughout, 500ms tooltip delay (WCAG).
 
 ### Performance & Memory
-- React.lazy for all 9 panels (PanelSkeleton fallback). manualChunks in vite. Init script split (CORE/HEADER/NETWORK).
-- **Memory Optimization** (v1.26.0): WebView2 SetMemoryUsageTargetLevel via COM. Background tabs → LOW, active → NORMAL. Minimize sets all to LOW.
-- **Network capture**: OFF by default (prevents IPC storm). Enabled on panel mount. 500ms batch flush, 20-entry buffer. Response body capped at 5KB.
+- React.lazy for all panels; manualChunks in vite; init scripts split (CORE/HEADER/NETWORK).
+- WebView2 `SetMemoryUsageTargetLevel`: background tabs → LOW, active → NORMAL, all → LOW on minimize.
+- `scripts/measure.ps1` sums the working set of XEVO plus its whole `msedgewebview2` child tree — measuring `xevo.exe` alone understates RAM badly, since renderers live in the children. Takes `-Name chrome` to compare against another browser.
+- A `TrySuspend`/`Resume` freeze tier was attempted and **reverted** — it crashed the app (exit `0xcfffffff`) on tab create/close churn. Root cause not yet found; do not retry without a way to reproduce and step through it.
+- Network capture OFF by default, enabled on panel mount, 500ms batch flush.
+
+### Persistence
+- Session restore: tabs persisted (`xevo-session` key) with only durable fields (`id,url,title,favicon,isPinned,workspaceId,createdAt,zoom`); every transient field excluded. Tabs restore in the discarded state and lazily recreate on activation.
+- Downloads, bookmarks, API collections/history, header rules, history: each in its own persisted Zustand store, workspace- or tab-scoped as appropriate.
+
+## KNOWN ISSUES
+- Main window is opaque (no `transparent` in tauri.conf.json); tab webview is transparent so content-area background shows through unpainted pixels, may white-flash on first creation.
+- JSON viewer depth limit 8, max 500 items/array.
+- Brief dark flash on first paint before React sets `data-theme`.
+- Settings panel uses absolute positioning, overlays right edge without reflowing the webview.
+- Command palette / ShortcutHelp are mounted outside the content wrapper, fixed over the full window.
+- In-page SPA link clicks can pollute history (multiple `onUrlChanged` fires).
+- Global shortcuts fire even when XEVO isn't focused (OS-level hotkeys — intended).
+- Header injection doesn't cover WebSockets (WebView2 never fires `WebResourceRequested` for the handshake — not fixable app-side).
+- `Tab.isMuted` and `AppSettings.clearOnClose` are ghost settings (typed/persisted, read by nothing) — left for a human decision.
+- App refuses to start on non-Windows; README still claims cross-platform.
+
+## GOTCHAS (non-obvious, worth remembering)
+- Tailwind v4 utilities live in `@layer utilities`; any unlayered CSS rule beats them regardless of specificity. Global resets/generic rules must go in `@layer base` or every spacing utility silently no-ops.
+- Never put a `*/`-shaped substring inside a CSS comment — it prematurely closes the comment and can silently break the build (Vite keeps serving the last good CSS, so it's easy to miss).
+- `--color-base` claims the `.text-base` Tailwind utility name, so the 0.875rem type-scale step is named `--text-md` instead — there is deliberately no `--text-base`.
+- A Tauri GitHub issue closed "not planned" (`Window::add_child` limitations, #10079) turned out to be about a *different* API (`.parent()`) — worth re-verifying old architectural pivots against the current Tauri/wry version before assuming a limitation is permanent.
+- WebView2 cookies must be deleted/edited by exact domain+path match; a host-only write never removes a `Domain=.example.com` cookie.
 
 ## NOT DONE YET
-- Port scanner: HTTP title in sidebar tooltip, manual "add custom port" UI
+- Port scanner: HTTP title in sidebar tooltip
 - Workspace drag-to-reorder in sidebar
-- Notes panel: drag-to-reorder notes in sidebar list
-- API tester: persist request history, response body type detection (HTML preview, image preview, JSON tree), saved collections/environments, request duplication/share
-- Find in page: case-sensitive toggle, whole-word toggle
-- Bookmarks: drag-to-reorder, folder support
-- Status bar: hovered URL detection (requires injected script)
+- Notes panel: drag-to-reorder in sidebar list
+- API tester: response body type detection (HTML/image/JSON preview), environments, request share
+- Find in page: case-sensitive / whole-word toggles
+- Bookmarks: drag-to-reorder (folders exist, assignment is via a select)
+- Downloads: live progress percentage
+- Status bar: hovered URL detection (needs injected script)
 - GitHub push + README + v1.0 tag
-- Runtime integration tests — require `pnpm tauri dev` on hardware
+- Runtime integration tests (require `pnpm tauri dev` on hardware)
 
-## CODE QUALITY
-
-### Ponytail Audit (2026-07-16)
-Full codebase audit across 25 subagents. **122 findings (17 critical, 47 high, 38 medium, 20 low), score 5.2/10.** 8 fix batches applied: network timing fix (OnceLock init, removed map.clear that destroyed in-flight data), data corruption fixes (double JSON escaping, GDI SelectObject leak, double backslash remove, UTF-8 byte slicing fix), accessibility sweep (roles/aria throughout), dead code cleanup (deleted unused AddressBar.tsx, package.json name xevo-temp→xevo), IPC type safety (typed invoke/listen), JSON double-serialization fix (pass object directly, data: String → serde_json::Value), viewport sync rAF throttle.
+## SPEC COVERAGE
+Full item-by-item audit against the founding spec (`DEVBROWSER_PROJECT_GUIDE.md`) lives in `SPEC_COMPLIANCE.md`. `CORE_GAPS.md` turns that into the ordered closure plan — one item per session, start at the first unchecked item.
 
 ## REPOSITORY STRUCTURE
 
@@ -308,6 +113,8 @@ Xevo/
 ├─ quickfixes.md
 ├─ web_url_issue.md
 ├─ networklog_issues.md
+├─ CORE_GAPS.md
+├─ SPEC_COMPLIANCE.md
 ├─ components.json
 ├─ index.html
 ├─ package.json
@@ -330,6 +137,7 @@ Xevo/
 │  │  │  ├─ ContentArea.tsx
 │  │  │  ├─ FindBar.tsx
 │  │  │  ├─ LoadingBar.tsx
+│  │  │  ├─ BookmarkBar.tsx
 │  │  │  ├─ StatusBar.tsx
 │  │  │  ├─ TabBar.tsx
 │  │  │  ├─ TabContextMenu.tsx
@@ -359,6 +167,7 @@ Xevo/
 │  │  ├─ sidebar/
 │  │  │  ├─ ApiTesterPanel.tsx
 │  │  │  ├─ BookmarksPanel.tsx
+│  │  │  ├─ DownloadsPanel.tsx
 │  │  │  ├─ HistoryPanel.tsx
 │  │  │  ├─ NotesSidebarPanel.tsx
 │  │  │  ├─ Sidebar.tsx
@@ -380,8 +189,10 @@ Xevo/
 │  │  ├─ utils.ts
 │  │  └─ workspaceTabs.ts
 │  ├─ stores/
+│  │  ├─ apiCollections.ts
 │  │  ├─ apiHistory.ts
 │  │  ├─ bookmarks.ts
+│  │  ├─ downloads.ts
 │  │  ├─ headers.ts
 │  │  ├─ history.ts
 │  │  ├─ inspector.ts

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, ArrowRight, RotateCw, X, MoreHorizontal, Star, Columns3, Camera } from "lucide-react";
+import { ArrowLeft, ArrowRight, RotateCw, X, MoreHorizontal, Star, Columns3, Camera, Lock, ShieldAlert, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
@@ -11,6 +11,61 @@ import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { resolveInput } from "@/lib/url";
 import { takeScreenshot } from "@/services/browser";
 import { copyToClipboard } from "@/lib/screenshot";
+
+/**
+ * Address-bar security indicator, derived purely from the URL scheme.
+ * No certificate inspection — that's a V2 item. Local dev servers are http by
+ * nature, so they get a neutral wrench rather than a "Not secure" scolding.
+ */
+function SecurityIndicator({ url, hidden }: { url: string; hidden: boolean }) {
+  if (hidden || !url) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  const isLocal =
+    parsed.hostname === "localhost" ||
+    parsed.hostname === "127.0.0.1" ||
+    parsed.hostname === "[::1]" ||
+    parsed.hostname.endsWith(".localhost");
+
+  let icon: React.ReactNode;
+  let label: string;
+  if (parsed.protocol === "https:") {
+    icon = <Lock size={12} />;
+    label = "Secure (HTTPS)";
+  } else if (isLocal) {
+    icon = <Wrench size={12} />;
+    label = "Local dev server";
+  } else if (parsed.protocol === "http:") {
+    icon = <ShieldAlert size={12} />;
+    label = "Not secure";
+  } else {
+    return null;
+  }
+
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
+      style={{
+        color:
+          parsed.protocol === "https:"
+            ? "var(--color-live)"
+            : isLocal
+              ? "var(--color-text-disabled)"
+              : "var(--color-warn)",
+      }}
+    >
+      {icon}
+    </span>
+  );
+}
 
 interface ToolbarProps {
   onNavigate: ((url: string) => Promise<void>) | null;
@@ -141,6 +196,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
       {/* Address bar — centered, max-width constrained */}
       <div className="flex-1 flex justify-center">
         <div className="relative w-full max-w-[680px]">
+          <SecurityIndicator url={activeTab?.url ?? ""} hidden={focused} />
           <input
             ref={inputRef}
             type="text"
@@ -156,7 +212,8 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
             placeholder="Search or enter address (Ctrl+L)"
             className={cn(
               "w-full h-[30px] bg-[var(--color-elevated)] rounded-[4px] border border-[var(--color-border)]",
-              "px-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]",
+              "pr-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]",
+              !focused && activeTab?.url ? "pl-7" : "pl-3",
               "focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]",
               focused
                 ? "font-[var(--font-ui)] text-sm"

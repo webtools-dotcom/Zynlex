@@ -2,6 +2,7 @@ import { useRef, useEffect } from "react";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useWebviewBridge } from "@/hooks/useWebviewBridge";
+import { useSettingsStore } from "@/stores/settings";
 import { HomePage } from "@/components/panels/HomePage";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 
@@ -24,6 +25,17 @@ export function ContentArea({ onBridgeReady }: ContentAreaProps) {
     onBridgeReady(bridge);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridge]);
+
+  // Honour settings.homePage: an empty tab shows the built-in start page only
+  // while homePage is the xevo://home sentinel; any real URL is navigated to
+  // instead. Keyed on the tab id so it fires once per newly-opened empty tab.
+  const homePage = useSettingsStore((s) => s.settings.homePage);
+  const isCustomHome = !!homePage && homePage !== "xevo://home";
+  useEffect(() => {
+    if (!activeTab || activeTab.url || !isCustomHome) return;
+    void bridge.navigate(homePage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab?.id, isCustomHome]);
 
   return (
     <div

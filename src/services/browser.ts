@@ -93,6 +93,15 @@ export async function stopLoading(tabId: string): Promise<void> {
   await invoke<void>("browser_stop_loading", { tabId });
 }
 
+/** Cache-bypassing reload — Ctrl+Shift+R. */
+export async function hardReload(tabId: string): Promise<void> {
+  await invoke<void>("browser_hard_reload", { tabId });
+}
+
+export async function setTabZoom(tabId: string, factor: number): Promise<void> {
+  await invoke<void>("browser_set_zoom", { tabId, factor });
+}
+
 // ─── Theme ───────────────────────────────────────────────────────────
 
 export async function setWebviewTheme(theme: "light" | "dark"): Promise<void> {
@@ -217,6 +226,37 @@ export function onNewTabRequested(
   callback: (url: string) => void
 ): Promise<UnlistenFn> {
   return listen<{ url: string }>("browser://open-new-tab", (e) => callback(e.payload.url));
+}
+
+// ─── Downloads ──────────────────────────────────────────────────────
+
+export interface DownloadStarted {
+  tabId: string;
+  url: string;
+  destination: string;
+}
+
+export interface DownloadFinished {
+  url: string;
+  path: string | null;
+  success: boolean;
+}
+
+export function onDownloadStarted(
+  callback: (payload: DownloadStarted) => void
+): Promise<UnlistenFn> {
+  return listen<DownloadStarted>("xevo://download-started", (e) => callback(e.payload));
+}
+
+export function onDownloadFinished(
+  callback: (payload: DownloadFinished) => void
+): Promise<UnlistenFn> {
+  return listen<DownloadFinished>("xevo://download-finished", (e) => callback(e.payload));
+}
+
+/** reveal=false opens the file, reveal=true shows it in the OS file manager. */
+export async function openDownload(path: string, reveal: boolean): Promise<void> {
+  await invoke<void>("open_download", { path, reveal });
 }
 
 // ─── User Agent ─────────────────────────────────────────────────────
@@ -347,6 +387,8 @@ export interface NetworkEntryPayload {
   resourceType: string;
   durationMs: number;
   contentLength: number;
+  /** Request Referer header — WebView2 exposes no true initiator. */
+  referrer: string;
   headers: Record<string, string>;
   body: string;
 }

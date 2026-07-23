@@ -61,6 +61,7 @@ export type PanelId =
   | "servers"
   | "bookmarks"
   | "history"
+  | "downloads"
   | "network"
   | "api"
   | "notes"
@@ -83,6 +84,8 @@ export interface AppSettings {
   customPorts: number[];
   clearOnClose: boolean;
   compactMode: boolean;
+  /** Bookmark bar strip under the toolbar. Off by default. */
+  bookmarkBarVisible: boolean;
   /** Soft limit on concurrent webview processes (default 10). Oldest background tab is discarded when exceeded. */
   maxConcurrentWebviews: number;
 }
@@ -103,6 +106,14 @@ export interface Bookmark {
   url: string;
   title: string;
   createdAt: number;
+  /** null = root level; root-level bookmarks are the ones the bar shows. */
+  folderId: string | null;
+}
+
+export interface BookmarkFolder {
+  id: string;
+  workspaceId: string;
+  name: string;
 }
 
 // ─── API Tester ───────────────────────────────────────────────────
