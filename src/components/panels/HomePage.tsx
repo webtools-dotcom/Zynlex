@@ -17,10 +17,12 @@ interface HomePageProps {
 
 export function HomePage({ onNavigate = null }: HomePageProps) {
   const { servers } = useServersStore();
-  const { bookmarks } = useBookmarksStore();
-  const { activeWorkspaceId, addTabToWorkspace, setActiveTab } = useWorkspacesStore();
-  const { addTab } = useTabsStore();
-  const { settings } = useSettingsStore();
+  const bookmarks = useBookmarksStore((s) => s.bookmarks);
+  const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
+  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
+  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
+  const addTab = useTabsStore((s) => s.addTab);
+  const settings = useSettingsStore((s) => s.settings);
   const setActivePanel = useUIStore((s) => s.setActivePanel);
 
   const [query, setQuery] = useState("");

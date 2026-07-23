@@ -75,8 +75,9 @@ interface ToolbarProps {
 }
 
 export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProps) {
-  const { workspaces, activeWorkspaceId } = useWorkspacesStore();
-  const { tabs } = useTabsStore();
+  const workspaces = useWorkspacesStore((s) => s.workspaces);
+  const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
+  const tabs = useTabsStore((s) => s.tabs);
   const { searchEngine, customSearchUrl } = useSettingsStore((s) => s.settings);
   const toggleSettingsPanel = useUIStore((s) => s.toggleSettingsPanel);
   const viewportMode = useUIStore((s) => s.viewportMode);

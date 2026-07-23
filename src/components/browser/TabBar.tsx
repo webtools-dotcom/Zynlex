@@ -26,10 +26,12 @@ interface ContextMenuState {
 }
 
 export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
-  const {
-    workspaces, activeWorkspaceId,
-    addTabToWorkspace, removeTabFromWorkspace, setActiveTab, reorderTabs,
-  } = useWorkspacesStore();
+  const workspaces = useWorkspacesStore((s) => s.workspaces);
+  const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
+  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
+  const removeTabFromWorkspace = useWorkspacesStore((s) => s.removeTabFromWorkspace);
+  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
+  const reorderTabs = useWorkspacesStore((s) => s.reorderTabs);
   const addTab = useTabsStore((s) => s.addTab);
   const closeTab = useTabsStore((s) => s.closeTab);
   const tabs = useTabsStore((s) => s.tabs);

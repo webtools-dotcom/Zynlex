@@ -42,12 +42,10 @@ const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
 
 function LiveServersPanel() {
   const { servers, isScanning, lastScanAt } = useServersStore();
-  const { addTab } = useTabsStore();
-  const {
-    activeWorkspaceId,
-    addTabToWorkspace,
-    setActiveTab,
-  } = useWorkspacesStore();
+  const addTab = useTabsStore((s) => s.addTab);
+  const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
+  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
+  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
   const { scan } = usePortScanner();
   const [, setTick] = useState(0);
 
@@ -187,9 +185,17 @@ function PanelSkeleton() {
 }
 
 export function Sidebar() {
-  const { sidebarOpen, sidebarWidth, activePanel, togglePanel } = useUIStore();
+  // Atomic selectors, not a whole-store destructure: this component re-renders
+  // on every mousemove while the sidebar is being dragged (setSidebarWidth
+  // writes sidebarWidth on each move), so any unrelated ui-store field change
+  // used to cost a re-render here too.
+  const sidebarOpen = useUIStore((s) => s.sidebarOpen);
+  const sidebarWidth = useUIStore((s) => s.sidebarWidth);
+  const activePanel = useUIStore((s) => s.activePanel);
+  const togglePanel = useUIStore((s) => s.togglePanel);
   const setSidebarWidth = useUIStore((s) => s.setSidebarWidth);
-  const { workspaces, activeWorkspaceId } = useWorkspacesStore();
+  const workspaces = useWorkspacesStore((s) => s.workspaces);
+  const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const tabs = useTabsStore((s) => s.tabs);
 
   const ws = workspaces[activeWorkspaceId];
@@ -229,10 +235,13 @@ export function Sidebar() {
     <div
       className="relative flex flex-col flex-shrink-0 border-r overflow-hidden"
       style={{
+        // No width transition: the webview has no equivalent animation and only
+        // syncs bounds once the width settles, so an animated sidebar visibly slid
+        // while the page snapped at the end. Snapping both together reads as more
+        // solid than animating one side of a two-part layout.
         width: sidebarOpen ? sidebarWidth : 0,
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
-        transition: resizing ? "none" : "width 150ms cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
       {/* Header */}

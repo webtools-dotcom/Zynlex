@@ -1,6 +1,6 @@
 import { Minus, Square, X, Copy } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -9,14 +9,24 @@ export function WindowControls() {
 
   const win = getCurrentWindow();
   const [isMaximized, setIsMaximized] = useState(false);
+  // onResized fires continuously during a drag-resize; without this a fresh
+  // isMaximized() IPC round-trip fired on every single frame of the drag.
+  const rafIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     win.isMaximized().then(setIsMaximized);
     win.onResized(() => {
-      win.isMaximized().then(setIsMaximized);
+      if (rafIdRef.current !== null) return;
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        win.isMaximized().then(setIsMaximized);
+      });
     }).then((fn) => { unlisten = fn; });
-    return () => unlisten?.();
+    return () => {
+      unlisten?.();
+      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+    };
   }, [win]);
 
   return (
