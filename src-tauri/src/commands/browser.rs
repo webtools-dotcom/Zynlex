@@ -1,16 +1,20 @@
 use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl};
 use std::sync::{Mutex, OnceLock};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
 
 /// Gates the network-capture work inside the WebResourceRequested/Received
 /// handlers. The handlers stay registered per tab, but do capture work only
-/// while the Network panel is mounted — set true on its mount, false on unmount
-/// (`browser_set_network_capture`). Header-rule injection is NOT gated by this:
-/// it is a separate always-on feature sharing the request handler.
-static NETWORK_CAPTURE_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// while the Network panel is mounted — incremented on mount, decremented on
+/// unmount (`browser_set_network_capture`). A ref-count, not a bool: the panel
+/// remounts on every tab switch (key={activeTabId}), so mount/unmount fire as
+/// two independent, unordered async IPC calls — a bool could land false-after-true
+/// and get stuck off. Increment/decrement commute regardless of arrival order.
+/// Header-rule injection is NOT gated by this: it is a separate always-on
+/// feature sharing the request handler.
+static NETWORK_CAPTURE_ACTIVE: AtomicI32 = AtomicI32::new(0);
 
 use crate::BrowserState;
 use crate::xevo_log;
@@ -630,6 +634,10 @@ fn create_webview_for_tab(
     register_webview_network_capture(&webview, app, tab_id);
     register_webview_native_events(&webview, app, tab_id);
 
+    // Adopt the current app theme immediately, so a page's prefers-color-scheme
+    // matches from first paint instead of defaulting to the OS scheme.
+    apply_color_scheme(&webview, state.preferred_dark.load(Ordering::SeqCst));
+
     // Navigate to the real URL now that network handlers are registered
     let _ = webview.navigate(target_url);
 
@@ -795,6 +803,13 @@ pub async fn browser_set_bounds(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
+    // While a page is fullscreen (video), the child covers the whole window and
+    // is owned by the fullscreen handler + native resize path. Ignore JS-driven
+    // bounds pushes (from the ResizeObserver) so they can't shrink it back to the
+    // inset content area.
+    if state.fullscreen.load(Ordering::SeqCst) {
+        return Ok(());
+    }
     let label = webview_label_for_tab(&tab_id);
     xevo_log!("[XEVO-BOUNDS] browser_set_bounds called — label={} x={} y={} w={} h={}", label, x, y, width, height);
     // Try Tauri's registry first, then fallback to our persistent handle map
@@ -1096,31 +1111,64 @@ pub fn browser_find_callback(
 
 // ─── Theme (apply to all webviews) ───────────────────────────────────
 
+/// Set a webview's preferred color scheme natively via WebView2's
+/// `ICoreWebView2Profile::PreferredColorScheme`. This is what actually drives
+/// the `prefers-color-scheme` media query that sites (Google, YouTube, …) use to
+/// pick their theme. The old approach set `document.documentElement.style
+/// .colorScheme` + a `<meta color-scheme>` via eval, which only affects UA
+/// widget rendering — it never changed `prefers-color-scheme`, so pages stayed
+/// dark regardless of the app theme.
+pub fn apply_color_scheme(wv: &tauri::Webview, dark: bool) {
+    let _ = wv.with_webview(move |platform| {
+        #[cfg(windows)]
+        unsafe {
+            use webview2_com::Microsoft::Web::WebView2::Win32::{
+                ICoreWebView2_13,
+                COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK,
+                COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT,
+            };
+            use windows_core::Interface;
+
+            let core = match platform.controller().CoreWebView2() {
+                Ok(c) => c,
+                Err(e) => {
+                    xevo_log!("[xevo] color-scheme: CoreWebView2() failed: {e:?}");
+                    return;
+                }
+            };
+            match core.cast::<ICoreWebView2_13>() {
+                Ok(c13) => match c13.Profile() {
+                    Ok(profile) => {
+                        let scheme = if dark {
+                            COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK
+                        } else {
+                            COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT
+                        };
+                        if let Err(e) = profile.SetPreferredColorScheme(scheme) {
+                            xevo_log!("[xevo] SetPreferredColorScheme failed: {e:?}");
+                        }
+                    }
+                    Err(e) => xevo_log!("[xevo] Profile() unavailable: {e:?}"),
+                },
+                Err(e) => xevo_log!("[xevo] ICoreWebView2_13 unavailable: {e:?}"),
+            }
+        }
+        #[cfg(not(windows))]
+        let _ = (platform, dark);
+    });
+}
+
 #[tauri::command]
 pub async fn browser_set_theme(app: AppHandle, theme: String) -> Result<(), String> {
-    let scheme = if theme == "light" { "light" } else { "dark" };
-    let script = format!(
-        r#"(function() {{
-  try {{
-    var t = "{scheme}";
-    document.documentElement.style.colorScheme = t;
-    var meta = document.querySelector('meta[name="color-scheme"]');
-    if (!meta) {{
-      meta = document.createElement("meta");
-      meta.name = "color-scheme";
-      if (document.head) document.head.appendChild(meta);
-    }}
-    meta.content = t;
-  }} catch (e) {{}}
-}})();"#
-    );
-    // Apply to ALL browser webviews (all labels starting with "browser-")
+    let dark = theme != "light";
+    // Remember it so a tab created later adopts the current theme on creation.
+    app.state::<BrowserState>()
+        .preferred_dark
+        .store(dark, Ordering::SeqCst);
+    // Apply to ALL browser webviews (all labels starting with "browser-").
     for (_, wv) in app.webviews() {
         if wv.label().starts_with("browser-") {
-            if let Err(e) = wv.eval(&script) {
-                #[cfg(debug_assertions)]
-                xevo_log!("[xevo] theme eval failed for {}: {}", wv.label(), e);
-            }
+            apply_color_scheme(&wv, dark);
         }
     }
     Ok(())
@@ -1163,6 +1211,11 @@ pub async fn browser_show_tab(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
+    // Don't reposition/resize into the inset content area while fullscreen —
+    // the fullscreen handler owns the child's bounds until fullscreen exits.
+    if state.fullscreen.load(Ordering::SeqCst) {
+        return Ok(());
+    }
     let label = webview_label_for_tab(&tab_id);
     xevo_log!("[XEVO-BOUNDS] browser_show_tab called — label={}", label);
     // Try Tauri's registry first, then fallback to our persistent handle map
@@ -1258,7 +1311,11 @@ pub async fn browser_set_memory_target(
 /// Toggled by the Network panel on mount/unmount. See `NETWORK_CAPTURE_ACTIVE`.
 #[tauri::command]
 pub fn browser_set_network_capture(active: bool) {
-    NETWORK_CAPTURE_ACTIVE.store(active, Ordering::Relaxed);
+    if active {
+        NETWORK_CAPTURE_ACTIVE.fetch_add(1, Ordering::Relaxed);
+    } else {
+        NETWORK_CAPTURE_ACTIVE.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 
 pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHandle, tab_id: &str) {
@@ -1336,7 +1393,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
 
                 // Network-capture work below is rent the Network panel pays for
                 // only while it's open — skip it entirely otherwise.
-                if !NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) {
+                if NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) <= 0 {
                     return Ok(());
                 }
 
@@ -1417,7 +1474,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                 // The expensive part of this handler — header iteration and a full
                 // GetContent body read — is rent the Network panel pays for only
                 // while it's open.
-                if !NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) {
+                if NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) <= 0 {
                     return Ok(());
                 }
 
@@ -1559,7 +1616,7 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
     let _ = wv.with_webview(move |platform| {
         #[cfg(windows)]
         unsafe {
-            use webview2_com::{AcceleratorKeyPressedEventHandler, DocumentTitleChangedEventHandler};
+            use webview2_com::{AcceleratorKeyPressedEventHandler, ContainsFullScreenElementChangedEventHandler, DocumentTitleChangedEventHandler};
             use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
 
             let core = match platform.controller().CoreWebView2() {
@@ -1678,6 +1735,37 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             }));
             let mut key_token: i64 = 0;
             let _ = controller.add_AcceleratorKeyPressed(&key_handler, &mut key_token);
+
+            // HTML fullscreen (e.g. YouTube's fullscreen button). Without this the
+            // page fullscreens only inside the child webview's inset bounds, so the
+            // chrome stays visible around it. On enter: put the main window into OS
+            // fullscreen and let the child cover the whole window (the fullscreen
+            // flag zeroes the bounds insets in apply_active_child_bounds and gates
+            // the JS bounds-sync). On exit: reverse it.
+            let app_fs = app.clone();
+            let core_fs = core.clone();
+            let fs_handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(move |_sender, _args| {
+                let mut is_fs = windows_core::BOOL(0);
+                let _ = core_fs.ContainsFullScreenElement(&mut is_fs);
+                let entering = is_fs.as_bool();
+                let state = app_fs.state::<crate::BrowserState>();
+                state.fullscreen.store(entering, Ordering::SeqCst);
+                if let Some(main) = app_fs.get_window("main") {
+                    let _ = main.set_fullscreen(entering);
+                    if let Ok(sz) = main.inner_size() {
+                        let scale = main.scale_factor().unwrap_or(1.0);
+                        crate::apply_active_child_bounds(
+                            &app_fs,
+                            sz.width as f64 / scale,
+                            sz.height as f64 / scale,
+                            false,
+                        );
+                    }
+                }
+                Ok(())
+            }));
+            let mut fs_token: i64 = 0;
+            let _ = core.add_ContainsFullScreenElementChanged(&fs_handler, &mut fs_token);
         }
     });
 }

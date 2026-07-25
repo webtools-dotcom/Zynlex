@@ -29,6 +29,13 @@ export function WindowControls() {
     };
   }, [win]);
 
+  // Tell useWebviewBridge to drop its <1px bounds guard when the maximize state
+  // flips, so its ResizeObserver → syncBounds fallback is guaranteed to re-push
+  // bounds after a maximize/restore (belt-and-suspenders for the Rust resync).
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("xevo:maximize-changed"));
+  }, [isMaximized]);
+
   return (
     <div className="flex items-stretch h-full" data-tauri-drag-region="false">
       <button

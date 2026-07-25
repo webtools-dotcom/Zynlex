@@ -12,6 +12,7 @@ macro_rules! xevo_log {
 }
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
 
 /// Tracks which browser webview is currently visible.
@@ -32,6 +33,75 @@ pub struct BrowserState {
     /// the active child webview entirely in Rust, inside the native resize
     /// event, instead of waiting on the JS → rAF → IPC → Tokio round trip.
     pub content_insets: Mutex<Option<(f64, f64, f64, f64)>>,
+    /// True while a settle-timer resync is already scheduled. Coalesces the
+    /// burst of `Resized` events a drag/maximize emits down to one delayed
+    /// re-apply, so we don't spawn a timer per frame.
+    pub resync_pending: AtomicBool,
+    /// True while a page has an element in HTML fullscreen (video fullscreen).
+    /// Gates all bounds application so the active child covers the whole window
+    /// instead of the inset content area, and so the JS bounds-sync can't shrink
+    /// it back.
+    pub fullscreen: AtomicBool,
+    /// Last preferred color scheme pushed to webviews (true = dark). Stored so a
+    /// newly-created tab can adopt the current theme immediately, before any
+    /// theme toggle. Default dark = the app's default theme.
+    pub preferred_dark: AtomicBool,
+}
+
+/// Re-apply the active child webview's bounds from the current window size and
+/// cached content insets. Shared by the synchronous resize handler and the
+/// settle-timer resync.
+///
+/// `nudge` forces a WebView2 recomposite: on an *animated* maximize, the
+/// synchronous handler applies bounds computed from a mid-animation size, and a
+/// later same-size `set_bounds` is suppressed by the compositor — leaving the
+/// child visually stuck at the wrong size even though its controller bounds are
+/// correct. Setting height-1 then the real height once (settle timer only, never
+/// per frame) forces the surface to re-render.
+#[cfg(target_os = "windows")]
+pub(crate) fn apply_active_child_bounds(app: &tauri::AppHandle, win_w: f64, win_h: f64, nudge: bool) {
+    use tauri::Manager;
+    let state = app.state::<BrowserState>();
+    let fullscreen = state.fullscreen.load(Ordering::SeqCst);
+
+    // Fullscreen (video): cover the entire window with zero insets. `win_w`/
+    // `win_h` are always the real, authoritative window client size at the
+    // moment of the call — never an independently-computed monitor size. A
+    // borderless window's (decorations:false) client rect IS the fullscreen
+    // rect once `set_fullscreen` completes, so trusting the window itself is
+    // the only value that can't drift from wherever the OS actually put the
+    // window (origin, work area vs. full monitor, DPI) — the same principle
+    // this file already relies on for every ordinary resize.
+    let (x, y, w, h) = if fullscreen {
+        (0.0, 0.0, win_w.max(1.0), win_h.max(1.0))
+    } else {
+        let Some((left, top, right, bottom)) =
+            *state.content_insets.lock().unwrap_or_else(|e| e.into_inner())
+        else {
+            return;
+        };
+        (left, top, (win_w - left - right).max(1.0), (win_h - top - bottom).max(1.0))
+    };
+
+    let label = state
+        .active_tab_label
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let Some(label) = label else { return };
+    let Some(wv) = commands::browser::find_tab_webview(app, &label) else { return };
+
+    // The recomposite nudge is for the animated-maximize freeze only. Skip it
+    // while fullscreen — a height-1→height flash mid fullscreen transition is
+    // exactly the "webview freezes for ~0.5s" jitter.
+    if nudge && !fullscreen {
+        let _ = wv.set_size(tauri::Size::Logical(tauri::LogicalSize::new(w, (h - 1.0).max(1.0))));
+    }
+    let bounds = tauri::Rect {
+        position: tauri::Position::Logical(tauri::LogicalPosition::new(x, y)),
+        size: tauri::Size::Logical(tauri::LogicalSize::new(w, h)),
+    };
+    let _ = wv.set_bounds(bounds);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -90,26 +160,47 @@ pub fn run() {
                     let app_handle = _app.handle().clone();
                     main.on_window_event(move |event| {
                         if let tauri::WindowEvent::Resized(physical_size) = event {
-                            let state = app_handle.state::<BrowserState>();
-                            let insets = *state.content_insets.lock().unwrap_or_else(|e| e.into_inner());
-                            let Some((left, top, right, bottom)) = insets else { return };
-                            let label = state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                            let Some(label) = label else { return };
-                            let Some(wv) = commands::browser::find_tab_webview(&app_handle, &label) else { return };
-
+                            // Synchronous re-apply from THIS event's size — keeps
+                            // the child tracking the window smoothly during a drag.
                             let Some(win) = app_handle.get_window("main") else { return };
                             let scale = win.scale_factor().unwrap_or(1.0);
                             let win_w = physical_size.width as f64 / scale;
                             let win_h = physical_size.height as f64 / scale;
+                            apply_active_child_bounds(&app_handle, win_w, win_h, false);
 
-                            let bounds = tauri::Rect {
-                                position: tauri::Position::Logical(tauri::LogicalPosition::new(left, top)),
-                                size: tauri::Size::Logical(tauri::LogicalSize::new(
-                                    (win_w - left - right).max(1.0),
-                                    (win_h - top - bottom).max(1.0),
-                                )),
-                            };
-                            let _ = wv.set_bounds(bounds);
+                            // Settle-timer resync: the size above can be a
+                            // mid-animation value on an animated maximize, leaving
+                            // the child stuck. Re-read the settled size ~320ms later
+                            // (outlasts the Windows maximize animation) and re-apply,
+                            // forcing a recomposite only when actually maximized.
+                            // Coalesced so a drag burst spawns at most one timer.
+                            let state = app_handle.state::<BrowserState>();
+                            if !state.resync_pending.swap(true, Ordering::SeqCst) {
+                                let app2 = app_handle.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(std::time::Duration::from_millis(320));
+                                    let app3 = app2.clone();
+                                    let _ = app2.run_on_main_thread(move || {
+                                        let st = app3.state::<BrowserState>();
+                                        st.resync_pending.store(false, Ordering::SeqCst);
+                                        // Fullscreen bounds are owned by the sync
+                                        // resize handler (monitor-sized); a settle
+                                        // re-apply here just adds a mid-transition
+                                        // jump.
+                                        if st.fullscreen.load(Ordering::SeqCst) { return; }
+                                        let Some(win) = app3.get_window("main") else { return };
+                                        let Ok(sz) = win.inner_size() else { return };
+                                        let scale = win.scale_factor().unwrap_or(1.0);
+                                        let maximized = win.is_maximized().unwrap_or(false);
+                                        apply_active_child_bounds(
+                                            &app3,
+                                            sz.width as f64 / scale,
+                                            sz.height as f64 / scale,
+                                            maximized,
+                                        );
+                                    });
+                                });
+                            }
                         }
                     });
                 }
@@ -121,6 +212,9 @@ pub fn run() {
             user_agent: Mutex::new(None),
             webviews: Mutex::new(HashMap::new()),
             content_insets: Mutex::new(None),
+            resync_pending: AtomicBool::new(false),
+            fullscreen: AtomicBool::new(false),
+            preferred_dark: AtomicBool::new(true),
         })
         .invoke_handler(tauri::generate_handler![
             commands::browser::browser_create_tab,

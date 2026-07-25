@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Suspense, lazy } from "react";
 import {
-  Server, Bookmark, Clock, Activity, Code2, FileText, KeyRound, Binary,
+  Server, Bookmark, Clock, Activity, Code2, KeyRound, Binary,
   FlaskConical, RefreshCw, Globe, Monitor, Shield, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,6 @@ const BookmarksPanel = lazy(() => import("@/components/sidebar/BookmarksPanel"))
 const ApiTesterPanel = lazy(() => import("@/components/sidebar/ApiTesterPanel"));
 const HistoryPanel = lazy(() => import("@/components/sidebar/HistoryPanel").then(m => ({ default: m.HistoryPanel })));
 const NetworkPanel = lazy(() => import("@/components/panels/NetworkPanel").then(m => ({ default: m.NetworkPanel })));
-const NotesSidebarPanel = lazy(() => import("@/components/sidebar/NotesSidebarPanel").then(m => ({ default: m.NotesSidebarPanel })));
 const JwtDecoder = lazy(() => import("@/components/panels/JwtDecoder").then(m => ({ default: m.JwtDecoder })));
 const Base64Tool = lazy(() => import("@/components/panels/Base64Tool").then(m => ({ default: m.Base64Tool })));
 const InspectorPanel = lazy(() => import("@/components/panels/InspectorPanel").then(m => ({ default: m.InspectorPanel })));
@@ -33,7 +32,6 @@ const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
   { id: "headers",    Icon: Shield,       label: "Header Injection" },
   { id: "inspector",  Icon: FlaskConical, label: "Inspector" },
   { id: "api",        Icon: Code2,        label: "API Tester" },
-  { id: "notes",      Icon: FileText,     label: "Notes" },
   { id: "jwt",        Icon: KeyRound,     label: "JWT Decoder" },
   { id: "base64",     Icon: Binary,       label: "Base64" },
   { id: "ua",         Icon: Globe,        label: "User Agent" },
@@ -176,7 +174,7 @@ function LiveServersPanel() {
 
 function PanelSkeleton() {
   return (
-    <div className="animate-pulse p-4 space-y-3">
+    <div className="animate-pulse p-4 space-y-3 xevo-panel-enter">
       <div className="h-4 bg-[var(--color-hover)] rounded w-1/3" />
       <div className="h-4 bg-[var(--color-hover)] rounded w-2/3" />
       <div className="h-4 bg-[var(--color-hover)] rounded w-1/2" />
@@ -278,7 +276,7 @@ export function Sidebar() {
       </div>
 
       {/* Panel content */}
-      <div className="flex-1 overflow-y-auto">
+      <div key={activePanel} className="flex-1 overflow-y-auto xevo-panel-enter">
         <Suspense fallback={<PanelSkeleton />}>
           {activePanel === "servers" && <LiveServersPanel />}
           {activePanel === "bookmarks" && <BookmarksPanel />}
@@ -287,7 +285,6 @@ export function Sidebar() {
           {activePanel === "network" && <NetworkPanel key={activeTabId ?? "none"} />}
           {activePanel === "inspector" && <InspectorPanel />}
           {activePanel === "api" && <ApiTesterPanel />}
-          {activePanel === "notes" && <NotesSidebarPanel />}
           {activePanel === "jwt" && <JwtDecoder />}
           {activePanel === "base64" && <Base64Tool />}
           {activePanel === "ua" && <UserAgentPanel />}

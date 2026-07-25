@@ -26,7 +26,7 @@ function ToastItem({ toast }: { toast: Toast }) {
         background: c.bg,
         borderColor: c.border,
         color: c.fg,
-        animation: "toastIn 100ms cubic-bezier(0, 0, 0.2, 1)",
+        animation: "toastIn var(--duration-normal) var(--ease-out)",
       }}
     >
       <Icon size={14} className="flex-shrink-0" />

@@ -324,7 +324,7 @@ export function CommandPalette() {
           background: "var(--color-elevated)",
           borderColor: "var(--color-border)",
           boxShadow: "0 25px 50px rgba(0,0,0,0.8)",
-          animation: "paletteIn 80ms cubic-bezier(0, 0, 0.2, 1)",
+          animation: "paletteIn var(--duration-fast) var(--ease-out)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
