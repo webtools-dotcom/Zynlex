@@ -1,33 +1,32 @@
 @import "tailwindcss";
-@import "@tolipovjs/rich-text/styles.css";
 
 /* ── Custom dark variant (matches data-theme attribute) ─── */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 /* ── XEVO Design Tokens ────────────────────────────────── */
 @theme {
-  /* Surface layers */
-  --color-base:     #0a0a0b;
-  --color-surface:  #111113;
-  --color-elevated: #18181b;
-  --color-hover:    #1f1f23;
-  --color-active:   #27272a;
+  /* Surface layers — warm ivory (2b) */
+  --color-base:     #0b0b0a;
+  --color-surface:  #100f0d;
+  --color-elevated: #17150f;
+  --color-hover:    #211f18;
+  --color-active:   #26251f;
 
   /* Borders */
-  --color-border:        #27272a;
-  --color-border-subtle: #1f1f23;
+  --color-border:        #26251f;
+  --color-border-subtle: #1c1b16;
 
   /* Text */
-  --color-text-primary:   #fafafa;
-  --color-text-secondary: #d4d4d8;
-  --color-text-muted:     #a1a1aa;
-  --color-text-disabled:  #71717a;
-  --color-text-inverse:   #09090b;
+  --color-text-primary:   #e8e6e0;
+  --color-text-secondary: #b8b6ae;
+  --color-text-muted:     #8a887f;
+  --color-text-disabled:  #57564e;
+  --color-text-inverse:   #100f0d;
 
   /* Accent (interaction only) */
-  --color-accent:       #3b82f6;
-  --color-accent-hover: #60a5fa;
-  --color-accent-dim:   rgba(59, 130, 246, 0.12);
+  --color-accent:       #dcd3c4;
+  --color-accent-hover: #e8e0cf;
+  --color-accent-dim:   rgba(220, 211, 196, 0.1);
 
   /* Server liveness */
   --color-live:      #22c55e;
@@ -51,8 +50,9 @@
   --color-status-5xx: #c084fc;
 
   /* Typography */
-  --font-ui:   "Inter", "system-ui", sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --font-ui:      "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --font-mono:    "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --font-display: "Space Grotesk", "Inter", "system-ui", sans-serif;
 
   /* Type scale — rem, so root font-size drives density.
      NB: no "base" step — --color-base already claims that utility name. */
@@ -86,6 +86,14 @@
   --duration-slow:   150ms;
   --ease-out:  cubic-bezier(0, 0, 0.2, 1);
   --ease-snap: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Bare `transition-*` utilities (74 transition-colors sites and friends) read
+     their timing from these two. Overriding them here retimes every hover/focus
+     transition in the app at once — Tailwind's stock 150ms/ease-in-out is too
+     slow and too soft for pointer feedback. Per-site duration-* classes still
+     win where a surface needs something different. */
+  --default-transition-duration: var(--duration-fast);
+  --default-transition-timing-function: var(--ease-out);
 }
 
 /* ── shadcn/ui semantic token override ──────────────────── */
@@ -127,7 +135,7 @@
   --xevo-accent:        var(--color-accent);
   --xevo-accent-hover:  var(--color-accent-hover);
   --xevo-accent-dim:    var(--color-accent-dim);
-  --xevo-accent-border: rgba(59, 130, 246, 0.25);
+  --xevo-accent-border: rgba(220, 211, 196, 0.25);
   --xevo-success:       var(--color-live);
   --xevo-danger:        var(--color-dead);
   --xevo-warning:       var(--color-warn);
@@ -160,13 +168,13 @@
   --rte-input-bg: var(--color-surface);
   --rte-input-fg: var(--color-text-primary);
   --rte-input-border: var(--color-border);
-  --rte-input-focus: rgba(59, 130, 246, 0.25);
+  --rte-input-focus: rgba(220, 211, 196, 0.25);
   --rte-dropdown-bg: var(--color-elevated);
   --rte-dropdown-border: var(--color-border);
   --rte-dropdown-shadow: rgba(0, 0, 0, 0.4);
-  --rte-code-bg: rgba(255, 255, 255, 0.06);
+  --rte-code-bg: rgba(220, 211, 196, 0.06);
   --rte-code-fg: var(--color-text-muted);
-  --rte-quote-border: rgba(59, 130, 246, 0.25);
+  --rte-quote-border: rgba(220, 211, 196, 0.25);
   --rte-quote-fg: var(--color-text-muted);
   --rte-radius: var(--radius-md);
   --rte-radius-sm: var(--radius-md);
@@ -222,24 +230,25 @@ input, textarea, [contenteditable], .selectable {
 [data-theme="light"] {
   color-scheme: light;
 
-  --color-base:     #ffffff;
-  --color-surface:  #f8f8f8;
-  --color-elevated: #f0f0f0;
-  --color-hover:    #e8e8e8;
-  --color-active:   #d4d4d8;
+  /* Warm paper — light counterpart of the ivory dark theme */
+  --color-base:     #faf8f3;
+  --color-surface:  #f3f0e8;
+  --color-elevated: #ece7db;
+  --color-hover:    #e3ddcd;
+  --color-active:   #d6cdb8;
 
-  --color-border:        #d4d4d8;
-  --color-border-subtle: #e4e4e7;
+  --color-border:        #d6cdb8;
+  --color-border-subtle: #e3ddcd;
 
-  --color-text-primary:   #18181b;
-  --color-text-secondary: #3f3f46;
-  --color-text-muted:     #52525b;
-  --color-text-disabled:  #71717a;
-  --color-text-inverse:   #fafafa;
+  --color-text-primary:   #26251f;
+  --color-text-secondary: #4a473d;
+  --color-text-muted:     #6b675a;
+  --color-text-disabled:  #8a887f;
+  --color-text-inverse:   #faf8f3;
 
-  --color-accent:       #3b82f6;
-  --color-accent-hover: #2563eb;
-  --color-accent-dim:   rgba(59, 130, 246, 0.08);
+  --color-accent:       #a89878;
+  --color-accent-hover: #8f8064;
+  --color-accent-dim:   rgba(168, 152, 120, 0.1);
 
   --color-live:      #16a34a;
   --color-dead:      #dc2626;
@@ -274,7 +283,7 @@ input, textarea, [contenteditable], .selectable {
   --xevo-accent:        var(--color-accent);
   --xevo-accent-hover:  var(--color-accent-hover);
   --xevo-accent-dim:    var(--color-accent-dim);
-  --xevo-accent-border: rgba(59, 130, 246, 0.2);
+  --xevo-accent-border: rgba(168, 152, 120, 0.2);
   --xevo-success:       var(--color-live);
   --xevo-danger:        var(--color-dead);
   --xevo-warning:       var(--color-warn);
@@ -306,13 +315,13 @@ input, textarea, [contenteditable], .selectable {
   --rte-input-bg: var(--color-surface);
   --rte-input-fg: var(--color-text-primary);
   --rte-input-border: var(--color-border);
-  --rte-input-focus: rgba(59, 130, 246, 0.2);
+  --rte-input-focus: rgba(168, 152, 120, 0.2);
   --rte-dropdown-bg: var(--color-elevated);
   --rte-dropdown-border: var(--color-border);
   --rte-dropdown-shadow: rgba(0, 0, 0, 0.1);
   --rte-code-bg: rgba(0, 0, 0, 0.04);
   --rte-code-fg: var(--color-text-muted);
-  --rte-quote-border: rgba(59, 130, 246, 0.2);
+  --rte-quote-border: rgba(168, 152, 120, 0.2);
   --rte-quote-fg: var(--color-text-muted);
 }
 
@@ -322,7 +331,7 @@ input, textarea, [contenteditable], .selectable {
 }
 
 [data-theme="light"] ::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
+  background: #d6cdb8;
 }
 
 /* ── Focus styles ──────────────────────────────────────────── */
@@ -339,8 +348,8 @@ input, textarea, [contenteditable], .selectable {
 /* ── Scrollbar ────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.35); }
+::-webkit-scrollbar-thumb { background: rgba(220,211,196,0.22); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(220,211,196,0.35); }
 
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
@@ -364,6 +373,20 @@ input, textarea, [contenteditable], .selectable {
 }
 .xevo-settings-panel {
   animation: xevo-settings-slide-in var(--duration-normal) var(--ease-out);
+}
+
+/* ── Sidebar panel switch ─────────────────────────────────
+   Fade-in only — the outgoing panel is removed instantly. A cross-fade would
+   add ~120ms of dead time to a high-frequency action; this adds none, because
+   nothing blocks the new content appearing.
+   opacity/transform only: both are composited, neither triggers layout, so
+   this can never perturb the child webview's bounds. */
+@keyframes xevo-panel-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.xevo-panel-enter {
+  animation: xevo-panel-in var(--duration-normal) var(--ease-out);
 }
 
 /* ── Command palette open ───────────────────────────────── */

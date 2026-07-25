@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useState, useRef, useEffect } from "react";
-import { Search, Server, Bookmark, ArrowRight } from "lucide-react";
+import { Bookmark, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useServersStore } from "@/stores/servers";
 import { useBookmarksStore } from "@/stores/bookmarks";
@@ -86,151 +86,103 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
   }
 
   return (
-    // FIX: true flex centering instead of paddingTop:40vh + translateY(-50%).
-    // The old approach left a large dead zone above sparse content. This
-    // centers the whole block in whatever height is actually available,
-    // and still scrolls correctly once content grows past viewport height.
-    <div className="w-full h-full overflow-y-auto pointer-events-auto flex flex-col items-center justify-center">
-      <div className="w-full max-w-[720px] mx-auto px-6 py-16">
-        {/* ── Hero ──────────────────────────────────────────────── */}
-        <div className="text-center mb-14">
-          <h1
-            className="text-2xl font-semibold tracking-tight text-[var(--color-text-primary)] mb-6"
-            style={{ fontFamily: "var(--font-ui)" }}
-          >
-            Your stack, at a glance.
-          </h1>
-
-          {/*
-            FIX: removed "max-w-xl mx-auto" (576px, centered) and use
-            "w-full" instead. The search bar now shares the exact same
-            left/right edges as the Live Servers / Bookmarks sections
-            below it (both live inside the same max-w-[720px] column).
-            That mismatch was the root cause of the "not symmetrical"
-            look — the search bar was narrower and offset from the
-            section content beneath it.
-          */}
-          <form
-            onSubmit={submitSearch}
-            className={cn(
-              "flex items-center gap-2 h-11 px-3 w-full",
-              "rounded-[4px] border transition-all duration-[120ms]",
-              "border-[var(--color-border)] bg-[var(--color-elevated)]",
-              "focus-within:border-[rgba(59,130,246,0.25)]"
-            )}
-          >
-            <Search size={14} className="text-[var(--color-text-disabled)] flex-shrink-0" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search the web or enter URL"
-              spellCheck={false}
-              autoCorrect="off"
-              autoCapitalize="off"
-              className="flex-1 bg-transparent outline-none text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
-            />
-            {query && (
-              <button
-                type="submit"
-                className="text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)]"
-                title="Go"
-                aria-label="Go"
-              >
-                <ArrowRight size={14} />
-              </button>
-            )}
-          </form>
-          <p className="text-xs text-[var(--color-text-disabled)] mt-2">
-            <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded text-micro font-mono">Ctrl+L</kbd>{" "}
-            focuses the address bar
-          </p>
+    <div className="w-full h-full overflow-y-auto pointer-events-auto">
+      <div className="min-h-full flex flex-col items-center px-10 pt-24 pb-10">
+        {/* ── Eyebrow ────────────────────────────────────────────── */}
+        <div className="font-mono text-[.75rem] tracking-[0.25em] text-[var(--color-text-muted)] mb-5">
+          <span className="text-[var(--color-accent)]">▚</span> XEVO / LOCALHOST
         </div>
 
-        {/* ── Live Servers ──────────────────────────────────────── */}
-        <section className="mb-12 relative">
-          {/*
-            FIX: removed "-z-10". A negative z-index with no stacking
-            context established between this element and the page root
-            was rendering the gradient behind the app's own background
-            layer — invisible no matter the opacity. Plain DOM order
-            (gradient div first, content after) already paints this
-            behind the header/cards without needing z-index at all.
-          */}
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              background: "radial-gradient(ellipse at center, var(--color-live-glow) 0%, transparent 70%)",
-              opacity: 0.15,
-              animation: "ambientPulse 3s ease-in-out infinite",
-            }}
-          />
+        {/* ── Heading ────────────────────────────────────────────── */}
+        <h1
+          className="text-[2.875rem] leading-none font-semibold text-center text-[var(--color-text-primary)] mb-1"
+          style={{ fontFamily: "var(--font-display)", letterSpacing: "-1.2px" }}
+        >
+          Your stack, at a glance.
+        </h1>
 
-          <div className="flex items-center justify-between mb-3 relative">
-            <div className="flex items-center gap-1.5">
-              <Server size={12} className="text-[var(--color-text-disabled)]" />
-              <h2 className="text-xs font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
-                Live Servers
-              </h2>
-            </div>
-            {liveServers.length > 0 && (
-              <button
-                onClick={() => setActivePanel("servers")}
-                className="text-xs text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
-              >
-                View all
-              </button>
-            )}
+        {/* ── Subtitle ───────────────────────────────────────────── */}
+        <p className="font-mono text-[.8125rem] text-[var(--color-text-disabled)] mb-10">
+          // everything running on this machine, one keystroke away
+        </p>
+
+        {/* ── Command bar ────────────────────────────────────────── */}
+        <form
+          onSubmit={submitSearch}
+          className="w-full max-w-[620px] h-[58px] flex items-center gap-3.5 pl-5 pr-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-elevated)] transition-colors duration-[120ms] focus-within:border-[var(--color-accent)]"
+        >
+          <span className="font-mono text-[1rem] font-semibold text-[var(--color-accent)] flex-shrink-0">
+            ›
+          </span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search the web or enter URL"
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            className="flex-1 bg-transparent outline-none font-mono text-[.9375rem] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
+          />
+          <kbd className="font-mono text-[.6875rem] text-[var(--color-text-muted)] bg-[var(--color-hover)] border border-[var(--color-border)] px-2.5 py-2 rounded-md">
+            Ctrl+L
+          </kbd>
+        </form>
+
+        {/* ── Live Servers ──────────────────────────────────────── */}
+        <section className="w-full max-w-[720px] mt-14">
+          <div className="flex items-center gap-2.5 mb-3.5">
+            <span className="font-mono text-[.6875rem] font-semibold tracking-[0.15em] text-[var(--color-text-muted)]">
+              LIVE SERVERS
+            </span>
+            <span className="h-px flex-1 bg-[var(--color-border-subtle)]" />
+            <span className="font-mono text-[.6875rem] text-[var(--color-text-disabled)]">
+              {liveServers.length > 0
+                ? `${liveServers.length} running`
+                : "watching :3000 :5173 :8080 :4200"}
+            </span>
           </div>
 
           {liveServers.length === 0 ? (
-            <div className="py-4 text-center relative">
-              <p className="text-sm text-[var(--color-text-muted)] italic">
-                No servers detected. Start your dev server and XEVO will find it.
-              </p>
+            <div className="relative text-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-accent-dim)]" style={{ padding: "42px 32px" }}>
+              <span className="absolute top-2.5 left-3 font-mono text-xs text-[var(--color-border)]">┌</span>
+              <span className="absolute top-2.5 right-3 font-mono text-xs text-[var(--color-border)]">┐</span>
+              <span className="absolute bottom-2.5 left-3 font-mono text-xs text-[var(--color-border)]">└</span>
+              <span className="absolute bottom-2.5 right-3 font-mono text-xs text-[var(--color-border)]">┘</span>
+              <div className="text-[1rem] text-[var(--color-text-secondary)] mb-1.5" style={{ fontFamily: "var(--font-display)" }}>
+                No dev servers detected on localhost.
+              </div>
+              <div className="font-mono text-[.8125rem] text-[var(--color-text-disabled)]">
+                Start one and it appears here — <span className="text-[var(--color-accent)]">npm run dev</span> ⏎
+              </div>
             </div>
           ) : (
-            <div className="space-y-1 relative">
+            <div className="grid grid-cols-2 gap-3">
               {liveServers.map((server) => (
                 <button
                   key={server.port}
                   onClick={() => openServer(server.port, server.protocol)}
-                  className={cn(
-                    // FIX: added "group" — the "Open →" label below uses
-                    // group-hover:opacity-100, which silently does nothing
-                    // without an ancestor literally classed "group".
-                    "group w-full flex items-center gap-3 h-16 px-4 text-left",
-                    "rounded-[4px] border border-[var(--color-border)] bg-[var(--color-elevated)]",
-                    "hover:bg-[var(--color-hover)] transition-colors duration-0"
-                  )}
+                  className="text-left rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3.5 cursor-pointer transition-colors duration-75 hover:border-[var(--color-text-disabled)]"
                 >
-                  {/* Left: liveness dot + port */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center justify-end">
                     <span
-                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      className="w-1.5 h-1.5 rounded-full"
                       style={{
-                        backgroundColor: server.isAlive
+                        background: server.isAlive
                           ? "var(--color-live)"
-                          : "var(--color-text-disabled)",
-                        boxShadow: server.isAlive
-                          ? "0 0 6px var(--color-live-glow)"
-                          : "none",
+                          : "var(--color-dead)",
                       }}
                     />
-                    <span className="text-xs font-mono text-[var(--color-text-primary)] tabular-nums">
-                      :{server.port}
-                    </span>
                   </div>
-
-                  {/* Right: name + Open link */}
-                  <div className="flex-1 min-w-0 flex items-center justify-between">
-                    <span className="text-xs text-[var(--color-text-muted)] truncate">
-                      {server.label ?? server.title ?? `${server.protocol}://localhost:${server.port}`}
-                    </span>
-                    <span className="text-micro text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                      Open →
-                    </span>
+                  <div className="mt-2.5 text-[.9rem] font-semibold text-[var(--color-text-primary)]">
+                    {server.label ?? server.title ?? `localhost:${server.port}`}
+                  </div>
+                  <div className="font-mono text-[.78rem] text-[var(--color-text-muted)]">
+                    localhost:{server.port}
+                  </div>
+                  <div className="mt-2.5 flex justify-end font-mono text-[.72rem] text-[var(--color-text-muted)]">
+                    Open ↗
                   </div>
                 </button>
               ))}
@@ -240,19 +192,18 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
 
         {/* ── Bookmarks ─────────────────────────────────────────── */}
         {wsBookmarks.length > 0 && (
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <Bookmark size={12} className="text-[var(--color-text-disabled)]" />
-                <h2 className="text-xs font-medium tracking-[0.08em] text-[var(--color-text-muted)] uppercase">
-                  Bookmarks
-                </h2>
-              </div>
+          <section className="w-full max-w-[720px] mt-8">
+            <div className="flex items-center gap-2.5 mb-3.5">
+              <span className="flex items-center gap-1.5 font-mono text-[.6875rem] font-semibold tracking-[0.15em] text-[var(--color-text-muted)]">
+                <Bookmark size={11} className="text-[var(--color-text-disabled)]" />
+                BOOKMARKS
+              </span>
+              <span className="h-px flex-1 bg-[var(--color-border-subtle)]" />
               <button
                 onClick={() => setActivePanel("bookmarks")}
-                className="text-xs text-[var(--color-accent)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
+                className="font-mono text-[.6875rem] text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] transition-colors"
               >
-                View all
+                view all
               </button>
             </div>
 
@@ -262,7 +213,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
                   key={bookmark.id}
                   onClick={() => openBookmark(bookmark.url)}
                   className={cn(
-                    "w-full flex items-center gap-2 px-3 h-8 rounded-[4px] text-left",
+                    "w-full flex items-center gap-2 px-3 h-8 rounded-md text-left",
                     "hover:bg-[var(--color-hover)] transition-colors duration-0"
                   )}
                 >

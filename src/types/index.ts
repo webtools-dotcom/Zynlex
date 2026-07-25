@@ -64,7 +64,6 @@ export type PanelId =
   | "downloads"
   | "network"
   | "api"
-  | "notes"
   | "jwt"
   | "base64"
   | "headers"
@@ -146,7 +145,7 @@ export interface ApiHistoryEntry {
 
 // ─── Overlay Panel ────────────────────────────────────────────────
 
-export type OverlayPanelId = "none" | "api-tester" | "notes-notepad";
+export type OverlayPanelId = "none" | "api-tester";
 
 // ─── History ──────────────────────────────────────────────────────
 
@@ -157,21 +156,6 @@ export interface HistoryEntry {
   favicon: string | null;
   timestamp: number;
   workspaceId: string;
-}
-
-// ─── Notes ────────────────────────────────────────────────────────
-
-export type NoteColor = "" | "red" | "orange" | "yellow" | "green" | "blue" | "purple";
-
-export interface Note {
-  id: string;
-  workspaceId: string;
-  title: string;
-  content: string;
-  isPinned: boolean;
-  color: NoteColor;
-  createdAt: number;
-  updatedAt: number;
 }
 
 // ─── Inspector ────────────────────────────────────────────────

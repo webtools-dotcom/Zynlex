@@ -715,6 +715,22 @@ export function useWebviewBridge(
     };
   }, [contentAreaRef, syncBounds]);
 
+  // ── Maximize/restore: drop the bounds guard so the fallback fires ──
+  // The Rust on_window_event resync is the primary fix for the maximize-freeze
+  // (child webviews don't auto-resize with the parent). This is the JS fallback:
+  // when maximize state flips, clear lastBoundsRef so the <1px guard in
+  // syncBounds can't suppress the re-push, then force one sync after layout
+  // settles.
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const onMaxChanged = () => {
+      lastBoundsRef.current = null;
+      setTimeout(() => syncBoundsRef.current(), 60);
+    };
+    window.addEventListener("xevo:maximize-changed", onMaxChanged);
+    return () => window.removeEventListener("xevo:maximize-changed", onMaxChanged);
+  }, []);
+
   // Window move/resize following is GONE, and deliberately so.
   //
   // Tab webviews used to be top-level *owner* windows positioned in screen
@@ -878,6 +894,10 @@ export function useWebviewBridge(
   }, [overlayPanel, syncBounds]);
 
   // ── Sync bounds when overlay is drag-resized ─────────────────────
+  // rAF-throttled, not debounced — same reasoning as the ResizeObserver sync
+  // above: a setTimeout debounce resets on every fire during a continuous
+  // drag and never actually runs until the drag stops, so the webview visibly
+  // lags/snaps under the panel instead of tracking it live.
   const overlayHeight = useUIStore((s) => s.overlayHeight);
   useEffect(() => {
     if (!IS_TAURI) return;
@@ -887,8 +907,8 @@ export function useWebviewBridge(
     const ws = wsState.workspaces[wsState.activeWorkspaceId];
     const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
     if (!tab?.url) return;
-    const timer = setTimeout(() => syncBounds(), 30);
-    return () => clearTimeout(timer);
+    const rafId = requestAnimationFrame(() => syncBounds());
+    return () => cancelAnimationFrame(rafId);
   }, [overlayHeight, syncBounds]);
 
   // ── Sync theme to all browser webviews ───────────────────────────

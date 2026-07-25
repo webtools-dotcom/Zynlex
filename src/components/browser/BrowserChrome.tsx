@@ -2,7 +2,6 @@ import { ContentArea } from "./ContentArea";
 import { FindBar } from "./FindBar";
 import { OverlayPanel } from "@/components/overlay/OverlayPanel";
 import { ApiTester } from "@/components/panels/ApiTester";
-import { NotesNotepad } from "@/components/panels/NotesNotepad";
 import { useUIStore } from "@/stores/ui";
 import { useMemo } from "react";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
@@ -20,15 +19,10 @@ export function BrowserChrome({ onBridgeReady }: BrowserChromeProps) {
     () => <ApiTester embedded onClose={closeOverlay} />,
     [closeOverlay],
   );
-  const notesContent = useMemo(() => <NotesNotepad />, []);
-
   return (
     <div className="relative flex-1 overflow-hidden">
       <ContentArea onBridgeReady={onBridgeReady} />
-      <OverlayPanel
-        apiTesterContent={apiTesterContent}
-        notesContent={notesContent}
-      />
+      <OverlayPanel apiTesterContent={apiTesterContent} />
       <FindBar />
     </div>
   );

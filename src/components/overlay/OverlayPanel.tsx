@@ -4,10 +4,9 @@ import { useUIStore } from "@/stores/ui";
 
 interface OverlayPanelProps {
   apiTesterContent?: React.ReactNode;
-  notesContent?: React.ReactNode;
 }
 
-export function OverlayPanel({ apiTesterContent, notesContent }: OverlayPanelProps) {
+export function OverlayPanel({ apiTesterContent }: OverlayPanelProps) {
   const overlayPanel = useUIStore((s) => s.overlayPanel);
   const overlayHeight = useUIStore((s) => s.overlayHeight);
   const closeOverlay = useUIStore((s) => s.closeOverlay);
@@ -90,7 +89,7 @@ export function OverlayPanel({ apiTesterContent, notesContent }: OverlayPanelPro
         style={{ borderColor: "var(--color-border-subtle)" }}
       >
         <span className="text-micro font-semibold text-[var(--color-text-muted)]">
-          {overlayPanel === "api-tester" ? "API Tester" : "Notes"}
+          API Tester
         </span>
         <button
           onClick={closeOverlay}
@@ -105,7 +104,6 @@ export function OverlayPanel({ apiTesterContent, notesContent }: OverlayPanelPro
       {/* Panel content */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
         {overlayPanel === "api-tester" && apiTesterContent}
-        {overlayPanel === "notes-notepad" && notesContent}
       </div>
 
       {/* Drag handle */}
