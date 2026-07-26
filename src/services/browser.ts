@@ -340,6 +340,21 @@ export async function resizeViewport(
   await invoke<void>("resize_viewport", { label, x, y, width, height });
 }
 
+export async function emulateViewport(
+  label: string,
+  opts: {
+    width: number;
+    height: number;
+    deviceScaleFactor: number;
+    mobile: boolean;
+    touch: boolean;
+    scale: number;
+    userAgent?: string;
+  },
+): Promise<void> {
+  await invoke<void>("emulate_viewport", { label, ...opts });
+}
+
 export async function showViewport(label: string): Promise<void> {
   await invoke<void>("show_viewport", { label });
 }

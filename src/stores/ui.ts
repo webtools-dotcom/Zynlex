@@ -43,7 +43,10 @@ interface UIStore {
   viewportMode: boolean;
   viewports: Viewport[];
   selectedViewportId: string | null;
-  viewportZoom: number;
+  /** "focus" = only the selected device, "overview" = all of them side by side. */
+  viewportLayout: "focus" | "overview";
+  /** "fit" = auto-scale so every viewport fits the surface without scrolling. */
+  viewportZoom: number | "fit";
   syncScroll: boolean;
   syncClick: boolean;
   syncInput: boolean;
@@ -80,7 +83,8 @@ interface UIStore {
   addViewport: (preset: { label: string; width: number; height: number; category: "mobile" | "tablet" | "laptop"; deviceScaleFactor: number; mobile: boolean; touch: boolean; userAgent?: string }) => void;
   removeViewport: (id: string) => void;
   selectViewport: (id: string | null) => void;
-  setViewportZoom: (zoom: number) => void;
+  setViewportLayout: (layout: "focus" | "overview") => void;
+  setViewportZoom: (zoom: number | "fit") => void;
   rotateViewport: (id: string) => void;
   resizeViewportDimensions: (id: string, width: number, height: number) => void;
   toggleSyncScroll: () => void;
@@ -112,7 +116,8 @@ export const useUIStore = create<UIStore>()(
     viewportMode: false,
     viewports: [],
     selectedViewportId: null,
-    viewportZoom: 0.75,
+    viewportLayout: "focus",
+    viewportZoom: "fit",
     syncScroll: true,
     syncClick: false,
     syncInput: false,
@@ -170,21 +175,24 @@ export const useUIStore = create<UIStore>()(
     }),
 
     enterViewportMode: () => set((s) => { s.viewportMode = true; }),
-    exitViewportMode: () => set((s) => {
-      s.viewportMode = false;
-      s.viewports = [];
-      s.selectedViewportId = null;
-    }),
+    // Keeps the configured devices — leaving viewport mode used to wipe the
+    // whole list, so an accidental toggle threw away your setup and you had to
+    // re-add every preset. The native webviews are still torn down (and rebuilt
+    // on re-entry) by ViewportSurface's unmount cleanup.
+    exitViewportMode: () => set((s) => { s.viewportMode = false; }),
     addViewport: (preset) => set((s) => {
       const id = `vp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      // Tablets are specified portrait but are overwhelmingly used landscape,
+      // and a 924×1480 portrait frame scales down to an unusable sliver.
+      const landscape = preset.category === "tablet";
       s.viewports.push({
         id,
         url: "",
-        width: preset.width,
-        height: preset.height,
+        width: landscape ? preset.height : preset.width,
+        height: landscape ? preset.width : preset.height,
         label: preset.label,
         deviceCategory: preset.category,
-        orientation: "portrait",
+        orientation: landscape ? "landscape" : "portrait",
         deviceScaleFactor: preset.deviceScaleFactor,
         mobile: preset.mobile,
         touch: preset.touch,
@@ -199,7 +207,10 @@ export const useUIStore = create<UIStore>()(
       }
     }),
     selectViewport: (id) => set((s) => { s.selectedViewportId = id; }),
-    setViewportZoom: (zoom) => set((s) => { s.viewportZoom = Math.max(0.25, Math.min(1, zoom)); }),
+    setViewportLayout: (layout) => set((s) => { s.viewportLayout = layout; }),
+    setViewportZoom: (zoom) => set((s) => {
+      s.viewportZoom = zoom === "fit" ? "fit" : Math.max(0.25, Math.min(1, zoom));
+    }),
     rotateViewport: (id) => set((s) => {
       const vp = s.viewports.find((v) => v.id === id);
       if (vp) {

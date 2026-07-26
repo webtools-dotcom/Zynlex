@@ -447,6 +447,37 @@ fn hide_all_browser_webviews_except(app: &AppHandle, state: &crate::BrowserState
     }
 }
 
+/// Fullscreen belongs to exactly one tab at a time.
+///
+/// Returns `true` if `keep` *is* the fullscreen tab — the caller should leave its
+/// bounds alone, since the fullscreen handler owns them. Otherwise leaves
+/// fullscreen (clearing the flag and dropping the window out of OS fullscreen)
+/// and returns `false`, so the caller proceeds normally.
+///
+/// Pass `keep: None` to unconditionally exit — used when the fullscreen tab is
+/// being closed, which would otherwise strand the flag set forever (its
+/// `ContainsFullScreenElementChanged` handler dies with the webview, so nothing
+/// would ever clear it and every later show/bounds call would no-op).
+fn exit_fullscreen_unless(
+    app: &AppHandle,
+    state: &crate::BrowserState,
+    keep: Option<&str>,
+) -> bool {
+    let mut fs = state.fullscreen_tab.lock().unwrap_or_else(|e| e.into_inner());
+    match fs.as_deref() {
+        None => false,
+        Some(current) if Some(current) == keep => true,
+        Some(_) => {
+            *fs = None;
+            drop(fs);
+            if let Some(main) = app.get_window("main") {
+                let _ = main.set_fullscreen(false);
+            }
+            false
+        }
+    }
+}
+
 /// Poll until no webview is registered under `label`, in either Tauri's own
 /// registry or our persistent handle map. `destroy()` on Windows is async — a
 /// window can still be found for a few ms after we call it — so a caller that
@@ -742,6 +773,12 @@ pub async fn browser_close_tab(
     let label = webview_label_for_tab(&tab_id);
     let exists = app.get_webview(&label).is_some();
     xevo_log!("[XEVO-LIFECYCLE] browser_close_tab — label={} tab_id={} exists_before={}", label, tab_id, exists);
+
+    // If the tab being closed owns fullscreen, leave fullscreen now. Its
+    // ContainsFullScreenElementChanged handler dies with the webview, so nothing
+    // else would ever clear the flag — and while set, every later show/bounds
+    // call no-ops, i.e. tab switching stops working permanently.
+    exit_fullscreen_unless(&app, &state, None);
     // Remove from our persistent map FIRST — this is the authoritative source
     // of strong references. The handle will drop after removal, allowing the
     // OS window to be destroyed naturally (confirming the close on Rust's side).
@@ -803,14 +840,22 @@ pub async fn browser_set_bounds(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    // While a page is fullscreen (video), the child covers the whole window and
-    // is owned by the fullscreen handler + native resize path. Ignore JS-driven
-    // bounds pushes (from the ResizeObserver) so they can't shrink it back to the
-    // inset content area.
-    if state.fullscreen.load(Ordering::SeqCst) {
+    let label = webview_label_for_tab(&tab_id);
+
+    // While *this* tab is fullscreen (video) the child covers the whole window
+    // and is owned by the fullscreen handler + native resize path, so ignore
+    // JS-driven bounds pushes (from the ResizeObserver) that would shrink it back
+    // to the inset content area. A push for any other tab is fine — unlike
+    // browser_show_tab, a resize must not kick the user out of fullscreen.
+    if state
+        .fullscreen_tab
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_deref()
+        == Some(label.as_str())
+    {
         return Ok(());
     }
-    let label = webview_label_for_tab(&tab_id);
     xevo_log!("[XEVO-BOUNDS] browser_set_bounds called — label={} x={} y={} w={} h={}", label, x, y, width, height);
     // Try Tauri's registry first, then fallback to our persistent handle map
     let wv = find_tab_webview(&app, &label);
@@ -1211,12 +1256,17 @@ pub async fn browser_show_tab(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    // Don't reposition/resize into the inset content area while fullscreen —
-    // the fullscreen handler owns the child's bounds until fullscreen exits.
-    if state.fullscreen.load(Ordering::SeqCst) {
+    let label = webview_label_for_tab(&tab_id);
+
+    // Fullscreen is owned by one tab. Showing *that* tab means leaving its
+    // bounds alone (the fullscreen handler owns them). Showing a *different*
+    // tab means leaving fullscreen first — same as Chrome/Edge, where switching
+    // tabs exits fullscreen — otherwise this returned early and the new tab
+    // never appeared at all.
+    if exit_fullscreen_unless(&app, &state, Some(&label)) {
         return Ok(());
     }
-    let label = webview_label_for_tab(&tab_id);
+
     xevo_log!("[XEVO-BOUNDS] browser_show_tab called — label={}", label);
     // Try Tauri's registry first, then fallback to our persistent handle map
     let wv = find_tab_webview(&app, &label);
@@ -1225,10 +1275,15 @@ pub async fn browser_show_tab(
             .map_err(|e| format!("failed to set position: {e}"))?;
         wv.set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))))
             .map_err(|e| format!("failed to set size: {e}"))?;
+        // Hide every other browser webview — authoritative, same as
+        // browser_create_tab. Without this, `show` trusted the frontend to have
+        // hidden the outgoing tab, so any missed or out-of-order hide left the
+        // old page rendered over the new one ("tab switches, webview doesn't").
+        // Hiding before show avoids a frame where both are visible.
+        hide_all_browser_webviews_except(&app, &state, &label);
         wv.show().map_err(|e| format!("failed to show tab: {e}"))?;
-        // Restore active_tab_label after showing — browser_hide_tab may have
-        // cleared it, which causes the Focused(true) restore handler in lib.rs
-        // to skip showing the webview on minimize-restore.
+        // browser_hide_tab clears active_tab_label when it hides the tracked
+        // webview; the native resize path reads it to find the child to resize.
         *state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner()) = Some(label.clone());
         xevo_log!("[XEVO-BOUNDS] browser_show_tab — restored active_tab_label to {}", label);
     } else {
@@ -1744,12 +1799,18 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             // the JS bounds-sync). On exit: reverse it.
             let app_fs = app.clone();
             let core_fs = core.clone();
+            let label_fs = webview_label_for_tab(&tab_id);
             let fs_handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(move |_sender, _args| {
                 let mut is_fs = windows_core::BOOL(0);
                 let _ = core_fs.ContainsFullScreenElement(&mut is_fs);
                 let entering = is_fs.as_bool();
                 let state = app_fs.state::<crate::BrowserState>();
-                state.fullscreen.store(entering, Ordering::SeqCst);
+                // Record *which* tab owns fullscreen, so switching to another tab
+                // or closing this one can clear it — a global flag stayed stuck.
+                {
+                    let mut fs = state.fullscreen_tab.lock().unwrap_or_else(|e| e.into_inner());
+                    *fs = if entering { Some(label_fs.clone()) } else { None };
+                }
                 if let Some(main) = app_fs.get_window("main") {
                     let _ = main.set_fullscreen(entering);
                     if let Ok(sz) = main.inner_size() {
@@ -2355,14 +2416,107 @@ pub async fn resize_viewport(
     height: f64,
 ) -> Result<(), String> {
     if let Some(webview) = find_tab_webview(&app, &label) {
-        webview
-            .set_position(Position::Logical(LogicalPosition::new(x, y)))
-            .map_err(|e| e.to_string())?;
-        webview
-            .set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))))
-            .map_err(|e| e.to_string())?;
+        // One set_bounds call, same reason as create_viewport: set_position +
+        // set_size are two separate wry event-loop messages, so the viewport
+        // visibly moved on one frame and resized on the next.
+        let bounds = tauri::Rect {
+            position: Position::Logical(LogicalPosition::new(x, y)),
+            size: Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),
+        };
+        webview.set_bounds(bounds).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Emulate a device in a viewport webview: CDP `Emulation.*` for the device
+/// characteristics, `set_zoom` for the on-screen scale.
+///
+/// The split is deliberate. Zoom alone (the old approach) squeezes the CSS width
+/// but leaves `devicePixelRatio` at the monitor's, reports no touch and keeps the
+/// desktop UA, so a "phone" got desktop layouts and 1x images — that's what CDP
+/// fixes. But CDP's own `scale` field is documented as applying to the *resulting
+/// view image*; a live WebView2 controller composites normally and ignores it, so
+/// using it for display left the page rendering at full width and overflowing its
+/// card by exactly 1/scale. `set_zoom` is the only thing that scales live output.
+///
+/// The two agree rather than fight: bounds are `preset × scale`, so the CSS width
+/// the page sees is `bounds / zoom` = `preset`, the same value the metrics
+/// override pins. Do not pass `scale` to setDeviceMetricsOverride.
+#[tauri::command]
+pub async fn emulate_viewport(
+    app: AppHandle,
+    label: String,
+    width: u32,
+    height: u32,
+    device_scale_factor: f64,
+    mobile: bool,
+    touch: bool,
+    scale: f64,
+    user_agent: Option<String>,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let wv = match find_tab_webview(&app, &label) {
+            Some(wv) => wv,
+            None => return Ok(()),
+        };
+        // Display scale. Must be the zoom factor, not CDP's `scale` — see above.
+        wv.set_zoom(scale.clamp(0.1, 1.0))
+            .map_err(|e| format!("emulate_viewport zoom failed: {e}"))?;
+
+        wv.with_webview(move |platform| {
+            #[cfg(windows)]
+            unsafe {
+                use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
+                use windows_core::HSTRING;
+                let core = match platform.controller().CoreWebView2() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        xevo_log!("[xevo] emulate_viewport: CoreWebView2 unavailable: {e:?}");
+                        return;
+                    }
+                };
+
+                let call = |method: &str, params: String| {
+                    let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+                        |_r: windows_core::Result<()>, _json: String| -> windows_core::Result<()> {
+                            Ok(())
+                        },
+                    ));
+                    let _ = core.CallDevToolsProtocolMethod(
+                        &HSTRING::from(method),
+                        &HSTRING::from(params),
+                        &handler,
+                    );
+                };
+
+                call(
+                    "Emulation.setDeviceMetricsOverride",
+                    format!(
+                        r#"{{"width":{width},"height":{height},"deviceScaleFactor":{dsf},"mobile":{mobile}}}"#,
+                        dsf = device_scale_factor,
+                    ),
+                );
+                call(
+                    "Emulation.setTouchEmulationEnabled",
+                    format!(r#"{{"enabled":{touch},"maxTouchPoints":{}}}"#, if touch { 5 } else { 0 }),
+                );
+                if let Some(ua) = &user_agent {
+                    call(
+                        "Emulation.setUserAgentOverride",
+                        format!(r#"{{"userAgent":{}}}"#, serde_json::to_string(ua).unwrap_or_default()),
+                    );
+                }
+            }
+        })
+        .map_err(|e| format!("emulate_viewport failed: {e}"))?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, label, width, height, device_scale_factor, mobile, touch, scale, user_agent);
+        Err("Viewport emulation is only supported on Windows".to_string())
+    }
 }
 
 /// Show a viewport webview

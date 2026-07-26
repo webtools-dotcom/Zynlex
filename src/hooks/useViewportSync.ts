@@ -15,12 +15,13 @@ function escapeJsStr(s: string): string {
 
 export function useViewportSync() {
   const viewports = useUIStore((s) => s.viewports);
+  const viewportMode = useUIStore((s) => s.viewportMode);
   const syncScroll = useUIStore((s) => s.syncScroll);
   const syncClick = useUIStore((s) => s.syncClick);
   const syncInput = useUIStore((s) => s.syncInput);
 
   useEffect(() => {
-    if (!syncScroll) return;
+    if (!viewportMode || !syncScroll) return;
     let rafId: number;
     const unsub = onViewportScroll(({ sourceLabel, percentX, percentY }) => {
       cancelAnimationFrame(rafId);
@@ -33,10 +34,10 @@ export function useViewportSync() {
       });
     });
     return () => { cancelAnimationFrame(rafId); unsub.then((fn) => fn()).catch(() => {}); };
-  }, [viewports, syncScroll]);
+  }, [viewports, viewportMode, syncScroll]);
 
   useEffect(() => {
-    if (!syncClick) return;
+    if (!viewportMode || !syncClick) return;
     const unsub = onViewportClick(({ sourceLabel, x, y }) => {
       for (const vp of viewports) {
         const label = `viewport-${vp.id}`;
@@ -45,10 +46,10 @@ export function useViewportSync() {
       }
     });
     return () => { unsub.then((fn) => fn()).catch(() => {}); };
-  }, [viewports, syncClick]);
+  }, [viewports, viewportMode, syncClick]);
 
   useEffect(() => {
-    if (!syncInput) return;
+    if (!viewportMode || !syncInput) return;
     const unsub = onViewportInput(({ sourceLabel, selector, value, checked, inputType: _inputType }) => {
       for (const vp of viewports) {
         const label = `viewport-${vp.id}`;
@@ -68,5 +69,5 @@ export function useViewportSync() {
       }
     });
     return () => { unsub.then((fn) => fn()).catch(() => {}); };
-  }, [viewports, syncInput]);
+  }, [viewports, viewportMode, syncInput]);
 }

@@ -137,6 +137,10 @@ export function useWebviewBridge(
   // Track which tabs have been created (have a webview).
   const createdTabsRef = useRef<Set<string>>(new Set());
   const prevActiveTabIdRef = useRef<string | null>(null);
+  // Bumped on every tab-switch attempt. An async show/create that resolves after
+  // a newer switch started is stale — its result must not be applied, or a
+  // slow operation can leave the previous tab's webview on top of the current one.
+  const switchSeqRef = useRef(0);
 
   // ── Ref-based syncBounds ──────────────────────────────────────────
   const syncBoundsRef = useRef<() => void>(() => {});
@@ -454,6 +458,11 @@ export function useWebviewBridge(
     if (!IS_TAURI) return;
     if (!activeTabId) return;
 
+    // Claim this switch. Any async work below checks the seq before applying, so
+    // a superseded switch can't stomp a newer one.
+    const seq = ++switchSeqRef.current;
+    const isStale = () => switchSeqRef.current !== seq;
+
     const prevId = prevActiveTabIdRef.current;
     if (prevId && prevId !== activeTabId && createdTabsRef.current.has(prevId)) {
       setMemoryTarget(prevId, true).catch(() => {});
@@ -484,10 +493,6 @@ export function useWebviewBridge(
       return;
     }
 
-    // Tab has a URL -> activate its webview (create if needed)
-    const bounds = getActiveBounds(contentAreaRef);
-    if (!bounds) return;
-
     const setNormal = () => {
       setMemoryTarget(activeTabId!, false).catch(() => {});
       // Per-tab zoom memory: a recreated webview starts at 100%, and a live one
@@ -496,57 +501,90 @@ export function useWebviewBridge(
       if (zoom !== 1) setTabZoom(activeTabId!, zoom).catch(() => {});
     };
 
-    // Hide the outgoing webview on every path, not just the live-webview one.
-    // Tab webviews are siblings under the same window, so an un-hidden one stays
-    // on top and keeps rendering while the tab bar shows a different tab.
-    if (prevId && prevId !== activeTabId && createdTabsRef.current.has(prevId)) {
-      hideTabWebview(prevId).catch(() => {});
-    }
+    // A superseded switch must not apply its result — and since the newer switch
+    // may already have finished, reconcile to whatever tab is actually active now.
+    const settle = () => {
+      if (isStale()) {
+        ensureWebviewVisible();
+        return;
+      }
+      setNormal();
+    };
 
-    const tab = tabs[activeTabId];
-    if (tab?.discardedAt !== null) {
-      // Tab was discarded — recreate the webview, then restore.
-      // Reserve slot synchronously BEFORE async call.
-      createdTabsRef.current.add(activeTabId);
-      createTab(activeTabId, tabUrl, bounds)
-        .then(() => {
-          useTabsStore.getState().restoreTab(activeTabId);
-          // Restore saved form state if available
-          const updatedTab = useTabsStore.getState().tabs[activeTabId];
-          if (updatedTab?.savedFormState) {
-            restoreTabState(activeTabId, updatedTab.savedFormState)
-              .then(() => {
-                // Clear saved state after successful restore
-                useTabsStore.getState().saveTabState(activeTabId, null);
-              })
-              .catch(() => {});
-          }
-          setNormal();
-        })
-        .catch(() => {
-          createdTabsRef.current.delete(activeTabId);
-        });
-    } else if (createdTabsRef.current.has(activeTabId)) {
-      // Tab has a live webview — just show it. No destroy/recreate.
-      showTabWebview(activeTabId, bounds)
-        .then(() => {
-          setNormal();
-        })
-        .catch(() => {});
-    } else {
-      // Tab has no webview yet (lazy creation) — create it.
-      // Reserve slot synchronously BEFORE async call.
-      createdTabsRef.current.add(activeTabId);
-      createTab(activeTabId, tabUrl, bounds)
-        .then(() => {
-          setNormal();
-        })
-        .catch(() => {
-          createdTabsRef.current.delete(activeTabId);
-        });
-    }
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    prevActiveTabIdRef.current = activeTabId;
+    const runSwitch = (attempt: number) => {
+      if (isStale()) return;
+
+      // Bounds are unmeasurable (<10px) while layout settles — most reliably right
+      // after a minimize/restore. Bailing outright used to strand the switch
+      // forever: nothing hid the old webview, nothing showed the new one, and the
+      // effect never re-ran because its deps hadn't changed. Retry instead, same
+      // bounded pattern as ensureWebviewVisible.
+      const bounds = getActiveBounds(contentAreaRef);
+      if (!bounds) {
+        if (attempt < 8) {
+          retryTimer = setTimeout(() => runSwitch(attempt + 1), 50);
+        }
+        return;
+      }
+
+      // Hide the outgoing webview on every path, not just the live-webview one.
+      // Tab webviews are siblings under the same window, so an un-hidden one stays
+      // on top and keeps rendering while the tab bar shows a different tab.
+      if (prevId && prevId !== activeTabId && createdTabsRef.current.has(prevId)) {
+        hideTabWebview(prevId).catch(() => {});
+      }
+
+      // Read fresh, not from the effect's closure — on a retry the captured
+      // `tabs` snapshot may be stale.
+      const tab = useTabsStore.getState().tabs[activeTabId];
+      if (tab?.discardedAt !== null) {
+        // Tab was discarded — recreate the webview, then restore.
+        // Reserve slot synchronously BEFORE async call.
+        createdTabsRef.current.add(activeTabId);
+        createTab(activeTabId, tabUrl, bounds)
+          .then(() => {
+            useTabsStore.getState().restoreTab(activeTabId);
+            // Restore saved form state if available
+            const updatedTab = useTabsStore.getState().tabs[activeTabId];
+            if (updatedTab?.savedFormState) {
+              restoreTabState(activeTabId, updatedTab.savedFormState)
+                .then(() => {
+                  // Clear saved state after successful restore
+                  useTabsStore.getState().saveTabState(activeTabId, null);
+                })
+                .catch(() => {});
+            }
+            settle();
+          })
+          .catch(() => {
+            createdTabsRef.current.delete(activeTabId);
+          });
+      } else if (createdTabsRef.current.has(activeTabId)) {
+        // Tab has a live webview — just show it. No destroy/recreate.
+        showTabWebview(activeTabId, bounds)
+          .then(settle)
+          .catch(() => {});
+      } else {
+        // Tab has no webview yet (lazy creation) — create it.
+        // Reserve slot synchronously BEFORE async call.
+        createdTabsRef.current.add(activeTabId);
+        createTab(activeTabId, tabUrl, bounds)
+          .then(settle)
+          .catch(() => {
+            createdTabsRef.current.delete(activeTabId);
+          });
+      }
+
+      prevActiveTabIdRef.current = activeTabId;
+    };
+
+    runSwitch(0);
+
+    return () => {
+      if (retryTimer) clearTimeout(retryTimer);
+    };
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, viewportMode]);

@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpFromLine,
   ChevronDown,
+  Columns3,
   Keyboard,
   Monitor,
   MousePointer2,
   Plus,
   RotateCw,
   Smartphone,
+  Square,
   Tablet,
   X,
   ZoomIn,
@@ -16,7 +18,7 @@ import {
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn } from "@/lib/utils";
-import { useUIStore } from "@/stores/ui";
+import { useUIStore, type Viewport } from "@/stores/ui";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
@@ -29,6 +31,7 @@ import {
   destroyViewport,
   evalRaw,
   resizeViewport,
+  emulateViewport,
   showViewport,
   hideViewport,
 } from "@/services/browser";
@@ -43,7 +46,47 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
   laptop: Monitor,
 };
 
-const ZOOM_OPTIONS = [0.25, 0.33, 0.5, 0.67, 0.75, 1] as const;
+const ZOOM_OPTIONS = ["fit", 0.25, 0.33, 0.5, 0.67, 0.75, 1] as const;
+
+/** Surface `p-3` padding and `gap-4` between cards. */
+const SURFACE_PAD = 12;
+const CARD_GAP = 16;
+/** Card header + borders, until a real card can be measured. Font-size driven,
+ *  so it is not a constant — compact mode shrinks it. */
+const CARD_CHROME_FALLBACK = 34;
+
+/**
+ * Fit scale: the surface never scrolls, because these frames are native child
+ * webviews of the main window and clip to the *window*, not to any DOM scroll
+ * container — a partly-scrolled frame would draw over the toolbar and sidebar.
+ * So instead of clipping, everything is scaled to fit in one row.
+ *
+ * Always measured against the **whole device list**, never just the visible one.
+ * Scaling each device individually to fill the panel made every phone render at
+ * the same on-screen size — a 360×780 and a 430×932 both ended up ~700px tall,
+ * so switching devices looked like nothing happened. One shared scale, sized to
+ * the largest device, is what makes the size differences visible.
+ */
+function fitZoom(
+  all: { width: number; height: number }[],
+  box: { width: number; height: number },
+  cardChrome: number,
+  layout: "focus" | "overview"
+): number {
+  if (all.length === 0 || box.width === 0 || box.height === 0) return 1;
+  // Focus shows one frame at a time, so it only needs room for the widest.
+  const overview = layout === "overview";
+  const needW = overview
+    ? all.reduce((n, vp) => n + vp.width, 0)
+    : Math.max(...all.map((vp) => vp.width));
+  const needH = Math.max(...all.map((vp) => vp.height));
+  // Gaps are fixed pixels — they don't scale, so they come off the available
+  // width rather than being divided into it (that overflows by a few px).
+  const gaps = overview ? CARD_GAP * (all.length - 1) : 0;
+  const availW = box.width - SURFACE_PAD * 2 - gaps;
+  const availH = box.height - SURFACE_PAD * 2 - cardChrome;
+  return Math.max(0.15, Math.min(1, availW / needW, availH / needH));
+}
 
 function viewportLabel(id: string): string {
   return `viewport-${id}`;
@@ -271,6 +314,8 @@ function ViewportToolbar() {
   const selectedViewportId = useUIStore((s) => s.selectedViewportId);
   const viewportZoom = useUIStore((s) => s.viewportZoom);
   const setViewportZoom = useUIStore((s) => s.setViewportZoom);
+  const viewportLayout = useUIStore((s) => s.viewportLayout);
+  const setViewportLayout = useUIStore((s) => s.setViewportLayout);
   const rotateViewport = useUIStore((s) => s.rotateViewport);
   const resizeViewportDimensions = useUIStore((s) => s.resizeViewportDimensions);
   const syncScroll = useUIStore((s) => s.syncScroll);
@@ -363,18 +408,40 @@ function ViewportToolbar() {
       {/* Divider */}
       <div className="w-px h-4 mx-0.5" style={{ background: "var(--color-border-subtle)" }} />
 
+      {/* Focus / Overview. Focus is the default — one device fits at ~90%,
+          three at ~47%, which is too small to actually work in. */}
+      <button
+        onClick={() => setViewportLayout("focus")}
+        className={cn(btnCls, viewportLayout === "focus" ? activeCls : inactiveCls)}
+        title="Focus — one device at a time"
+      >
+        <Square size={12} />
+      </button>
+      <button
+        onClick={() => setViewportLayout("overview")}
+        className={cn(btnCls, viewportLayout === "overview" ? activeCls : inactiveCls)}
+        title="Overview — all devices side by side"
+      >
+        <Columns3 size={12} />
+      </button>
+
+      {/* Divider */}
+      <div className="w-px h-4 mx-0.5" style={{ background: "var(--color-border-subtle)" }} />
+
       {/* Zoom */}
       <div className="relative flex items-center gap-0.5">
         <ZoomIn size={12} className="text-[var(--color-text-disabled)]" />
         <select
           value={viewportZoom}
-          onChange={(e) => setViewportZoom(Number(e.target.value))}
+          onChange={(e) =>
+            setViewportZoom(e.target.value === "fit" ? "fit" : Number(e.target.value))
+          }
           className="h-7 text-xs font-mono rounded border bg-transparent text-[var(--color-text-muted)] px-1 pr-4 appearance-none cursor-pointer"
           style={{ borderColor: "var(--color-border-subtle)" }}
         >
           {ZOOM_OPTIONS.map((z) => (
             <option key={z} value={z}>
-              {Math.round(z * 100)}%
+              {z === "fit" ? "Fit" : `${Math.round(z * 100)}%`}
             </option>
           ))}
         </select>
@@ -418,6 +485,8 @@ export function ViewportSurface() {
   const selectedViewportId = useUIStore((s) => s.selectedViewportId);
   const selectViewport = useUIStore((s) => s.selectViewport);
   const viewportZoom = useUIStore((s) => s.viewportZoom);
+  const viewportLayout = useUIStore((s) => s.viewportLayout);
+  const setViewportLayout = useUIStore((s) => s.setViewportLayout);
   const rotateViewport = useUIStore((s) => s.rotateViewport);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
@@ -430,11 +499,34 @@ export function ViewportSurface() {
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const createdLabelsRef = useRef<Set<string>>(new Set());
   const urlByLabelRef = useRef<Map<string, string>>(new Map());
+  const emulationByLabelRef = useRef<Map<string, string>>(new Map());
   const setupTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map()
   );
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [metrics, setMetrics] = useState<Map<string, ViewportMetrics>>(new Map());
+  const [surfaceBox, setSurfaceBox] = useState({ width: 0, height: 0 });
+  const [cardChrome, setCardChrome] = useState(CARD_CHROME_FALLBACK);
+
+  // Focus mode renders the selected device only, which is what makes the fit
+  // scale usable — one phone fits at ~90%, three at ~47%. Falls back to the
+  // first viewport so focus is never blank.
+  const visible =
+    viewportLayout === "focus"
+      ? viewports.filter((vp) => vp.id === (selectedViewportId ?? viewports[0]?.id))
+      : viewports;
+
+  // Capped at fit even when a larger zoom is picked: the surface doesn't
+  // scroll, so anything past its edge is both unreachable and drawn over the
+  // browser chrome (these are native child webviews — they don't clip to the
+  // panel). The card header's @N% chip reports the scale actually used.
+  const fit = fitZoom(viewports, surfaceBox, cardChrome, viewportLayout);
+  const effectiveZoom = viewportZoom === "fit" ? fit : Math.min(viewportZoom, fit);
+
+  // Which viewports are rendered, as a stable dep. Switching between two
+  // devices of identical dimensions changes neither `viewports` nor the zoom,
+  // so without this the sync never fires and the old webview stays on screen.
+  const visibleKey = visible.map((vp) => vp.id).join(",");
 
   const setCardRef = useCallback(
     (id: string) => (node: HTMLDivElement | null) => {
@@ -496,6 +588,26 @@ export function ViewportSurface() {
     );
   }, []);
 
+  // Keyed on the whole device signature, not just the scale — rotating swaps
+  // width/height and must re-emulate, which a zoom-only check would miss.
+  const applyEmulation = useCallback(
+    (label: string, vp: Viewport, scale: number) => {
+      const sig = `${vp.width}x${vp.height}:${vp.deviceScaleFactor}:${vp.mobile}:${vp.touch}:${scale}:${vp.userAgent ?? ""}`;
+      if (emulationByLabelRef.current.get(label) === sig) return;
+      emulationByLabelRef.current.set(label, sig);
+      emulateViewport(label, {
+        width: vp.width,
+        height: vp.height,
+        deviceScaleFactor: vp.deviceScaleFactor,
+        mobile: vp.mobile,
+        touch: vp.touch,
+        scale,
+        userAgent: vp.userAgent,
+      }).catch(() => {});
+    },
+    []
+  );
+
   const syncNativeViewports = useCallback(() => {
     if (!IS_TAURI) return;
     const surface = surfaceRef.current;
@@ -506,14 +618,24 @@ export function ViewportSurface() {
         destroyViewport(label).catch(() => {});
         createdLabelsRef.current.delete(label);
         urlByLabelRef.current.delete(label);
+        emulationByLabelRef.current.delete(label);
       }
     }
 
     for (const vp of viewports) {
       const node = cardRefs.current.get(vp.id);
-      if (!node) continue;
-
       const label = viewportLabel(vp.id);
+
+      // No card = not rendered (focus mode hides every unselected device). The
+      // webview isn't destroyed — hiding keeps the page and its scroll position
+      // alive for switching back — but it MUST be hidden, or it stays painted
+      // on top of the focused one.
+      if (!node) {
+        if (createdLabelsRef.current.has(label)) {
+          hideViewport(label).catch(() => {});
+        }
+        continue;
+      }
 
       // Visibility culling: hide off-screen viewport windows
       if (surface && !isCardVisible(node, surface)) {
@@ -541,26 +663,65 @@ export function ViewportSurface() {
           destroyViewport(label).catch(() => {});
           createdLabelsRef.current.delete(label);
           urlByLabelRef.current.delete(label);
+          emulationByLabelRef.current.delete(label);
         }
         createViewport(label, url, x, y, width, height)
           .then(() => {
             createdLabelsRef.current.add(label);
             urlByLabelRef.current.set(label, url);
+            applyEmulation(label, vp, effectiveZoom);
             setupViewport(label);
           })
           .catch(() => {});
       } else {
         resizeViewport(label, x, y, width, height).catch(() => {});
+        applyEmulation(label, vp, effectiveZoom);
         // Re-show in case it was hidden
         showViewport(label).catch(() => {});
       }
     }
-  }, [activeUrl, setupViewport, viewports, viewportZoom, isCardVisible]);
+  }, [activeUrl, setupViewport, viewports, effectiveZoom, visibleKey, isCardVisible]);
+
+  // Surface size drives the fit scale, so it must never go stale — a stale box
+  // means frames sized for the old surface, i.e. the overflow this fixes. Fed
+  // by the observer plus every other signal that already moves this layout
+  // (mount, sidebar, window resize); each is a cheap no-op when nothing moved.
+  const measureSurface = useCallback(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const r = surface.getBoundingClientRect();
+    setSurfaceBox((prev) =>
+      Math.abs(prev.width - r.width) < 1 && Math.abs(prev.height - r.height) < 1
+        ? prev
+        : { width: r.width, height: r.height }
+    );
+
+    // Card chrome = header + borders, i.e. everything the scaled body doesn't
+    // occupy. Font-size driven, so it never changes with zoom — measuring it
+    // here can't feed back into the fit it feeds.
+    const body = cardRefs.current.values().next().value;
+    const card = body?.parentElement;
+    if (!card) return;
+    const chrome = card.getBoundingClientRect().height - body.getBoundingClientRect().height;
+    if (chrome > 0) {
+      setCardChrome((prev) => (Math.abs(prev - chrome) < 1 ? prev : chrome));
+    }
+  }, []);
 
   useEffect(() => {
+    measureSurface();
     const timer = setTimeout(syncNativeViewports, 50);
     return () => clearTimeout(timer);
-  }, [syncNativeViewports, sidebarOpen, sidebarWidth]);
+  }, [syncNativeViewports, measureSurface, sidebarOpen, sidebarWidth]);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    measureSurface();
+    const observer = new ResizeObserver(measureSurface);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, [measureSurface]);
 
   useEffect(() => {
     if (!IS_TAURI) return;
@@ -575,7 +736,10 @@ export function ViewportSurface() {
     let cancelled = false;
     let unresize: (() => void) | null = null;
     getCurrentWindow()
-      .onResized(() => setTimeout(syncNativeViewports, 50))
+      .onResized(() => {
+        measureSurface();
+        setTimeout(syncNativeViewports, 50);
+      })
       .then((fn) => {
         if (cancelled) fn();
         else unresize = fn;
@@ -586,7 +750,7 @@ export function ViewportSurface() {
       observer.disconnect();
       unresize?.();
     };
-  }, [syncNativeViewports]);
+  }, [syncNativeViewports, measureSurface]);
 
   useEffect(() => {
     return () => {
@@ -597,6 +761,7 @@ export function ViewportSurface() {
       }
       createdLabelsRef.current.clear();
       urlByLabelRef.current.clear();
+      emulationByLabelRef.current.clear();
     };
   }, []);
 
@@ -605,6 +770,7 @@ export function ViewportSurface() {
     destroyViewport(label).catch(() => {});
     createdLabelsRef.current.delete(label);
     urlByLabelRef.current.delete(label);
+    emulationByLabelRef.current.delete(label);
     removeViewport(id);
   }
 
@@ -613,15 +779,12 @@ export function ViewportSurface() {
     const m = metrics.get(label);
     if (!m) return null;
 
-    // At zoom != 1, native webview is scaled, so innerWidth/Height won't match preset
-    const zoomedW = Math.round(vp.width * viewportZoom);
-    const zoomedH = Math.round(vp.height * viewportZoom);
-    const widthMatch = Math.abs(m.innerWidth - zoomedW) <= 2;
-    const heightMatch = Math.abs(m.innerHeight - zoomedH) <= 2;
-    const matches = widthMatch && heightMatch;
-    const zoomWarning = viewportZoom < 1;
+    // The webview is zoomed by the same factor its box is scaled by, so the
+    // page reports the preset's true size at any zoom.
+    const matches =
+      Math.abs(m.innerWidth - vp.width) <= 2 && Math.abs(m.innerHeight - vp.height) <= 2;
 
-    if (matches && !zoomWarning) {
+    if (matches) {
       return (
         <span className="flex items-center gap-0.5 text-micro text-green-400" title={`Actual: ${m.innerWidth}×${m.innerHeight} DPR:${m.devicePixelRatio}`}>
           <Check size={11} />
@@ -629,12 +792,11 @@ export function ViewportSurface() {
       );
     }
 
-    const tooltip = zoomWarning
-      ? `Zoom ${Math.round(viewportZoom * 100)}% — page sees ${m.innerWidth}×${m.innerHeight} instead of ${vp.width}×${vp.height}`
-      : `Expected ${zoomedW}×${zoomedH}, actual ${m.innerWidth}×${m.innerHeight}`;
-
     return (
-      <span className="flex items-center gap-0.5 text-micro text-amber-400" title={tooltip}>
+      <span
+        className="flex items-center gap-0.5 text-micro text-amber-400"
+        title={`Expected ${vp.width}×${vp.height}, actual ${m.innerWidth}×${m.innerHeight}`}
+      >
         <AlertTriangle size={11} />
       </span>
     );
@@ -643,11 +805,10 @@ export function ViewportSurface() {
   return (
     <div className="flex flex-col h-full">
       <ViewportToolbar />
-      <div
-        ref={surfaceRef}
-        className="flex-1 min-h-0 overflow-auto p-3"
-        onScroll={syncNativeViewports}
-      >
+      {/* overflow-hidden, never auto: these frames are native child webviews
+          that clip to the window, not to this box, so a scrolled-out frame
+          would draw over the browser chrome. Everything is fit-scaled instead. */}
+      <div ref={surfaceRef} className="flex-1 min-h-0 overflow-hidden p-3">
         {viewports.length === 0 ? (
           <div className="text-center py-8">
             <Monitor
@@ -662,24 +823,33 @@ export function ViewportSurface() {
             </p>
           </div>
         ) : (
-          <div className="flex flex-wrap items-start gap-4">
-            {viewports.map((vp) => {
-              const scaledW = Math.round(vp.width * viewportZoom);
-              const scaledH = Math.round(vp.height * viewportZoom);
-              const isSelected = selectedViewportId === vp.id;
+          <div
+            className={cn(
+              "flex flex-nowrap items-start gap-4",
+              viewportLayout === "focus" && "justify-center"
+            )}
+          >
+            {visible.map((vp) => {
+              const scaledW = Math.round(vp.width * effectiveZoom);
+              const scaledH = Math.round(vp.height * effectiveZoom);
+              // Only meaningful when there is something to select between —
+              // in focus mode the one frame is always selected, so the accent
+              // ring just boxed every device in a bright ivory outline.
+              const showSelection =
+                viewportLayout === "overview" && selectedViewportId === vp.id;
 
               return (
                 <div
                   key={vp.id}
-                  onClick={() => selectViewport(vp.id)}
-                  className={cn(
-                    "flex flex-col rounded overflow-hidden shrink-0 cursor-pointer transition-shadow",
-                    isSelected && "ring-1 ring-[var(--color-accent)]"
-                  )}
+                  onClick={() => {
+                    // In overview the grid doubles as a device picker.
+                    selectViewport(vp.id);
+                    if (viewportLayout === "overview") setViewportLayout("focus");
+                  }}
+                  className="flex flex-col rounded overflow-hidden shrink-0 cursor-pointer transition-shadow"
                   style={{
                     width: scaledW,
-                    maxWidth: "100%",
-                    border: isSelected
+                    border: showSelection
                       ? "1px solid var(--color-accent)"
                       : "1px solid var(--color-border)",
                     background: "var(--color-elevated)",
@@ -700,10 +870,10 @@ export function ViewportSurface() {
                     </span>
                     {/* Metrics badge */}
                     {getMetricsBadge(vp)}
-                    {/* Zoom warning */}
-                    {viewportZoom < 1 && (
+                    {/* Scale indicator */}
+                    {effectiveZoom < 1 && (
                       <span className="text-micro text-[var(--color-text-disabled)]">
-                        @{Math.round(viewportZoom * 100)}%
+                        @{Math.round(effectiveZoom * 100)}%
                       </span>
                     )}
                     {/* Rotate */}
