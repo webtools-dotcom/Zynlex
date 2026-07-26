@@ -25,17 +25,17 @@ const HeadersPanel = lazy(() => import("@/components/panels/HeadersPanel").then(
 const DownloadsPanel = lazy(() => import("@/components/sidebar/DownloadsPanel").then(m => ({ default: m.DownloadsPanel })));
 const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
   { id: "servers",    Icon: Server,       label: "Live Servers" },
-  { id: "bookmarks",  Icon: Bookmark,     label: "Bookmarks" },
-  { id: "history",    Icon: Clock,        label: "History" },
-  { id: "downloads",  Icon: Download,     label: "Downloads" },
   { id: "network",    Icon: Activity,     label: "Network" },
-  { id: "headers",    Icon: Shield,       label: "Header Injection" },
   { id: "inspector",  Icon: FlaskConical, label: "Inspector" },
   { id: "api",        Icon: Code2,        label: "API Tester" },
+  { id: "headers",    Icon: Shield,       label: "Header Injection" },
   { id: "jwt",        Icon: KeyRound,     label: "JWT Decoder" },
   { id: "base64",     Icon: Binary,       label: "Base64" },
   { id: "ua",         Icon: Globe,        label: "User Agent" },
   { id: "viewport",   Icon: Monitor,      label: "Viewports" },
+  { id: "bookmarks",  Icon: Bookmark,     label: "Bookmarks" },
+  { id: "history",    Icon: Clock,        label: "History" },
+  { id: "downloads",  Icon: Download,     label: "Downloads" },
 ];
 
 function LiveServersPanel() {

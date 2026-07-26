@@ -37,11 +37,16 @@ pub struct BrowserState {
     /// burst of `Resized` events a drag/maximize emits down to one delayed
     /// re-apply, so we don't spawn a timer per frame.
     pub resync_pending: AtomicBool,
-    /// True while a page has an element in HTML fullscreen (video fullscreen).
-    /// Gates all bounds application so the active child covers the whole window
-    /// instead of the inset content area, and so the JS bounds-sync can't shrink
-    /// it back.
-    pub fullscreen: AtomicBool,
+    /// Label of the tab that currently has an element in HTML fullscreen (video
+    /// fullscreen), or `None`. Gates bounds application so the fullscreen child
+    /// covers the whole window instead of the inset content area, and so the JS
+    /// bounds-sync can't shrink it back.
+    ///
+    /// Scoped to a tab, not a global bool: the `ContainsFullScreenElementChanged`
+    /// handler that sets it is per-webview, so a global flag stayed set when the
+    /// user switched away from (or closed) the fullscreen tab — which made
+    /// `browser_show_tab` early-return and silently stop switching tabs.
+    pub fullscreen_tab: Mutex<Option<String>>,
     /// Last preferred color scheme pushed to webviews (true = dark). Stored so a
     /// newly-created tab can adopt the current theme immediately, before any
     /// theme toggle. Default dark = the app's default theme.
@@ -62,7 +67,11 @@ pub struct BrowserState {
 pub(crate) fn apply_active_child_bounds(app: &tauri::AppHandle, win_w: f64, win_h: f64, nudge: bool) {
     use tauri::Manager;
     let state = app.state::<BrowserState>();
-    let fullscreen = state.fullscreen.load(Ordering::SeqCst);
+    let fullscreen = state
+        .fullscreen_tab
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .is_some();
 
     // Fullscreen (video): cover the entire window with zero insets. `win_w`/
     // `win_h` are always the real, authoritative window client size at the
@@ -187,7 +196,7 @@ pub fn run() {
                                         // resize handler (monitor-sized); a settle
                                         // re-apply here just adds a mid-transition
                                         // jump.
-                                        if st.fullscreen.load(Ordering::SeqCst) { return; }
+                                        if st.fullscreen_tab.lock().unwrap_or_else(|e| e.into_inner()).is_some() { return; }
                                         let Some(win) = app3.get_window("main") else { return };
                                         let Ok(sz) = win.inner_size() else { return };
                                         let scale = win.scale_factor().unwrap_or(1.0);
@@ -213,7 +222,7 @@ pub fn run() {
             webviews: Mutex::new(HashMap::new()),
             content_insets: Mutex::new(None),
             resync_pending: AtomicBool::new(false),
-            fullscreen: AtomicBool::new(false),
+            fullscreen_tab: Mutex::new(None),
             preferred_dark: AtomicBool::new(true),
         })
         .invoke_handler(tauri::generate_handler![
@@ -247,6 +256,7 @@ pub fn run() {
             commands::browser::create_viewport,
             commands::browser::destroy_viewport,
             commands::browser::resize_viewport,
+            commands::browser::emulate_viewport,
             commands::browser::show_viewport,
             commands::browser::hide_viewport,
             commands::browser::scroll_viewport,

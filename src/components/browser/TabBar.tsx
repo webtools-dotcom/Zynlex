@@ -307,7 +307,7 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
       }}
     >
       <div
-        className="flex items-stretch flex-1 overflow-x-auto"
+        className="flex items-stretch flex-shrink overflow-x-auto min-w-0"
         style={{ scrollbarWidth: "none" }}
       >
         {tabItems}
@@ -325,6 +325,8 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
       >
         <Plus size={15} />
       </button>
+
+      <div className="flex-1" data-tauri-drag-region="deep" />
 
       <div className="flex-shrink-0 flex items-stretch">
         <WindowControls />
