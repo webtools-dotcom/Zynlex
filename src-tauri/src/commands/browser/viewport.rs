@@ -136,6 +136,7 @@ fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
 /// can drop overrides — that's why the frame used to render full-size and
 /// overflow its card on open and on every navigation.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn create_viewport(
     app: AppHandle,
     label: String,

@@ -117,14 +117,15 @@ unsafe fn cookie_to_json(
     })
 }
 
-/// Sends `msg` as the (only) error response on a one-shot channel, if nothing
-/// has claimed it yet. Shared by every WebView2 async COM call in this file
-/// that bridges a completion handler back to an `async fn` via `oneshot`.
+/// The shared slot every WebView2 async COM call in this file uses to bridge
+/// a completion handler back to an `async fn` via `oneshot`.
 #[cfg(target_os = "windows")]
-fn cookie_op_failed<T>(
-    tx: &std::sync::Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<T, String>>>>>,
-    msg: String,
-) {
+type OneshotSlot<T> = std::sync::Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<T, String>>>>>;
+
+/// Sends `msg` as the (only) error response on a one-shot channel, if nothing
+/// has claimed it yet.
+#[cfg(target_os = "windows")]
+fn cookie_op_failed<T>(tx: &OneshotSlot<T>, msg: String) {
     if let Some(s) = tx.lock().unwrap_or_else(|e| e.into_inner()).take() {
         let _ = s.send(Err(msg));
     }

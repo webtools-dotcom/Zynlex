@@ -214,9 +214,9 @@ pub async fn scan_ports(ports: Vec<u16>) -> Result<Vec<ScannedPort>, String> {
     // Collect results
     let mut results = Vec::with_capacity(handles.len());
     for handle in handles {
-        match handle.await {
-            Ok(result) => results.push(result),
-            Err(_) => {} // Task panicked — skip this port
+        // A panicked task is skipped — the port is just left unreported.
+        if let Ok(result) = handle.await {
+            results.push(result);
         }
     }
 
