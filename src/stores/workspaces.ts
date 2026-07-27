@@ -206,7 +206,7 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
       // getLiveWorkspaceTabIds() in lib/workspaceTabs.ts.
       onRehydrateStorage: () => (_state, error) => {
         if (error) {
-          console.error("[XEVO] Workspace persistence hydration failed:", error);
+          console.error("[xevo] Workspace persistence hydration failed:", error);
         }
       },
     }

@@ -1,9 +1,5 @@
-/**
- * XEVO Browser IPC Service — all calls to Rust backend for browser control.
- *
- * Per-tab architecture: each tab gets its own WebviewWindow.
- * Commands target specific tabs via tabId.
- */
+/** Typed IPC wrappers over the Rust `browser_*` commands. Per-tab commands
+ * target a specific child webview via tabId — see docs/architecture.md. */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 

@@ -24,7 +24,6 @@ export function ContentArea({ onBridgeReady }: ContentAreaProps) {
 
   useEffect(() => {
     onBridgeReady(bridge);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridge]);
 
   // Honour settings.homePage: an empty tab shows the built-in start page only
@@ -35,7 +34,6 @@ export function ContentArea({ onBridgeReady }: ContentAreaProps) {
   useEffect(() => {
     if (!activeTab || activeTab.url || !isCustomHome) return;
     void bridge.navigate(homePage);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab?.id, isCustomHome]);
 
   return (

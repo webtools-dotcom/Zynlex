@@ -87,7 +87,6 @@ export function usePortScanner() {
     return () => {
       if (isPrimaryRef.current) primaryMounted = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only on mount
 
   // Periodic scan on interval — only the primary instance runs this.

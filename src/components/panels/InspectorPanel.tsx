@@ -823,7 +823,6 @@ export function InspectorPanel() {
       store.setLastTabId(activeTabId);
     }
     refresh(activeSubTab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, activeSubTab, storageSubTab]);
 
   // Auto-refresh every 3 seconds
@@ -833,7 +832,6 @@ export function InspectorPanel() {
       refresh(activeSubTab);
     }, 3000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, activeTab?.url, activeSubTab, storageSubTab]);
 
   // Safety net: force isLoading false after 5 seconds if stuck
@@ -905,7 +903,7 @@ export function InspectorPanel() {
       {/* Error banner */}
       {error && (
         <div className="px-2 py-1 text-xs text-[var(--color-warn)] bg-[var(--color-warn)]/10 border-b border-[var(--color-warn)]/30 flex items-center gap-2">
-          <span className="shrink-0">⚠</span>
+          <AlertTriangle size={12} className="shrink-0" />
           <span className="flex-1 truncate">{error}</span>
           <button
             onClick={() => refresh(activeSubTab)}

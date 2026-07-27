@@ -1,21 +1,11 @@
 /**
- * toggleBookmarkForActiveTab — shared bookmark action for the active tab.
+ * toggleBookmarkForActiveTab — shared Ctrl+D handler for the active tab.
  *
- * Called from two places:
- *   1. The main window's global keydown listener (useKeyboardShortcuts.ts)
- *      when Ctrl+D fires while the user is focused on the main window
- *      (e.g. address bar or sidebar).
- *   2. The webview's injected keydown listener (XEVO_BOOKMARK_SCRIPT in
- *      src-tauri/src/commands/browser.rs) when Ctrl+D fires while the user
- *      is focused on the page content. The webview invokes
- *      `browser_bookmark_request`, Rust emits `browser://bookmark-request`,
- *      and useWebviewBridge listens for it and calls this function.
- *
- * Both paths converge here so the bookmarking rules (workspace scoping,
- * toggle behavior, side-effect feedback) stay in a single place.
- *
- * The function pushes a toast, switches the sidebar to the Bookmarks panel,
- * and updates the lastAddedId for the green ring highlight.
+ * Called both from the main window's keydown listener (focus on the UI) and
+ * from useWebviewBridge, which relays Ctrl+D pressed inside a tab's webview
+ * (forwarded through Rust as `browser://bookmark-request`, since the page
+ * has no direct path back to React). Keeping one function means the
+ * workspace-scoping and toggle rules can't drift between the two triggers.
  */
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";

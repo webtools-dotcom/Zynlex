@@ -1,16 +1,9 @@
 /**
- * useWebviewBridge - manages per-tab browser WebviewWindow bridge.
- *
- * Architecture: each tab gets its own WebviewWindow (label "browser-{tabId}").
- * Tab switching = hide old webview + show new (no reload, state preserved).
- *
- * Responsibilities:
- * - Creates webviews lazily on first navigation
- * - Activates (hide/show) on tab switch
- * - Closes webviews on tab close
- * - Keeps active tab's webview bounds in sync with the content area
- * - Subscribes to per-tab events from Rust and updates Zustand
- * - Exposes navigate / goBack / goForward / reload actions
+ * useWebviewBridge — manages the per-tab child webview bridge (see
+ * docs/architecture.md for the process model). Creates webviews lazily on
+ * first navigation, hides/shows on tab switch (no reload, state preserved),
+ * closes on tab close, keeps bounds synced with the content area, subscribes
+ * to per-tab events from Rust, and exposes navigate/goBack/goForward/reload.
  */
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
@@ -135,7 +128,6 @@ export function useWebviewBridge(
   const lastBoundsRef = useRef<BrowserBounds | null>(null);
   // Track when loading started so we can report load time on completion.
   const loadStartRef = useRef<number | null>(null);
-  // Track which tabs have been created (have a webview).
   const createdTabsRef = useRef<Set<string>>(new Set());
   const prevActiveTabIdRef = useRef<string | null>(null);
   // Bumped on every tab-switch attempt. An async show/create that resolves after
@@ -166,7 +158,7 @@ export function useWebviewBridge(
     }
     lastBoundsRef.current = bounds;
     setWebviewBounds(tabId, bounds).catch((err) => {
-      console.error("[XEVO-BOUNDS] Rust setWebviewBounds ERROR:", err, "for bounds:", bounds);
+      console.error("[xevo] setWebviewBounds failed:", err);
     });
   };
 
@@ -550,7 +542,6 @@ export function useWebviewBridge(
             if (updatedTab?.savedFormState) {
               restoreTabState(activeTabId, updatedTab.savedFormState)
                 .then(() => {
-                  // Clear saved state after successful restore
                   useTabsStore.getState().saveTabState(activeTabId, null);
                 })
                 .catch(() => {});
@@ -585,7 +576,6 @@ export function useWebviewBridge(
       if (retryTimer) clearTimeout(retryTimer);
     };
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, viewportMode]);
 
   // ── TAB DISCARD TIMER: discard inactive tabs after 10 minutes ─────
@@ -614,11 +604,8 @@ export function useWebviewBridge(
           continue;
         }
 
-        // Check if this tab has been inactive for longer than the timeout
         if (now - tab.lastActiveAt > DISCARD_TIMEOUT_MS) {
-          // Save tab state (scroll + form data) before destroying the webview
           saveTabState(tabId).catch(() => {});
-          // Discard: close the webview, mark as discarded, remove from createdTabsRef
           closeTabWebview(tabId)
             .then(() => {
               useTabsStore.getState().discardTab(tabId);
@@ -648,7 +635,6 @@ export function useWebviewBridge(
       const tabsState = useTabsStore.getState().tabs;
       for (const id of createdIds) {
         if (id !== activeTabId && tabsState[id]) {
-          // Save tab state before discarding
           saveTabState(id).catch(() => {});
           useTabsStore.getState().discardTab(id);
         }
@@ -711,7 +697,6 @@ export function useWebviewBridge(
 
       const toDiscard = candidates.slice(0, liveCount - maxConcurrent);
       for (const tabId of toDiscard) {
-        // Save tab state (scroll + form data) before destroying the webview
         saveTabState(tabId).catch(() => {});
         closeTabWebview(tabId)
           .then(() => {
@@ -844,7 +829,7 @@ export function useWebviewBridge(
         if (rules?.length) rulesByTab[tab.id] = rules;
       }
       setHeaderRules(rulesByTab).catch((err) =>
-        console.error("Failed to sync header rules:", err)
+        console.error("[xevo] Failed to sync header rules:", err)
       );
     };
     sync();
@@ -873,11 +858,10 @@ export function useWebviewBridge(
         width: bounds.width,
         height: bounds.height,
       }).catch((err) => {
-        console.error("[XEVO-BOUNDS] sidebarToggle Rust ERROR:", err, "for bounds:", bounds);
+        console.error("[xevo] setWebviewBounds failed (sidebar toggle):", err);
       });
     }, 80);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidebarOpen]);
 
   // ── Hide/show webview when chrome overlays open ──────────────────
