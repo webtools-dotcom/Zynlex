@@ -23,11 +23,7 @@ interface BookmarksStore {
   folders: BookmarkFolder[];
   lastAddedId: string | null;
 
-  addBookmark: (
-    workspaceId: string,
-    url: string,
-    title: string
-  ) => string;
+  addBookmark: (workspaceId: string, url: string, title: string) => string;
   removeBookmark: (id: string) => void;
   removeBookmarkByUrl: (workspaceId: string, url: string) => void;
   renameBookmark: (id: string, title: string) => void;
@@ -82,7 +78,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
       removeBookmarkByUrl: (workspaceId, url) => {
         set((s) => {
           s.bookmarks = s.bookmarks.filter(
-            (b: Bookmark) => !(b.workspaceId === workspaceId && b.url === url)
+            (b: Bookmark) => !(b.workspaceId === workspaceId && b.url === url),
           );
         });
       },
@@ -96,9 +92,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
 
       clearForWorkspace: (workspaceId) => {
         set((s) => {
-          s.bookmarks = s.bookmarks.filter(
-            (b: Bookmark) => b.workspaceId !== workspaceId
-          );
+          s.bookmarks = s.bookmarks.filter((b: Bookmark) => b.workspaceId !== workspaceId);
         });
       },
 
@@ -106,9 +100,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
         get().bookmarks.filter((b) => b.workspaceId === workspaceId),
 
       isBookmarked: (workspaceId, url) =>
-        get().bookmarks.some(
-          (b) => b.workspaceId === workspaceId && b.url === url
-        ),
+        get().bookmarks.some((b) => b.workspaceId === workspaceId && b.url === url),
 
       clearLastAddedId: () => {
         set((s) => {
@@ -180,7 +172,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
             url: b.url.trim(),
             title: typeof b.title === "string" && b.title ? b.title : b.url,
             createdAt: typeof b.createdAt === "number" ? b.createdAt : Date.now(),
-            folderId: b.folderId ? folderIdMap.get(b.folderId) ?? null : null,
+            folderId: b.folderId ? (folderIdMap.get(b.folderId) ?? null) : null,
           });
         }
 
@@ -209,6 +201,6 @@ export const useBookmarksStore = create<BookmarksStore>()(
         bookmarks: state.bookmarks,
         folders: state.folders,
       }),
-    }
-  )
+    },
+  ),
 );

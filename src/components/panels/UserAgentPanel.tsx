@@ -85,7 +85,7 @@ export function UserAgentPanel() {
                     "w-full text-left px-2 py-1.5 rounded text-sm transition-colors mb-0.5",
                     currentUA === preset.ua
                       ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
-                      : "text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]"
+                      : "text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]",
                   )}
                 >
                   {preset.label}
@@ -97,7 +97,10 @@ export function UserAgentPanel() {
       </div>
 
       {/* Custom UA input */}
-      <div className="flex-shrink-0 pt-2 border-t mt-2" style={{ borderColor: "var(--color-border-subtle)" }}>
+      <div
+        className="flex-shrink-0 pt-2 border-t mt-2"
+        style={{ borderColor: "var(--color-border-subtle)" }}
+      >
         <p className="text-micro font-semibold tracking-widest text-[var(--color-text-disabled)] uppercase mb-1 px-1">
           Custom UA
         </p>
@@ -118,7 +121,7 @@ export function UserAgentPanel() {
               "text-xs px-2 rounded transition-colors",
               customUA.trim()
                 ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white"
-                : "bg-[var(--color-elevated)] text-[var(--color-text-disabled)]"
+                : "bg-[var(--color-elevated)] text-[var(--color-text-disabled)]",
             )}
           >
             Apply

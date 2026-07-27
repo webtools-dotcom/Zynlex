@@ -25,12 +25,8 @@ function WorkspaceIcon({ workspace, isActive, tabCount, onClick, onContextMenu }
       onContextMenu={onContextMenu}
       title={`${workspace.name} (${tabCount} tab${tabCount !== 1 ? "s" : ""})`}
       style={{
-        backgroundColor: isActive
-          ? "var(--color-accent-dim)"
-          : "transparent",
-        borderLeft: isActive
-          ? `2px solid ${workspace.color}`
-          : "2px solid transparent",
+        backgroundColor: isActive ? "var(--color-accent-dim)" : "transparent",
+        borderLeft: isActive ? `2px solid ${workspace.color}` : "2px solid transparent",
       }}
       className={cn(
         "relative w-9 h-9 rounded-[4px] flex items-center justify-center",

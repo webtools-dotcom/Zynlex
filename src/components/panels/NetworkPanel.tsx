@@ -1,5 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useNetworkStore, type NetworkLogEntry, formatDuration, resourceTypeLabel } from "@/stores/network";
+import {
+  useNetworkStore,
+  type NetworkLogEntry,
+  formatDuration,
+  resourceTypeLabel,
+} from "@/stores/network";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
@@ -86,9 +91,22 @@ const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 /** Same 17 types Rust classifies, in the order they matter for triage. */
 const RESOURCE_TYPES = [
-  "document", "stylesheet", "script", "xhr", "fetch", "image", "media",
-  "font", "websocket", "manifest", "ping", "eventsource", "texttrack",
-  "signedexchange", "cspviolationreport", "other",
+  "document",
+  "stylesheet",
+  "script",
+  "xhr",
+  "fetch",
+  "image",
+  "media",
+  "font",
+  "websocket",
+  "manifest",
+  "ping",
+  "eventsource",
+  "texttrack",
+  "signedexchange",
+  "cspviolationreport",
+  "other",
 ];
 
 const STATUS_RANGES = [
@@ -119,7 +137,12 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
             </button>
           ))}
         </div>
-        <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-sm leading-none px-1">&times;</button>
+        <button
+          onClick={onClose}
+          className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-sm leading-none px-1"
+        >
+          &times;
+        </button>
       </div>
       <div className="max-h-48 overflow-y-auto p-3">
         {tab === "headers" && (
@@ -130,7 +153,9 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
             </div>
             <div className="flex gap-3">
               <span className="text-[var(--color-text-muted)]">Status:</span>
-              <span className={statusColor(entry.statusCode)}>{entry.statusCode} {entry.reasonPhrase}</span>
+              <span className={statusColor(entry.statusCode)}>
+                {entry.statusCode} {entry.reasonPhrase}
+              </span>
             </div>
             <div className="flex gap-3">
               <span className="text-[var(--color-text-muted)]">Type:</span>
@@ -170,7 +195,9 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
         {tab === "body" && (
           <div>
             {entry.body ? (
-              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-40 overflow-y-auto">{bodyPreview(entry.body)}</pre>
+              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-40 overflow-y-auto">
+                {bodyPreview(entry.body)}
+              </pre>
             ) : (
               <div className="text-[var(--color-text-muted)] italic">(no response body)</div>
             )}
@@ -188,7 +215,9 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
                   {copied === "curl" ? "Copied!" : "Copy"}
                 </button>
               </div>
-              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-32 overflow-y-auto">{entryToCurl(entry)}</pre>
+              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-32 overflow-y-auto">
+                {entryToCurl(entry)}
+              </pre>
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -200,7 +229,9 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
                   {copied === "fetch" ? "Copied!" : "Copy"}
                 </button>
               </div>
-              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-32 overflow-y-auto">{entryToFetch(entry)}</pre>
+              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-32 overflow-y-auto">
+                {entryToFetch(entry)}
+              </pre>
             </div>
           </div>
         )}
@@ -209,7 +240,15 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
   );
 }
 
-function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSelected: boolean; onClick: () => void }) {
+function EntryRow({
+  entry,
+  isSelected,
+  onClick,
+}: {
+  entry: NetworkLogEntry;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
   const handleCopyCurl = (e: React.MouseEvent) => {
     e.stopPropagation();
     copyToClipboard(entryToCurl(entry, true));
@@ -220,20 +259,32 @@ function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSe
       role="button"
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{ gridTemplateColumns: GRID_COLS, minWidth: GRID_MIN_WIDTH }}
       className={`grid items-center gap-1.5 px-2 h-[var(--spacing-row-xs)] text-xs font-mono cursor-pointer group odd:bg-white/[0.014] hover:bg-[var(--color-hover)] ${isSelected ? "bg-[var(--color-accent-dim)] shadow-[inset_2px_0_0_var(--color-accent)]" : ""}`}
     >
-      <span className={`font-semibold ${METHOD_COLORS[entry.method] ?? "text-[var(--color-text-disabled)]"}`}>
+      <span
+        className={`font-semibold ${METHOD_COLORS[entry.method] ?? "text-[var(--color-text-disabled)]"}`}
+      >
         {entry.method}
       </span>
       <span className={`text-right tabular-nums ${statusColor(entry.statusCode)}`}>
         {entry.statusCode !== undefined ? entry.statusCode : "---"}
       </span>
-      <span className={`text-micro px-1 rounded-[var(--radius-sm)] justify-self-start truncate ${TYPE_COLORS[entry.resourceType] ?? "bg-gray-500/20 text-gray-400"}`}>
+      <span
+        className={`text-micro px-1 rounded-[var(--radius-sm)] justify-self-start truncate ${TYPE_COLORS[entry.resourceType] ?? "bg-gray-500/20 text-gray-400"}`}
+      >
         {resourceTypeLabel(entry.resourceType)}
       </span>
-      <span className="truncate text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]" title={entry.url}>
+      <span
+        className="truncate text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]"
+        title={entry.url}
+      >
         {entry.url}
       </span>
       <span className="truncate text-[var(--color-text-muted)]" title={entry.referrer || undefined}>
@@ -242,7 +293,9 @@ function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSe
       <span className="text-right tabular-nums whitespace-nowrap text-[var(--color-text-muted)]">
         {formatBytes(entry.contentLength)}
       </span>
-      <span className={`text-right tabular-nums whitespace-nowrap ${entry.durationMs > 1000 ? "text-[var(--color-warn)]" : "text-[var(--color-text-muted)]"}`}>
+      <span
+        className={`text-right tabular-nums whitespace-nowrap ${entry.durationMs > 1000 ? "text-[var(--color-warn)]" : "text-[var(--color-text-muted)]"}`}
+      >
         {formatDuration(entry.durationMs)}
       </span>
       <button
@@ -362,7 +415,11 @@ export function NetworkPanel() {
           </button>
           {entries.length > 0 && activeTabId && (
             <button
-              onClick={() => { clearTab(activeTabId); setSelectedId(null); prevLength.current = 0; }}
+              onClick={() => {
+                clearTab(activeTabId);
+                setSelectedId(null);
+                prevLength.current = 0;
+              }}
               className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] px-1.5 py-0.5 rounded hover:bg-[var(--color-hover)]"
             >
               Clear
@@ -387,7 +444,11 @@ export function NetworkPanel() {
           className={SELECT_CLASS}
         >
           <option value="">Method</option>
-          {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+          {METHODS.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
         </select>
         <select
           value={statusFilter}
@@ -396,7 +457,11 @@ export function NetworkPanel() {
           className={SELECT_CLASS}
         >
           <option value="">Status</option>
-          {STATUS_RANGES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          {STATUS_RANGES.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.label}
+            </option>
+          ))}
         </select>
         <select
           value={typeFilter}
@@ -406,7 +471,9 @@ export function NetworkPanel() {
         >
           <option value="">Type</option>
           {RESOURCE_TYPES.map((t) => (
-            <option key={t} value={t}>{resourceTypeLabel(t)}</option>
+            <option key={t} value={t}>
+              {resourceTypeLabel(t)}
+            </option>
           ))}
         </select>
         <label
@@ -433,14 +500,18 @@ export function NetworkPanel() {
           return (
             <button
               key={f.id}
-              onClick={() => { setFilter(f.id); setSelectedId(null); }}
+              onClick={() => {
+                setFilter(f.id);
+                setSelectedId(null);
+              }}
               className={`text-xs px-2.5 py-0.5 rounded-full transition-colors ${
                 filter === f.id
                   ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
                   : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]"
               }`}
             >
-              {f.label}{count > 0 ? ` (${count})` : ""}
+              {f.label}
+              {count > 0 ? ` (${count})` : ""}
             </button>
           );
         })}
@@ -463,7 +534,11 @@ export function NetworkPanel() {
           <span />
         </div>
 
-        <div ref={scrollRef} style={{ minWidth: GRID_MIN_WIDTH }} className="flex-1 overflow-y-auto">
+        <div
+          ref={scrollRef}
+          style={{ minWidth: GRID_MIN_WIDTH }}
+          className="flex-1 overflow-y-auto"
+        >
           {filtered.length === 0 ? (
             <div className="text-micro text-[var(--color-text-muted)] px-3 py-4 italic">
               {entries.length === 0

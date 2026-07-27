@@ -29,10 +29,7 @@ function App() {
       }
       const mq = window.matchMedia("(prefers-color-scheme: dark)");
       const onChange = () => {
-        document.documentElement.setAttribute(
-          "data-theme",
-          mq.matches ? "dark" : "light"
-        );
+        document.documentElement.setAttribute("data-theme", mq.matches ? "dark" : "light");
       };
       onChange();
       mq.addEventListener("change", onChange);

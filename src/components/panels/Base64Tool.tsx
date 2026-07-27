@@ -73,9 +73,15 @@ export function Base64Tool() {
             onClick={() => setMode(m)}
             className="flex-1 h-8 text-sm border rounded-[4px] capitalize transition-colors"
             style={{
-              background: mode === m ? "color-mix(in srgb, var(--color-accent) 20%, transparent)" : "transparent",
+              background:
+                mode === m
+                  ? "color-mix(in srgb, var(--color-accent) 20%, transparent)"
+                  : "transparent",
               color: mode === m ? "var(--color-accent)" : "var(--color-text-muted)",
-              borderColor: mode === m ? "color-mix(in srgb, var(--color-accent) 40%, transparent)" : "var(--color-border)",
+              borderColor:
+                mode === m
+                  ? "color-mix(in srgb, var(--color-accent) 40%, transparent)"
+                  : "var(--color-border)",
             }}
           >
             {m}
@@ -98,7 +104,10 @@ export function Base64Tool() {
 
       {/* Input label */}
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
+        <span
+          className="text-xs uppercase tracking-widest"
+          style={{ color: "var(--color-text-muted)" }}
+        >
           Input
         </span>
         <span className="text-xs" style={{ color: "var(--color-text-disabled)" }}>
@@ -117,7 +126,10 @@ export function Base64Tool() {
 
       {/* Output label */}
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
+        <span
+          className="text-xs uppercase tracking-widest"
+          style={{ color: "var(--color-text-muted)" }}
+        >
           Output
         </span>
         <span className="text-xs" style={{ color: "var(--color-text-disabled)" }}>

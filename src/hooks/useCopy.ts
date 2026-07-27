@@ -14,7 +14,7 @@ export function useCopy(resetMs = 1500) {
         setTimeout(() => setCopiedLabel((c) => (c === label ? null : c)), resetMs);
       });
     },
-    [resetMs]
+    [resetMs],
   );
 
   return { copiedLabel, copy };

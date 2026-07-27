@@ -22,8 +22,7 @@ export const useHeadersStore = create<HeadersStore>()(
   persist(
     (set, get) => ({
       rulesByWs: {},
-      setRules: (wsId, rules) =>
-        set((s) => ({ rulesByWs: { ...s.rulesByWs, [wsId]: rules } })),
+      setRules: (wsId, rules) => set((s) => ({ rulesByWs: { ...s.rulesByWs, [wsId]: rules } })),
       addRule: (wsId, rule) =>
         set((s) => {
           const existing = s.rulesByWs[wsId] ?? [];
@@ -37,9 +36,7 @@ export const useHeadersStore = create<HeadersStore>()(
           return {
             rulesByWs: {
               ...s.rulesByWs,
-              [wsId]: existing.map((r) =>
-                r.id === id ? { ...r, ...patch } : r
-              ),
+              [wsId]: existing.map((r) => (r.id === id ? { ...r, ...patch } : r)),
             },
           };
         }),
@@ -58,6 +55,6 @@ export const useHeadersStore = create<HeadersStore>()(
     {
       name: "xevo-header-rules",
       version: 1,
-    }
-  )
+    },
+  ),
 );

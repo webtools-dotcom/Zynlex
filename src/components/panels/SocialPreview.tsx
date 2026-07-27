@@ -40,7 +40,14 @@ export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
 
       {/* Image */}
       {image && (
-        <div className="w-full" style={{ aspectRatio: "1.91 / 1", overflow: "hidden", background: "var(--color-elevated)" }}>
+        <div
+          className="w-full"
+          style={{
+            aspectRatio: "1.91 / 1",
+            overflow: "hidden",
+            background: "var(--color-elevated)",
+          }}
+        >
           <img
             src={image}
             alt=""
@@ -61,7 +68,12 @@ export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
         )}
         <h3
           className="text-sm font-semibold leading-tight mt-0.5 line-clamp-2"
-          style={{ color: platform === "twitter" || platform === "discord" ? "var(--color-text-primary)" : "#1a1a2e" }}
+          style={{
+            color:
+              platform === "twitter" || platform === "discord"
+                ? "var(--color-text-primary)"
+                : "#1a1a2e",
+          }}
         >
           {platform === "twitter"
             ? title.slice(0, 70)

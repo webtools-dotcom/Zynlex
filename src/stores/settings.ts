@@ -27,9 +27,15 @@ export const useSettingsStore = create<SettingsStore>()(
   persist(
     immer((set) => ({
       settings: DEFAULTS,
-      update: (patch) => { set((s) => { Object.assign(s.settings, patch); }); },
+      update: (patch) => {
+        set((s) => {
+          Object.assign(s.settings, patch);
+        });
+      },
       setPortScanInterval: (seconds) => {
-        set((s) => { s.settings.portScanInterval = Math.max(5, Math.min(60, seconds)); });
+        set((s) => {
+          s.settings.portScanInterval = Math.max(5, Math.min(60, seconds));
+        });
       },
     })),
     {
@@ -42,6 +48,6 @@ export const useSettingsStore = create<SettingsStore>()(
         }
         return persistedState;
       },
-    }
-  )
+    },
+  ),
 );

@@ -19,13 +19,17 @@ export function WindowControls() {
     if (!win) return;
     let unlisten: (() => void) | null = null;
     win.isMaximized().then(setIsMaximized);
-    win.onResized(() => {
-      if (rafIdRef.current !== null) return;
-      rafIdRef.current = requestAnimationFrame(() => {
-        rafIdRef.current = null;
-        win.isMaximized().then(setIsMaximized);
+    win
+      .onResized(() => {
+        if (rafIdRef.current !== null) return;
+        rafIdRef.current = requestAnimationFrame(() => {
+          rafIdRef.current = null;
+          win.isMaximized().then(setIsMaximized);
+        });
+      })
+      .then((fn) => {
+        unlisten = fn;
       });
-    }).then((fn) => { unlisten = fn; });
     return () => {
       unlisten?.();
       if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);

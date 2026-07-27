@@ -4,8 +4,14 @@ import { persist } from "zustand/middleware";
 import type { Workspace } from "@/types";
 
 const COLORS = [
-  "#3b82f6","#8b5cf6","#ec4899","#f97316",
-  "#10b981","#f59e0b","#06b6d4","#ef4444",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+  "#f97316",
+  "#10b981",
+  "#f59e0b",
+  "#06b6d4",
+  "#ef4444",
 ];
 
 const INITIAL_WORKSPACE: Workspace = {
@@ -28,22 +34,23 @@ function isStringArray(value: unknown): value is string[] {
 
 function sanitizeWorkspace(
   workspaceId: string,
-  workspace: Partial<Workspace> | undefined
+  workspace: Partial<Workspace> | undefined,
 ): Workspace {
   return {
     id: typeof workspace?.id === "string" ? workspace.id : workspaceId,
     name: typeof workspace?.name === "string" ? workspace.name : INITIAL_WORKSPACE.name,
     color: typeof workspace?.color === "string" ? workspace.color : INITIAL_WORKSPACE.color,
     icon: typeof workspace?.icon === "string" ? workspace.icon : INITIAL_WORKSPACE.icon,
-    createdAt:
-      typeof workspace?.createdAt === "number" ? workspace.createdAt : Date.now(),
-    tabIds: Array.isArray(workspace?.tabIds) ? workspace!.tabIds.filter((id): id is string => typeof id === "string") : [],
+    createdAt: typeof workspace?.createdAt === "number" ? workspace.createdAt : Date.now(),
+    tabIds: Array.isArray(workspace?.tabIds)
+      ? workspace!.tabIds.filter((id): id is string => typeof id === "string")
+      : [],
     activeTabId: typeof workspace?.activeTabId === "string" ? workspace.activeTabId : null,
   };
 }
 
 function sanitizeWorkspaceMap(
-  workspaces: Record<string, Partial<Workspace>> | undefined
+  workspaces: Record<string, Partial<Workspace>> | undefined,
 ): Record<string, Workspace> {
   const next: Record<string, Workspace> = {};
   const source = workspaces ?? {};
@@ -53,10 +60,7 @@ function sanitizeWorkspaceMap(
   });
 
   if (!next[INITIAL_WORKSPACE.id]) {
-    next[INITIAL_WORKSPACE.id] = sanitizeWorkspace(
-      INITIAL_WORKSPACE.id,
-      INITIAL_WORKSPACE
-    );
+    next[INITIAL_WORKSPACE.id] = sanitizeWorkspace(INITIAL_WORKSPACE.id, INITIAL_WORKSPACE);
   }
 
   return next;
@@ -90,7 +94,9 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
         const id = crypto.randomUUID();
         set((s) => {
           s.workspaces[id] = {
-            id, name, icon,
+            id,
+            name,
+            icon,
             color: color ?? COLORS[idx],
             createdAt: Date.now(),
             tabIds: [],
@@ -113,11 +119,15 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
       },
 
       renameWorkspace: (id, name) => {
-        set((s) => { if (s.workspaces[id]) s.workspaces[id].name = name; });
+        set((s) => {
+          if (s.workspaces[id]) s.workspaces[id].name = name;
+        });
       },
 
       setActiveWorkspace: (id) => {
-        set((s) => { s.activeWorkspaceId = id; });
+        set((s) => {
+          s.activeWorkspaceId = id;
+        });
       },
 
       addTabToWorkspace: (wsId, tabId) => {
@@ -142,15 +152,21 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
       },
 
       setActiveTab: (wsId, tabId) => {
-        set((s) => { if (s.workspaces[wsId]) s.workspaces[wsId].activeTabId = tabId; });
+        set((s) => {
+          if (s.workspaces[wsId]) s.workspaces[wsId].activeTabId = tabId;
+        });
       },
 
       reorderTabs: (wsId, tabIds) => {
-        set((s) => { if (s.workspaces[wsId]) s.workspaces[wsId].tabIds = tabIds; });
+        set((s) => {
+          if (s.workspaces[wsId]) s.workspaces[wsId].tabIds = tabIds;
+        });
       },
 
       reorderWorkspaces: (order) => {
-        set((s) => { s.workspaceOrder = order; });
+        set((s) => {
+          s.workspaceOrder = order;
+        });
       },
     })),
     {
@@ -168,7 +184,7 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
         const workspaces = sanitizeWorkspaceMap(
           isRecord(state.workspaces)
             ? (state.workspaces as Record<string, Partial<Workspace>>)
-            : undefined
+            : undefined,
         );
 
         const workspaceOrder = isStringArray(state.workspaceOrder)
@@ -180,10 +196,9 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
         }
 
         const activeWorkspaceId =
-          typeof state.activeWorkspaceId === "string" &&
-          state.activeWorkspaceId in workspaces
+          typeof state.activeWorkspaceId === "string" && state.activeWorkspaceId in workspaces
             ? state.activeWorkspaceId
-            : workspaceOrder[0] ?? INITIAL_WORKSPACE.id;
+            : (workspaceOrder[0] ?? INITIAL_WORKSPACE.id);
 
         return {
           workspaces,
@@ -196,7 +211,7 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
           Object.entries(s.workspaces).map(([workspaceId, workspace]) => [
             workspaceId,
             sanitizeWorkspace(workspaceId, workspace),
-          ])
+          ]),
         ),
         workspaceOrder: s.workspaceOrder,
         activeWorkspaceId: s.activeWorkspaceId,
@@ -209,6 +224,6 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
           console.error("[xevo] Workspace persistence hydration failed:", error);
         }
       },
-    }
-  )
+    },
+  ),
 );

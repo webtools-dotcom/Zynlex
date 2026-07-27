@@ -71,13 +71,7 @@ function SearchEngineButton({
   );
 }
 
-function CompactToggle({
-  value,
-  onToggle,
-}: {
-  value: boolean;
-  onToggle: () => void;
-}) {
+function CompactToggle({ value, onToggle }: { value: boolean; onToggle: () => void }) {
   return (
     <button
       onClick={onToggle}
@@ -164,7 +158,9 @@ export function SettingsPanel() {
       <div className="flex justify-between items-center mt-3">
         <div>
           <span className="text-sm text-[var(--color-text-muted)] block">Compact Mode</span>
-          <span className="text-xs text-[var(--color-text-disabled)] block">Reduce UI chrome size</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Reduce UI chrome size
+          </span>
         </div>
         <CompactToggle
           value={settings.compactMode}
@@ -175,7 +171,9 @@ export function SettingsPanel() {
       <div className="flex justify-between items-center mt-3">
         <div>
           <span className="text-sm text-[var(--color-text-muted)] block">Bookmark Bar</span>
-          <span className="text-xs text-[var(--color-text-disabled)] block">Strip under the toolbar</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Strip under the toolbar
+          </span>
         </div>
         <CompactToggle
           value={settings.bookmarkBarVisible}
@@ -186,7 +184,9 @@ export function SettingsPanel() {
       <div className="flex justify-between items-center mt-3">
         <div>
           <span className="text-sm text-[var(--color-text-muted)] block">Vertical Tabs</span>
-          <span className="text-xs text-[var(--color-text-disabled)] block">Tab list as a left column</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Tab list as a left column
+          </span>
         </div>
         <CompactToggle
           value={settings.tabBarPosition === "left"}
@@ -235,7 +235,7 @@ export function SettingsPanel() {
           className="w-full mt-1 px-2 py-1 text-xs border rounded text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] outline-none focus:border-[var(--color-accent)]"
           style={{
             background: "var(--color-elevated)",
-        borderColor: "var(--color-border)",
+            borderColor: "var(--color-border)",
           }}
         />
       )}
@@ -270,9 +270,7 @@ export function SettingsPanel() {
           {settings.customPorts.map((p) => (
             <button
               key={p}
-              onClick={() =>
-                update({ customPorts: settings.customPorts.filter((x) => x !== p) })
-              }
+              onClick={() => update({ customPorts: settings.customPorts.filter((x) => x !== p) })}
               title={`Remove port ${p}`}
               className="px-1.5 py-0.5 text-xs rounded font-mono bg-[var(--color-elevated)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-[var(--color-dead)] hover:border-[var(--color-dead)]"
             >

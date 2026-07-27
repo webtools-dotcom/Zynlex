@@ -104,9 +104,7 @@ export const useApiCollectionsStore = create<ApiCollectionsStore>()(
         removeFolder: (wsId, id) =>
           patchWs(wsId, (c) => ({
             folders: c.folders.filter((f) => f.id !== id),
-            requests: c.requests.map((r) =>
-              r.folderId === id ? { ...r, folderId: null } : r
-            ),
+            requests: c.requests.map((r) => (r.folderId === id ? { ...r, folderId: null } : r)),
           })),
       };
     },
@@ -114,6 +112,6 @@ export const useApiCollectionsStore = create<ApiCollectionsStore>()(
       name: "xevo-api-collections",
       version: 1,
       partialize: (s) => ({ byWs: s.byWs }),
-    }
-  )
+    },
+  ),
 );

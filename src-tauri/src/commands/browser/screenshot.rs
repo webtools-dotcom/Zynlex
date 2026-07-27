@@ -1,7 +1,7 @@
-use tauri::{AppHandle, Manager};
-use std::sync::Mutex;
-use crate::BrowserState;
 use super::find_tab_webview;
+use crate::BrowserState;
+use std::sync::Mutex;
+use tauri::{AppHandle, Manager};
 
 /// Result of a screenshot capture: PNG bytes + saved file path.
 #[derive(serde::Serialize)]
@@ -88,13 +88,11 @@ pub async fn browser_screenshot(
 /// Uses WebView2's `CallDevToolsProtocolMethod` to invoke `Page.captureScreenshot`
 /// which returns a base64-encoded PNG.
 #[cfg(target_os = "windows")]
-async fn capture_browser_devtools(
-    wv: &tauri::Webview,
-) -> Result<Vec<u8>, String> {
+async fn capture_browser_devtools(wv: &tauri::Webview) -> Result<Vec<u8>, String> {
+    use base64::Engine;
     use std::sync::Arc;
     use tokio::sync::oneshot;
     use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
-    use base64::Engine;
     use windows_core::HSTRING;
 
     let (inner_tx, rx) = oneshot::channel::<Result<Vec<u8>, String>>();
@@ -116,67 +114,56 @@ async fn capture_browser_devtools(
             };
 
             let tx_inner = tx_outer.clone();
-            let handler = CallDevToolsProtocolMethodCompletedHandler::create(
-                Box::new(
-                    move |result: windows_core::Result<()>, json: String|
-                          -> windows_core::Result<()> {
-                        let sender = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take();
-                        if let Some(s) = sender {
-                            if let Err(e) = result {
-                                let _ = s.send(Err(format!("DevTools failed: {:?}", e)));
-                            } else {
-                                match serde_json::from_str::<serde_json::Value>(&json) {
-                                    Ok(v) => {
-                                        if let Some(data) = v.get("data").and_then(|d| d.as_str()) {
-                                            match base64::engine::general_purpose::STANDARD
-                                                .decode(data)
-                                            {
-                                                Ok(bytes) => {
-                                                    let _ = s.send(Ok(bytes));
-                                                }
-                                                Err(e) => {
-                                                    let _ = s.send(Err(format!(
-                                                        "base64 decode failed: {e}"
-                                                    )));
-                                                }
+            let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+                move |result: windows_core::Result<()>, json: String| -> windows_core::Result<()> {
+                    let sender = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take();
+                    if let Some(s) = sender {
+                        if let Err(e) = result {
+                            let _ = s.send(Err(format!("DevTools failed: {:?}", e)));
+                        } else {
+                            match serde_json::from_str::<serde_json::Value>(&json) {
+                                Ok(v) => {
+                                    if let Some(data) = v.get("data").and_then(|d| d.as_str()) {
+                                        match base64::engine::general_purpose::STANDARD.decode(data)
+                                        {
+                                            Ok(bytes) => {
+                                                let _ = s.send(Ok(bytes));
                                             }
-                                        } else {
-                                            let _ = s.send(Err(
-                                                "No 'data' field in DevTools response".to_string(),
-                                            ));
+                                            Err(e) => {
+                                                let _ = s.send(Err(format!(
+                                                    "base64 decode failed: {e}"
+                                                )));
+                                            }
                                         }
+                                    } else {
+                                        let _ = s.send(Err(
+                                            "No 'data' field in DevTools response".to_string()
+                                        ));
                                     }
-                                    Err(e) => {
-                                        let _ = s.send(Err(format!(
-                                            "JSON parse failed: {e}"
-                                        )));
-                                    }
+                                }
+                                Err(e) => {
+                                    let _ = s.send(Err(format!("JSON parse failed: {e}")));
                                 }
                             }
                         }
-                        Ok(())
-                    },
-                ),
-            );
+                    }
+                    Ok(())
+                },
+            ));
 
             let method = HSTRING::from("Page.captureScreenshot");
-            let params =
-                HSTRING::from(r#"{"format":"png","captureBeyondViewport":false,"fromSurface":true}"#);
-            if let Err(e) = core_webview.CallDevToolsProtocolMethod(
-                &method,
-                &params,
-                &handler,
-            ) {
+            let params = HSTRING::from(
+                r#"{"format":"png","captureBeyondViewport":false,"fromSurface":true}"#,
+            );
+            if let Err(e) = core_webview.CallDevToolsProtocolMethod(&method, &params, &handler) {
                 if let Some(s) = tx_outer.lock().unwrap_or_else(|e| e.into_inner()).take() {
-                    let _ = s.send(Err(format!(
-                        "CallDevToolsProtocolMethod failed: {:?}",
-                        e
-                    )));
+                    let _ = s.send(Err(format!("CallDevToolsProtocolMethod failed: {:?}", e)));
                 }
             }
         }
     })
     .map_err(|e| format!("with_webview error: {e}"))?;
 
-    rx.await.map_err(|_| "Screenshot channel closed".to_string())?
+    rx.await
+        .map_err(|_| "Screenshot channel closed".to_string())?
 }

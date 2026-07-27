@@ -26,9 +26,10 @@ export function LoadingBar({ isLoading }: LoadingBarProps) {
     if (wasLoading.current && !isLoading) {
       const innerRect = innerBarRef.current?.getBoundingClientRect();
       const containerRect = containerRef.current?.getBoundingClientRect();
-      startWidthRef.current = innerRect && containerRect && containerRect.width > 0
-        ? (innerRect.width / containerRect.width) * 100
-        : 90;
+      startWidthRef.current =
+        innerRect && containerRect && containerRect.width > 0
+          ? (innerRect.width / containerRect.width) * 100
+          : 90;
       setState("finishing");
       if (finishTimer.current) clearTimeout(finishTimer.current);
       finishTimer.current = setTimeout(() => {
@@ -73,13 +74,15 @@ export function LoadingBar({ isLoading }: LoadingBarProps) {
     >
       <div
         ref={innerBarRef}
-        style={{
-          height: "100%",
-          width: 0,
-          background: "var(--color-accent)",
-          "--loading-start-width": `${startWidthRef.current}%`,
-          animation,
-        } as React.CSSProperties}
+        style={
+          {
+            height: "100%",
+            width: 0,
+            background: "var(--color-accent)",
+            "--loading-start-width": `${startWidthRef.current}%`,
+            animation,
+          } as React.CSSProperties
+        }
       />
     </div>
   );

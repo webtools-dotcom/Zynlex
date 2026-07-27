@@ -47,7 +47,7 @@ describe("entryToCurl", () => {
 describe("entryToFetch", () => {
   it("builds a fetch() call, dropping Content-Length", () => {
     const fetchCall = entryToFetch(makeEntry());
-    expect(fetchCall).toContain('fetch(');
+    expect(fetchCall).toContain("fetch(");
     expect(fetchCall).toContain('"https://example.com/api"');
     expect(fetchCall).toContain('method: "GET"');
     expect(fetchCall).toContain('"Content-Type": "application/json"');

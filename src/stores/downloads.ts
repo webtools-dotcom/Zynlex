@@ -69,9 +69,9 @@ export const useDownloadsStore = create<DownloadsStore>()(
       merge: (persisted, current) => ({
         ...current,
         items: ((persisted as { items?: DownloadItem[] } | undefined)?.items ?? []).filter(
-          (d) => d.status !== "active"
+          (d) => d.status !== "active",
         ),
       }),
-    }
-  )
+    },
+  ),
 );

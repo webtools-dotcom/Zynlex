@@ -10,7 +10,11 @@ import { useUIStore, type Toast as ToastData } from "@/stores/ui";
 
 const KIND_COLORS: Record<ToastData["kind"], { bg: string; border: string; fg: string }> = {
   success: { bg: "var(--color-live)", border: "var(--color-live)", fg: "#0f0f0f" },
-  info: { bg: "var(--color-elevated)", border: "var(--color-border)", fg: "var(--color-text-primary)" },
+  info: {
+    bg: "var(--color-elevated)",
+    border: "var(--color-border)",
+    fg: "var(--color-text-primary)",
+  },
   danger: { bg: "var(--color-dead)", border: "var(--color-dead)", fg: "#fff" },
 };
 

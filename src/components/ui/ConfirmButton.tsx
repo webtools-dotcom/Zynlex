@@ -76,7 +76,7 @@ export function ConfirmButton({
         }}
         className={cn(
           "text-xs px-1.5 py-0.5 rounded bg-[var(--color-dead)] text-white cursor-pointer",
-          className
+          className,
         )}
       >
         {confirmLabel}

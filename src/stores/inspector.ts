@@ -85,5 +85,5 @@ export const useInspectorStore = create<InspectorStore>()(
         s.lastTabId = null;
         s.error = null;
       }),
-  }))
+  })),
 );

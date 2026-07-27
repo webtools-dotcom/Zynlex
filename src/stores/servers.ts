@@ -101,6 +101,6 @@ export const useServersStore = create<ServersStore>()(
           isAlive: false,
         })),
       }),
-    }
-  )
+    },
+  ),
 );

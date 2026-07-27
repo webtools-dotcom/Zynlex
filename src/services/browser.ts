@@ -33,11 +33,7 @@ export interface FindResult {
 
 // ─── Per-tab commands ────────────────────────────────────────────────
 
-export async function createTab(
-  tabId: string,
-  url: string,
-  bounds: BrowserBounds
-): Promise<void> {
+export async function createTab(tabId: string, url: string, bounds: BrowserBounds): Promise<void> {
   await invoke<void>("browser_create_tab", {
     tabId,
     url,
@@ -58,10 +54,7 @@ export async function navigateTab(tabId: string, url: string): Promise<void> {
 
 // ─── Bounds ──────────────────────────────────────────────────────────
 
-export async function setWebviewBounds(
-  tabId: string,
-  bounds: BrowserBounds
-): Promise<void> {
+export async function setWebviewBounds(tabId: string, bounds: BrowserBounds): Promise<void> {
   await invoke<void>("browser_set_bounds", {
     tabId,
     x: bounds.x,
@@ -110,10 +103,7 @@ export async function hideTabWebview(tabId: string): Promise<void> {
   await invoke<void>("browser_hide_tab", { tabId });
 }
 
-export async function showTabWebview(
-  tabId: string,
-  bounds: BrowserBounds
-): Promise<void> {
+export async function showTabWebview(tabId: string, bounds: BrowserBounds): Promise<void> {
   await invoke<void>("browser_show_tab", {
     tabId,
     x: bounds.x,
@@ -129,10 +119,7 @@ export async function webviewFind(tabId: string, query: string): Promise<void> {
   await invoke<void>("browser_find", { tabId, query });
 }
 
-export async function webviewFindNext(
-  tabId: string,
-  forward: boolean = true
-): Promise<void> {
+export async function webviewFindNext(tabId: string, forward: boolean = true): Promise<void> {
   await invoke<void>("browser_find_next", { tabId, forward });
 }
 
@@ -169,26 +156,22 @@ export async function scanPorts(ports: number[]): Promise<ScannedPort[]> {
 
 // ─── Events ──────────────────────────────────────────────────────────
 
-export function onUrlChanged(
-  callback: (tabId: string, url: string) => void
-): Promise<UnlistenFn> {
-  return listen<{ tabId: string; url: string }>(
-    "browser://url-changed",
-    (e) => callback(e.payload.tabId, e.payload.url)
+export function onUrlChanged(callback: (tabId: string, url: string) => void): Promise<UnlistenFn> {
+  return listen<{ tabId: string; url: string }>("browser://url-changed", (e) =>
+    callback(e.payload.tabId, e.payload.url),
   );
 }
 
 export function onLoadingChanged(
-  callback: (tabId: string, loading: boolean) => void
+  callback: (tabId: string, loading: boolean) => void,
 ): Promise<UnlistenFn> {
-  return listen<{ tabId: string; loading: boolean }>(
-    "browser://loading",
-    (e) => callback(e.payload.tabId, e.payload.loading)
+  return listen<{ tabId: string; loading: boolean }>("browser://loading", (e) =>
+    callback(e.payload.tabId, e.payload.loading),
   );
 }
 
 export function onTabInfoChanged(
-  callback: (tabId: string, info: TabInfo) => void
+  callback: (tabId: string, info: TabInfo) => void,
 ): Promise<UnlistenFn> {
   return listen<{ tabId: string; title: string; url: string; favicon: string | null }>(
     "browser://tab-info",
@@ -198,25 +181,19 @@ export function onTabInfoChanged(
         title: e.payload.title,
         url: e.payload.url,
         favicon: e.payload.favicon,
-      })
+      }),
   );
 }
 
-export function onFindResult(
-  callback: (result: FindResult) => void
-): Promise<UnlistenFn> {
+export function onFindResult(callback: (result: FindResult) => void): Promise<UnlistenFn> {
   return listen<FindResult>("browser://find-result", (e) => callback(e.payload));
 }
 
-export function onBookmarkRequest(
-  callback: () => void
-): Promise<UnlistenFn> {
+export function onBookmarkRequest(callback: () => void): Promise<UnlistenFn> {
   return listen("browser://bookmark-request", () => callback());
 }
 
-export function onNewTabRequested(
-  callback: (url: string) => void
-): Promise<UnlistenFn> {
+export function onNewTabRequested(callback: (url: string) => void): Promise<UnlistenFn> {
   return listen<{ url: string }>("browser://open-new-tab", (e) => callback(e.payload.url));
 }
 
@@ -235,13 +212,13 @@ interface DownloadFinished {
 }
 
 export function onDownloadStarted(
-  callback: (payload: DownloadStarted) => void
+  callback: (payload: DownloadStarted) => void,
 ): Promise<UnlistenFn> {
   return listen<DownloadStarted>("xevo://download-started", (e) => callback(e.payload));
 }
 
 export function onDownloadFinished(
-  callback: (payload: DownloadFinished) => void
+  callback: (payload: DownloadFinished) => void,
 ): Promise<UnlistenFn> {
   return listen<DownloadFinished>("xevo://download-finished", (e) => callback(e.payload));
 }
@@ -278,7 +255,7 @@ export async function restoreTabState(tabId: string, stateJson: string): Promise
 
 export async function evalInspector(
   tabId: string,
-  inspectorType: "meta" | "cookies" | "localStorage" | "sessionStorage"
+  inspectorType: "meta" | "cookies" | "localStorage" | "sessionStorage",
 ): Promise<void> {
   await invoke<void>("browser_eval_inspector", { tabId, inspectorType });
 }
@@ -290,17 +267,15 @@ interface InspectorDataEvent {
 }
 
 export function onInspectorData(
-  callback: (event: InspectorDataEvent) => void
+  callback: (event: InspectorDataEvent) => void,
 ): Promise<UnlistenFn> {
-  return listen<InspectorDataEvent>("xevo://inspector-data", (e) =>
-    callback(e.payload)
-  );
+  return listen<InspectorDataEvent>("xevo://inspector-data", (e) => callback(e.payload));
 }
 
 export async function inspectorMutate(
   tabId: string,
   operation: string,
-  params: Record<string, string>
+  params: Record<string, string>,
 ): Promise<void> {
   await invoke<void>("inspector_mutate", { tabId, operation, params });
 }
@@ -437,8 +412,7 @@ interface HeaderRulePayload {
 }
 
 export async function setHeaderRules(
-  rulesByTab: Record<string, HeaderRulePayload[]>
+  rulesByTab: Record<string, HeaderRulePayload[]>,
 ): Promise<void> {
   await invoke<void>("browser_set_header_rules", { rulesByTab });
 }
-
