@@ -28,6 +28,15 @@ use tauri_plugin_opener::OpenerExt;
 // (browser_close_tab) so cancelled/aborted requests and closed tabs don't leak.
 static NETWORK_REQUEST_META: OnceLock<Mutex<HashMap<String, VecDeque<(Instant, String)>>>> = OnceLock::new();
 
+/// Reads a single COM `PWSTR` out-parameter into an owned `String`, treating a
+/// null pointer as empty. `f` is the COM getter call, e.g. `|p| request.Uri(p)`.
+#[cfg(target_os = "windows")]
+unsafe fn pwstr_to_string(f: impl FnOnce(*mut windows::core::PWSTR)) -> String {
+    let mut p = windows::core::PWSTR::null();
+    f(&mut p);
+    if p.is_null() { String::new() } else { p.to_string().unwrap_or_default() }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HeaderRule {
     #[serde(default)]
@@ -181,7 +190,7 @@ const CHROME_FEATURES_SCRIPT: &str = r##"
     }
   }
 
-  window.__xevoFind = function(query, forward) {
+  window.__xevoFind = function(query) {
     clearFind();
     if (!query) {
       window.__xevoFindState = { query: "", matches: [], currentIndex: -1 };
@@ -206,7 +215,7 @@ const CHROME_FEATURES_SCRIPT: &str = r##"
     var s = window.__xevoFindState;
     if (!s || s.matches.length === 0) {
       if (s && s.query) {
-        window.__xevoFind(s.query, forward);
+        window.__xevoFind(s.query);
       }
       return;
     }
@@ -1027,26 +1036,12 @@ fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<
     })
 }
 
+/// A JSON string literal is a valid JS string literal (U+2028/U+2029 have
+/// been legal inside JS strings since ES2019, and serde_json escapes control
+/// characters/quotes/backslashes the same way), so this is safe to embed
+/// directly into an `eval`'d script.
 fn js_string_literal(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for ch in s.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{2028}' => out.push_str("\\u2028"),
-            '\u{2029}' => out.push_str("\\u2029"),
-            c if (c as u32) < 0x20 => {
-                out.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
+    serde_json::to_string(s).unwrap_or_default()
 }
 
 #[tauri::command]
@@ -1054,13 +1049,11 @@ pub async fn browser_find(
     app: AppHandle,
     tab_id: String,
     query: String,
-    forward: Option<bool>,
 ) -> Result<(), String> {
     if query.is_empty() {
         return eval_find_script(&app, &tab_id, "window.__xevoClearFind()");
     }
-    let fwd = forward.unwrap_or(true);
-    let body = format!("window.__xevoFind({}, {})", js_string_literal(&query), fwd);
+    let body = format!("window.__xevoFind({})", js_string_literal(&query));
     eval_find_script(&app, &tab_id, &body)
 }
 
@@ -1360,9 +1353,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                     Err(_) => return Ok(()),
                 };
 
-                let mut uri_ptr = PWSTR::null();
-                let _ = request.Uri(&mut uri_ptr);
-                let uri = if uri_ptr.is_null() { String::new() } else { uri_ptr.to_string().unwrap_or_default() };
+                let uri = pwstr_to_string(|p| { let _ = request.Uri(p); });
 
                 // ponytail: SetHeader before Method()/other COM reads.
                 // Never inject into Tauri's own IPC/asset traffic — a `*` rule would break it.
@@ -1446,12 +1437,8 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                     Err(_) => return Ok(()),
                 };
 
-                let mut method_ptr = PWSTR::null();
-                let mut uri_ptr = PWSTR::null();
-                let _ = request.Method(&mut method_ptr);
-                let _ = request.Uri(&mut uri_ptr);
-                let method = if method_ptr.is_null() { String::new() } else { method_ptr.to_string().unwrap_or_default() };
-                let uri = if uri_ptr.is_null() { String::new() } else { uri_ptr.to_string().unwrap_or_default() };
+                let method = pwstr_to_string(|p| { let _ = request.Method(p); });
+                let uri = pwstr_to_string(|p| { let _ = request.Uri(p); });
 
                 // Skip internal Tauri IPC calls — not useful in dev tools
                 if uri.starts_with("http://ipc.localhost") || uri.starts_with("tauri://localhost") {
@@ -1481,9 +1468,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                 let mut status_code: i32 = 0;
                 let _ = response.StatusCode(&mut status_code);
 
-                let mut reason_ptr = PWSTR::null();
-                let _ = response.ReasonPhrase(&mut reason_ptr);
-                let reason_phrase = if reason_ptr.is_null() { String::new() } else { reason_ptr.to_string().unwrap_or_default() };
+                let reason_phrase = pwstr_to_string(|p| { let _ = response.ReasonPhrase(p); });
 
                 let mut headers: HashMap<String, String> = HashMap::new();
                 if let Ok(headers_obj) = response.Headers() {
@@ -1618,15 +1603,8 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             let tab_id_title = tab_id.clone();
             let core_title = core.clone();
             let title_handler = DocumentTitleChangedEventHandler::create(Box::new(move |_webview, _args| {
-                use windows::core::PWSTR;
-
-                let mut title_ptr = PWSTR::null();
-                let _ = core_title.DocumentTitle(&mut title_ptr);
-                let title = if title_ptr.is_null() { String::new() } else { title_ptr.to_string().unwrap_or_default() };
-
-                let mut url_ptr = PWSTR::null();
-                let _ = core_title.Source(&mut url_ptr);
-                let url = if url_ptr.is_null() { String::new() } else { url_ptr.to_string().unwrap_or_default() };
+                let title = pwstr_to_string(|p| { let _ = core_title.DocumentTitle(p); });
+                let url = pwstr_to_string(|p| { let _ = core_title.Source(p); });
 
                 let _ = update_tab_info(app_title.clone(), tab_id_title.clone(), title, url, None);
                 Ok(())
@@ -1791,7 +1769,7 @@ async fn eval_json(wv: &tauri::Webview, script: String) -> Result<serde_json::Va
             let core_webview = match controller.CoreWebView2() {
                 Ok(wv) => wv,
                 Err(e) => {
-                    if let Some(s) = tx_outer.lock().unwrap().take() {
+                    if let Some(s) = tx_outer.lock().unwrap_or_else(|e| e.into_inner()).take() {
                         let _ = s.send(Err(format!("CoreWebView2 failed: {:?}", e)));
                     }
                     return;
@@ -1801,7 +1779,7 @@ async fn eval_json(wv: &tauri::Webview, script: String) -> Result<serde_json::Va
             let tx_inner = tx_outer.clone();
             let handler = ExecuteScriptCompletedHandler::create(Box::new(
                 move |result: windows_core::Result<()>, json: String| -> windows_core::Result<()> {
-                    let sender = tx_inner.lock().unwrap().take();
+                    let sender = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take();
                     if let Some(s) = sender {
                         if let Err(e) = result {
                             let _ = s.send(Err(format!("ExecuteScript failed: {:?}", e)));
@@ -1821,7 +1799,7 @@ async fn eval_json(wv: &tauri::Webview, script: String) -> Result<serde_json::Va
             ));
 
             if let Err(e) = core_webview.ExecuteScript(&HSTRING::from(script.as_str()), &handler) {
-                if let Some(s) = tx_outer.lock().unwrap().take() {
+                if let Some(s) = tx_outer.lock().unwrap_or_else(|e| e.into_inner()).take() {
                     let _ = s.send(Err(format!("ExecuteScript call failed: {:?}", e)));
                 }
             }
@@ -1839,19 +1817,12 @@ async fn eval_json(wv: &tauri::Webview, script: String) -> Result<serde_json::Va
 unsafe fn cookie_to_json(
     c: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Cookie,
 ) -> serde_json::Value {
-    use windows::core::PWSTR;
     use windows_core::BOOL;
 
-    unsafe fn read(f: impl FnOnce(*mut PWSTR)) -> String {
-        let mut p = PWSTR::null();
-        f(&mut p);
-        if p.is_null() { String::new() } else { p.to_string().unwrap_or_default() }
-    }
-
-    let name = read(|p| { let _ = c.Name(p); });
-    let value = read(|p| { let _ = c.Value(p); });
-    let domain = read(|p| { let _ = c.Domain(p); });
-    let path = read(|p| { let _ = c.Path(p); });
+    let name = pwstr_to_string(|p| { let _ = c.Name(p); });
+    let value = pwstr_to_string(|p| { let _ = c.Value(p); });
+    let domain = pwstr_to_string(|p| { let _ = c.Domain(p); });
+    let path = pwstr_to_string(|p| { let _ = c.Path(p); });
 
     let mut expires: f64 = -1.0;
     let _ = c.Expires(&mut expires);
@@ -1893,7 +1864,7 @@ fn cookie_op_failed<T>(
     tx: &std::sync::Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<T, String>>>>>,
     msg: String,
 ) {
-    if let Some(s) = tx.lock().unwrap().take() {
+    if let Some(s) = tx.lock().unwrap_or_else(|e| e.into_inner()).take() {
         let _ = s.send(Err(msg));
     }
 }
@@ -1913,7 +1884,6 @@ unsafe fn get_cookie_manager(
     String,
 > {
     use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_2;
-    use windows::core::PWSTR;
     use windows_core::Interface;
 
     let core = platform
@@ -1921,9 +1891,7 @@ unsafe fn get_cookie_manager(
         .CoreWebView2()
         .map_err(|e| format!("CoreWebView2 failed: {e:?}"))?;
 
-    let mut url_ptr = PWSTR::null();
-    let _ = core.Source(&mut url_ptr);
-    let url = if url_ptr.is_null() { String::new() } else { url_ptr.to_string().unwrap_or_default() };
+    let url = pwstr_to_string(|p| { let _ = core.Source(p); });
 
     let core2: ICoreWebView2_2 = core.cast().map_err(|e| format!("ICoreWebView2_2 unavailable: {e:?}"))?;
     let manager = core2.CookieManager().map_err(|e| format!("CookieManager unavailable: {e:?}"))?;
@@ -1959,7 +1927,7 @@ async fn read_cookies(wv: &tauri::Webview) -> Result<serde_json::Value, String> 
             let tx_inner = tx_outer.clone();
             let url_for_handler = url.clone();
             let handler = GetCookiesCompletedHandler::create(Box::new(move |result, list| {
-                if let Some(s) = tx_inner.lock().unwrap().take() {
+                if let Some(s) = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take() {
                     if let Err(e) = result {
                         let _ = s.send(Err(format!("GetCookies failed: {e:?}")));
                         return Ok(());
@@ -2030,7 +1998,7 @@ async fn mutate_cookies(
             let tx_inner = tx_outer.clone();
             let manager_inner = manager.clone();
             let handler = GetCookiesCompletedHandler::create(Box::new(move |result, list| {
-                let sender = tx_inner.lock().unwrap().take();
+                let sender = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take();
                 let Some(s) = sender else { return Ok(()) };
                 let manager = &manager_inner;
                 if let Err(e) = result {
@@ -2346,18 +2314,19 @@ fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
             };
             call(
                 "Emulation.setDeviceMetricsOverride",
-                format!(
-                    r#"{{"width":{},"height":{},"deviceScaleFactor":{},"mobile":{}}}"#,
-                    spec.width, spec.height, spec.device_scale_factor, spec.mobile
-                ),
+                serde_json::json!({
+                    "width": spec.width,
+                    "height": spec.height,
+                    "deviceScaleFactor": spec.device_scale_factor,
+                    "mobile": spec.mobile,
+                }).to_string(),
             );
             call(
                 "Emulation.setTouchEmulationEnabled",
-                format!(
-                    r#"{{"enabled":{},"maxTouchPoints":{}}}"#,
-                    spec.touch,
-                    if spec.touch { 5 } else { 0 }
-                ),
+                serde_json::json!({
+                    "enabled": spec.touch,
+                    "maxTouchPoints": if spec.touch { 5 } else { 0 },
+                }).to_string(),
             );
             // Pin the page to 1:1. With `mobile: true` Chromium shrink-to-fits
             // when anything overflows the viewport (an ad banner is enough),
@@ -2366,7 +2335,10 @@ fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
             // the page rendered zoomed out. A real phone with
             // `initial-scale=1`, and Chrome's device toolbar at 100%, both stay
             // at scale 1 and let the overflow scroll.
-            call("Emulation.setPageScaleFactor", r#"{"pageScaleFactor":1}"#.to_string());
+            call(
+                "Emulation.setPageScaleFactor",
+                serde_json::json!({ "pageScaleFactor": 1 }).to_string(),
+            );
             // User-Agent Client Hints. The build-time UA sets the header and
             // `navigator.userAgent`, but NOT `Sec-CH-UA*` — so a site reading
             // client hints still saw the real Edge-on-Windows and warned about
@@ -2382,13 +2354,22 @@ fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
                 };
                 call(
                     "Emulation.setUserAgentOverride",
-                    format!(
-                        r#"{{"userAgent":{},"platform":{},"userAgentMetadata":{{"platform":{},"platformVersion":"","architecture":"","model":"","mobile":{},"brands":[{{"brand":"Chromium","version":"125"}},{{"brand":"Google Chrome","version":"125"}},{{"brand":"Not.A/Brand","version":"24"}}]}}}}"#,
-                        serde_json::to_string(ua).unwrap_or_else(|_| "\"\"".into()),
-                        serde_json::to_string(platform).unwrap_or_else(|_| "\"\"".into()),
-                        serde_json::to_string(platform).unwrap_or_else(|_| "\"\"".into()),
-                        spec.mobile,
-                    ),
+                    serde_json::json!({
+                        "userAgent": ua,
+                        "platform": platform,
+                        "userAgentMetadata": {
+                            "platform": platform,
+                            "platformVersion": "",
+                            "architecture": "",
+                            "model": "",
+                            "mobile": spec.mobile,
+                            "brands": [
+                                { "brand": "Chromium", "version": "125" },
+                                { "brand": "Google Chrome", "version": "125" },
+                                { "brand": "Not.A/Brand", "version": "24" },
+                            ],
+                        },
+                    }).to_string(),
                 );
             }
         });
@@ -2415,7 +2396,7 @@ pub async fn create_viewport(
     height: f64,
     spec: DeviceSpec,
 ) -> Result<(), String> {
-    let parent = app.get_window("main").ok_or("Main window not found")?;
+    let parent = app.get_window("main").ok_or("main window not found")?;
     let target_url = url::Url::parse(&url).map_err(|e| e.to_string())?;
 
     if find_tab_webview(&app, &label).is_some() {
@@ -2677,7 +2658,7 @@ async fn capture_browser_devtools(
             let core_webview = match controller.CoreWebView2() {
                 Ok(wv) => wv,
                 Err(e) => {
-                    if let Some(s) = tx_outer.lock().unwrap().take() {
+                    if let Some(s) = tx_outer.lock().unwrap_or_else(|e| e.into_inner()).take() {
                         let _ = s.send(Err(format!("CoreWebView2 failed: {:?}", e)));
                     }
                     return;
@@ -2689,7 +2670,7 @@ async fn capture_browser_devtools(
                 Box::new(
                     move |result: windows_core::Result<()>, json: String|
                           -> windows_core::Result<()> {
-                        let sender = tx_inner.lock().unwrap().take();
+                        let sender = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take();
                         if let Some(s) = sender {
                             if let Err(e) = result {
                                 let _ = s.send(Err(format!("DevTools failed: {:?}", e)));
@@ -2736,7 +2717,7 @@ async fn capture_browser_devtools(
                 &params,
                 &handler,
             ) {
-                if let Some(s) = tx_outer.lock().unwrap().take() {
+                if let Some(s) = tx_outer.lock().unwrap_or_else(|e| e.into_inner()).take() {
                     let _ = s.send(Err(format!(
                         "CallDevToolsProtocolMethod failed: {:?}",
                         e

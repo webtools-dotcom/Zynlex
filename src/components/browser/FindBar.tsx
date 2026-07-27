@@ -51,7 +51,7 @@ export function FindBar() {
       if (!tabId) return;
       lastQueriedRef.current = q;
       try {
-        await webviewFind(tabId, q, true);
+        await webviewFind(tabId, q);
       } catch (e) {
         if (import.meta.env.DEV) {
           console.error("[xevo] webviewFind failed:", e);
