@@ -408,5 +408,3 @@ export function CommandPalette() {
     </div>
   );
 }
-
-export default CommandPalette;

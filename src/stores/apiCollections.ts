@@ -19,7 +19,7 @@ export interface SavedRequest {
   folderId: string | null;
 }
 
-export interface RequestFolder {
+interface RequestFolder {
   id: string;
   name: string;
 }

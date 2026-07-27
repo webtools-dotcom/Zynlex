@@ -559,5 +559,3 @@ function ProbeReadout({
     </span>
   );
 }
-
-export const ViewportPanel = ViewportControlsPanel;

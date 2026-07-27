@@ -143,5 +143,3 @@ export function ShortcutHelp() {
     </div>
   );
 }
-
-export default ShortcutHelp;

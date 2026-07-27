@@ -22,7 +22,7 @@ export default defineConfig(async () => ({
           "react-vendor": ["react", "react-dom"],
           "zustand-vendor": ["zustand"],
           icons: ["lucide-react"],
-          "ui-lib": ["class-variance-authority", "clsx", "tailwind-merge"],
+          "ui-lib": ["clsx", "tailwind-merge"],
         },
       },
     },

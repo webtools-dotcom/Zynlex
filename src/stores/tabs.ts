@@ -16,7 +16,6 @@ function buildTab(workspaceId: string, opts: NewTabOptions = {}): Tab {
     favicon: opts.favicon ?? null,
     isLoading: false,
     isPinned: opts.isPinned ?? false,
-    isMuted: opts.isMuted ?? false,
     workspaceId,
     createdAt: Date.now(),
     savedFormState: null,
