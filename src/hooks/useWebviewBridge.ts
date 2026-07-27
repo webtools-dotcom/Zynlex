@@ -825,7 +825,9 @@ export function useWebviewBridge(
 
     return () => {
       cancelled = true;
-      unlisteners.forEach((fn) => fn());
+      unlisteners.forEach((fn) => {
+        fn();
+      });
     };
   }, []);
 

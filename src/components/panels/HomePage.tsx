@@ -103,7 +103,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
 
         {/* ── Subtitle ───────────────────────────────────────────── */}
         <p className="font-mono text-[.8125rem] text-[var(--color-text-disabled)] mb-10">
-          // everything running on this machine, one keystroke away
+          {"// everything running on this machine, one keystroke away"}
         </p>
 
         {/* ── Command bar ────────────────────────────────────────── */}

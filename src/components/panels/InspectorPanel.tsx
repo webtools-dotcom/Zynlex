@@ -142,10 +142,10 @@ function MetaSubTab() {
       }
       const declW = record["og:image:width"];
       const declH = record["og:image:height"];
-      if (declW && parseInt(declW) !== width) {
+      if (declW && parseInt(declW, 10) !== width) {
         issues.push(`Declared width ${declW}px but actual is ${width}px`);
       }
-      if (declH && parseInt(declH) !== height) {
+      if (declH && parseInt(declH, 10) !== height) {
         issues.push(`Declared height ${declH}px but actual is ${height}px`);
       }
       const sizePart = sizeKB !== undefined ? `, ${Math.round(sizeKB)}KB` : "";
