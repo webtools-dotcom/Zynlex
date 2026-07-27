@@ -44,7 +44,7 @@ import {
 } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { closeTabWebview, takeScreenshot, setTabZoom, hardReload } from "@/services/browser";
-import { copyToClipboard } from "@/lib/screenshot";
+import { copyImageToClipboard } from "@/lib/clipboard";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
@@ -155,7 +155,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
 
   if (shortcut === "ctrl+shift+s") {
     takeScreenshot()
-      .then(({ bytes }) => copyToClipboard(bytes))
+      .then(({ bytes }) => copyImageToClipboard(bytes))
       .catch((error) => {
         useUIStore.getState().pushToast(
           `Screenshot failed: ${String(error)}`,
@@ -541,7 +541,7 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
       if (mod && e.shiftKey && !e.altKey && e.key === "S") {
         e.preventDefault();
         takeScreenshot()
-          .then(({ bytes }) => copyToClipboard(bytes))
+          .then(({ bytes }) => copyImageToClipboard(bytes))
           .catch((error) => {
             useUIStore.getState().pushToast(
               `Screenshot failed: ${String(error)}`,

@@ -80,10 +80,6 @@ interface UIStore {
   resizeViewportDimensions: (id: string, width: number, height: number) => void;
 }
 
-function genToastId(): string {
-  return `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 export const useUIStore = create<UIStore>()(
   immer((set, get) => ({
     sidebarOpen: true,
@@ -142,7 +138,7 @@ export const useUIStore = create<UIStore>()(
     closeOverlay: () => set((s) => { s.overlayPanel = "none"; }),
     setOverlayHeight: (h) => set((s) => { s.overlayHeight = Math.max(0.2, Math.min(0.8, h)); }),
     pushToast: (message, kind = "info") => {
-      const id = genToastId();
+      const id = crypto.randomUUID();
       set((s) => {
         s.toasts.push({ id, message, kind });
       });
@@ -164,7 +160,7 @@ export const useUIStore = create<UIStore>()(
     // on re-entry) by ViewportSurface's unmount cleanup.
     exitViewportMode: () => set((s) => { s.viewportMode = false; }),
     addViewport: (preset) => set((s) => {
-      const id = `vp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const id = crypto.randomUUID();
       // Tablets are specified portrait but are overwhelmingly used landscape,
       // and a 924×1480 portrait frame scales down to an unusable sliver.
       const landscape = preset.category === "tablet";

@@ -3,14 +3,7 @@ import { useDownloadsStore } from "@/stores/downloads";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { openDownload } from "@/services/browser";
 import { useUIStore } from "@/stores/ui";
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
+import { hostOf } from "@/lib/url";
 
 export function DownloadsPanel() {
   const items = useDownloadsStore((s) => s.items);
@@ -77,7 +70,7 @@ export function DownloadsPanel() {
                     ? "Downloading…"
                     : d.status === "failed"
                       ? "Failed"
-                      : hostOf(d.url)}
+                      : hostOf(d.url, d.url)}
                 </p>
               </div>
               {d.status === "done" && (

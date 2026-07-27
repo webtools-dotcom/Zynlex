@@ -6,6 +6,7 @@ import { useTabsStore } from "@/stores/tabs";
 import { VirtualList } from "@/components/ui/VirtualList";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { HistoryEntry } from "@/types";
+import { titleFromUrl } from "@/lib/url";
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -102,9 +103,7 @@ export function HistoryPanel() {
                 </div>
               ) : item.entry ? (() => {
                 const entry = item.entry;
-                const domain = entry.url
-                  .replace(/^https?:\/\/(www\.)?/, "")
-                  .split("/")[0];
+                const domain = titleFromUrl(entry.url);
                 return (
                   <div
                     style={style}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useCopy } from "@/hooks/useCopy";
 
 function b64Encode(text: string, urlSafe: boolean): string {
   const bytes = new TextEncoder().encode(text);
@@ -28,7 +29,7 @@ export function Base64Tool() {
   const [mode, setMode] = useState<"encode" | "decode">("encode");
   const [urlSafe, setUrlSafe] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copiedLabel: copied, copy } = useCopy(2000);
 
   useEffect(() => {
     if (!input) {
@@ -53,11 +54,8 @@ export function Base64Tool() {
 
   const handleCopy = useCallback(() => {
     if (!output) return;
-    navigator.clipboard.writeText(output).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [output]);
+    copy(output);
+  }, [output, copy]);
 
   const textareaStyle = {
     background: "var(--color-base)",

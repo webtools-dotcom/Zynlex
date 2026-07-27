@@ -1,16 +1,9 @@
 import { Globe } from "lucide-react";
+import { hostOf } from "@/lib/url";
 
 interface SocialPreviewCardProps {
   platform: "facebook" | "twitter" | "linkedin" | "discord";
   meta: Record<string, string>;
-}
-
-function getHost(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url || "example.com";
-  }
 }
 
 export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
@@ -18,7 +11,7 @@ export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
   const description = meta["og:description"] || meta.description || "";
   const image = meta["twitter:image"] || meta["og:image"] || "";
   const url = meta["og:url"] || meta.canonical || "";
-  const domain = getHost(url);
+  const domain = hostOf(url, "example.com");
 
   const platformColors: Record<string, string> = {
     facebook: "#1877F2",

@@ -11,10 +11,6 @@ import { immer } from "zustand/middleware/immer";
 import { persist } from "zustand/middleware";
 import type { Bookmark, BookmarkFolder } from "@/types";
 
-function genId(prefix = "bm"): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 /** Shape of the JSON produced by exportWorkspace / accepted by importWorkspace. */
 interface BookmarkExport {
   version: 1;
@@ -62,7 +58,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
       addBookmark: (workspaceId, url, title) => {
         const trimmedUrl = url.trim();
         if (!trimmedUrl) return "";
-        const id = genId();
+        const id = crypto.randomUUID();
         set((s) => {
           s.bookmarks.unshift({
             id,
@@ -131,7 +127,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
         const trimmed = name.trim();
         if (!trimmed) return;
         set((s) => {
-          s.folders.push({ id: genId("bf"), workspaceId, name: trimmed });
+          s.folders.push({ id: crypto.randomUUID(), workspaceId, name: trimmed });
         });
       },
 
@@ -170,7 +166,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
         const folders: BookmarkFolder[] = [];
         for (const f of parsed.folders ?? []) {
           if (typeof f?.name !== "string") continue;
-          const newId = genId("bf");
+          const newId = crypto.randomUUID();
           folderIdMap.set(f.id, newId);
           folders.push({ id: newId, workspaceId, name: f.name });
         }
@@ -179,7 +175,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
         for (const b of parsed.bookmarks) {
           if (typeof b?.url !== "string" || !b.url.trim()) continue;
           bookmarks.push({
-            id: genId(),
+            id: crypto.randomUUID(),
             workspaceId,
             url: b.url.trim(),
             title: typeof b.title === "string" && b.title ? b.title : b.url,

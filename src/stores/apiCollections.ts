@@ -44,10 +44,6 @@ interface ApiCollectionsStore {
 
 const EMPTY: Collection = { folders: [], requests: [] };
 
-function genId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 export const useApiCollectionsStore = create<ApiCollectionsStore>()(
   persist(
     (set, get) => {
@@ -65,7 +61,7 @@ export const useApiCollectionsStore = create<ApiCollectionsStore>()(
         saveRequest: (wsId, req) =>
           patchWs(wsId, (c) => ({
             ...c,
-            requests: [...c.requests, { ...req, id: genId("req") }],
+            requests: [...c.requests, { ...req, id: crypto.randomUUID() }],
           })),
 
         updateRequest: (wsId, id, patch) =>
@@ -88,7 +84,7 @@ export const useApiCollectionsStore = create<ApiCollectionsStore>()(
               ...c,
               requests: [
                 ...c.requests,
-                { ...src, id: genId("req"), name: `${src.name} copy` },
+                { ...src, id: crypto.randomUUID(), name: `${src.name} copy` },
               ],
             };
           }),
@@ -96,7 +92,7 @@ export const useApiCollectionsStore = create<ApiCollectionsStore>()(
         addFolder: (wsId, name) =>
           patchWs(wsId, (c) => ({
             ...c,
-            folders: [...c.folders, { id: genId("fld"), name }],
+            folders: [...c.folders, { id: crypto.randomUUID(), name }],
           })),
 
         renameFolder: (wsId, id, name) =>

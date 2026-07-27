@@ -18,12 +18,6 @@ interface HeadersStore {
   getRules: (wsId: string) => HeaderRule[];
 }
 
-function genId(): string {
-  return `hr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-export { genId as genHeaderRuleId };
-
 export const useHeadersStore = create<HeadersStore>()(
   persist(
     (set, get) => ({

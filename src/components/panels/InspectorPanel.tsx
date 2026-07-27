@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useCopy } from "@/hooks/useCopy";
 import {
   Globe,
   RotateCw,
@@ -12,6 +13,7 @@ import {
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useInspectorStore } from "@/stores/inspector";
+import { formatBytes } from "@/lib/format";
 import { evalInspector, inspectorMutate, apiFetch } from "@/services/browser";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { SocialPreviewCard } from "@/components/panels/SocialPreview";
@@ -21,20 +23,14 @@ import type { InspectorSubTab } from "@/stores/inspector";
 import type { CookieEntry } from "@/types";
 
 function CopyIcon({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }, [text]);
+  const { copiedLabel, copy } = useCopy();
   return (
     <button
-      onClick={handleCopy}
+      onClick={() => copy(text)}
       className="opacity-0 group-hover:opacity-100 p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer transition-all"
       title="Copy"
     >
-      {copied ? (
+      {copiedLabel ? (
         <ClipboardCheck size={12} className="text-[var(--color-live)]" />
       ) : (
         <span className="text-micro">copy</span>
@@ -558,11 +554,6 @@ function StorageSubTab({
     (sum, item) => sum + item.key.length + item.value.length,
     0
   );
-
-  const formatBytes = (chars: number) => {
-    if (chars < 1024) return `${chars} B`;
-    return `${(chars / 1024).toFixed(1)} KB`;
-  };
 
   const doRefresh = useCallback(() => {
     evalInspector(tabId, storageSubTab).catch(() => {});

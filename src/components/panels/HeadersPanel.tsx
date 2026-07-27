@@ -1,19 +1,10 @@
 import { useState, useMemo } from "react";
-import { useHeadersStore, genHeaderRuleId, type HeaderRule } from "@/stores/headers";
+import { useHeadersStore, type HeaderRule } from "@/stores/headers";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
+import { originOf } from "@/lib/url";
 import { Plus, Trash2, ToggleLeft, ToggleRight, AlertTriangle } from "lucide-react";
-
-/** Origin of the active tab, or "*" if there is none/it's unparseable — the
- * safe scoped default for a new rule instead of "match everything". */
-function defaultPatternFor(url: string): string {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return "*";
-  }
-}
 
 function RuleRow({
   rule,
@@ -88,7 +79,7 @@ function AddRuleForm({
     e.preventDefault();
     if (!name || !value) return;
     onAdd({
-      id: genHeaderRuleId(),
+      id: crypto.randomUUID(),
       pattern,
       name: name.trim(),
       value: value.trim(),
@@ -139,7 +130,7 @@ export function HeadersPanel() {
   const workspaces = useWorkspacesStore((s) => s.workspaces);
   const tabs = useTabsStore((s) => s.tabs);
   const activeTab = getLiveWorkspaceActiveTab(workspaces[activeWorkspaceId], tabs);
-  const defaultPattern = activeTab?.url ? defaultPatternFor(activeTab.url) : "*";
+  const defaultPattern = activeTab?.url ? originOf(activeTab.url, "*") : "*";
 
   const rulesByWs = useHeadersStore((s) => s.rulesByWs);
   const rules = useMemo(() => rulesByWs[activeWorkspaceId] ?? EMPTY_RULES, [rulesByWs, activeWorkspaceId]);
