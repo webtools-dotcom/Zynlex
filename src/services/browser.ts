@@ -125,12 +125,8 @@ export async function showTabWebview(
 
 // ─── Find (per-tab) ──────────────────────────────────────────────────
 
-export async function webviewFind(
-  tabId: string,
-  query: string,
-  forward: boolean = true
-): Promise<void> {
-  await invoke<void>("browser_find", { tabId, query, forward });
+export async function webviewFind(tabId: string, query: string): Promise<void> {
+  await invoke<void>("browser_find", { tabId, query });
 }
 
 export async function webviewFindNext(
