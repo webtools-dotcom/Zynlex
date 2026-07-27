@@ -17,13 +17,16 @@ use super::pwstr_to_string;
 /// feature sharing the request handler.
 static NETWORK_CAPTURE_ACTIVE: AtomicI32 = AtomicI32::new(0);
 
+/// Per-request start time + resource type, keyed by "{tabId}:{uri}".
+type RequestMetaMap = HashMap<String, VecDeque<(Instant, String)>>;
+
 // Keyed by "{tabId}:{uri}". A VecDeque (not a single slot) because two concurrent
 // requests to the same URL are common (duplicate fetches, polling) — request order
 // is preserved so the response handler pairs each response with its own request's
 // start time via FIFO pop, instead of two concurrent requests overwriting each
 // other's timing. Entries are popped on response and swept on tab close
 // (browser_close_tab) so cancelled/aborted requests and closed tabs don't leak.
-pub(super) static NETWORK_REQUEST_META: OnceLock<Mutex<HashMap<String, VecDeque<(Instant, String)>>>> = OnceLock::new();
+pub(super) static NETWORK_REQUEST_META: OnceLock<Mutex<RequestMetaMap>> = OnceLock::new();
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HeaderRule {
@@ -277,11 +280,10 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                             }
                             let mut name = PWSTR::null();
                             let mut value = PWSTR::null();
-                            if iter.GetCurrentHeader(&mut name, &mut value).is_ok() {
-                                if !name.is_null() && !value.is_null() {
-                                    if let (Ok(n), Ok(v)) = (name.to_string(), value.to_string()) {
-                                        headers.insert(n, v);
-                                    }
+                            if iter.GetCurrentHeader(&mut name, &mut value).is_ok()
+                                && !name.is_null() && !value.is_null() {
+                                if let (Ok(n), Ok(v)) = (name.to_string(), value.to_string()) {
+                                    headers.insert(n, v);
                                 }
                             }
                             let mut has_next = BOOL(0);

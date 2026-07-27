@@ -133,6 +133,7 @@ async fn wait_until_absent(app: &AppHandle, state: &crate::BrowserState, label: 
 /// Callers MUST be async: a sync `#[tauri::command]` runs on the main thread and
 /// creating a webview needs to pump the event loop that thread is blocked on,
 /// which deadlocks (the webview is created and hit-tests but never paints).
+#[allow(clippy::too_many_arguments)]
 fn create_webview_for_tab(
     app: &AppHandle,
     tab_id: &str,
@@ -283,6 +284,7 @@ fn create_webview_for_tab(
 /// Create a new webview for a tab and show it. Hides the previously active
 /// webview. Called on first navigation (when a URL is entered).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn browser_create_tab(
     app: AppHandle,
     state: tauri::State<'_, BrowserState>,
