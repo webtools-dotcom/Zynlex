@@ -100,7 +100,6 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
     // Capture pointer so mousemove fires even outside the tab
     tabEl.setPointerCapture(e.pointerId);
 
-    // Create ghost element
     const ghost = tabEl.cloneNode(true) as HTMLDivElement;
     ghost.style.position = "fixed";
     ghost.style.top = `${rect.top}px`;
@@ -167,7 +166,6 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
   const handlePointerUp = useCallback((_e: React.PointerEvent) => {
     if (!isDragging.current) return;
 
-    // Remove ghost
     if (dragGhostRef.current) {
       dragGhostRef.current.remove();
       dragGhostRef.current = null;

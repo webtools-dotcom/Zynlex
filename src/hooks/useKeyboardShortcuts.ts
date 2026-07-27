@@ -1,37 +1,14 @@
 /**
  * useKeyboardShortcuts — global keyboard shortcuts for the browser.
  *
- * Two complementary mechanisms:
- *   1. Main-window keydown listener — works when the user is focused on
- *      the React UI (address bar, sidebar, etc.). Handles input/textarea
- *      guards so shortcuts don't fire while typing.
-  *   2. Browser-focus shortcut bridge via xevo://shortcut � the browser
- *      webview injects a keydown listener that forwards shortcuts to Rust,
- *      which re-emits them back to this hook.
+ * Two complementary mechanisms feed the same handleShortcut(): a main-window
+ * keydown listener (input/textarea guarded) for when focus is on the React
+ * UI, and a bridge for when focus is inside a tab's webview — its injected
+ * script forwards the keypress to Rust, which re-emits it back here. Both
+ * paths are idempotent, so double-handling when they overlap is harmless.
  *
- * Both mechanisms call the same shared handleShortcut() function.
- * All actions are idempotent, so double-handling (when both fire
- * simultaneously) is harmless.
- *
- * Handled shortcuts:
- *   Ctrl/Cmd+K             → open command palette
- *   Ctrl/Cmd+Shift+?       → open keyboard shortcut help
- *   Ctrl/Cmd+F             → open find in page
- *   Ctrl/Cmd+D             → bookmark current tab
- *   Ctrl/Cmd+B             → toggle sidebar
- *   Ctrl/Cmd+,             → toggle settings panel
- *   Ctrl/Cmd+R             → reload
- *   Ctrl/Cmd+T             → new tab
- *   Ctrl/Cmd+W             → close tab
- *   Ctrl/Cmd+Shift+T       → reopen last closed tab
- *   Ctrl/Cmd+Shift+S       → take screenshot
- *   Ctrl/Cmd+L             → focus address bar
- *   Alt+ArrowLeft          → back
- *   Alt+ArrowRight         → forward
- *   Escape                 → close find / stop loading
- *   Ctrl+Tab               → next tab
- *   Ctrl+Shift+Tab         → previous tab
- *   Ctrl/Cmd+1..9          → switch to tab N
+ * Full shortcut list: see ShortcutHelp.tsx, the single source of truth shown
+ * to users (Ctrl/Cmd+?).
  */
 import { useEffect, useRef } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";

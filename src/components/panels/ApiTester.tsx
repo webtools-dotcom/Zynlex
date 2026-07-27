@@ -1,21 +1,9 @@
 /**
  * ApiTester — Postman-style API testing panel.
  *
- * MVP features:
- *   - Method selector (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS)
- *   - URL input
- *   - Tabbed request editor: Headers, Body, cURL Import
- *   - Send button (routed through the Rust `api_fetch` command — the main
- *     window's own `fetch()` is bound by the app's CSP to localhost, so a
- *     real HTTP client on the Rust side is what makes cross-origin requests work)
- *   - Response viewer: status, duration, size, headers, body
- *   - JSON auto-formatting in the response body
- *   - Per-session request history (last 50), shared with the sidebar
- *     launcher card via useApiHistoryStore
- *   - Two layouts: full-page modal (embedded=false) and sidebar (embedded=true)
- *
- * History is in-memory only for the v1 MVP. Persisting the history
- * is a future enhancement.
+ * Requests are sent through the Rust `api_fetch` command rather than the
+ * window's own `fetch()`, which the app's CSP binds to localhost — a real
+ * HTTP client on the Rust side is what makes cross-origin requests work.
  */
 import { useState, useRef, useMemo, useEffect } from "react";
 import {

@@ -87,7 +87,6 @@ export function FindBar() {
         inputRef.current?.select();
       }, 0);
     } else {
-      // Clear state when bar is hidden.
       lastQueriedRef.current = "";
       if (IS_TAURI) {
         const tabId = getActiveTabId();

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Check, X } from "lucide-react";
 
 interface JwtParsed {
   header: Record<string, unknown>;
@@ -197,12 +198,13 @@ export function JwtDecoder() {
                     }}
                   >
                     <p
-                      className="text-sm"
+                      className="text-sm flex items-center gap-1"
                       style={{
                         color: expiry.expired ? "var(--color-dead)" : "var(--color-live)",
                       }}
                     >
-                      {expiry.expired ? "✕ " : "✓ "}{expiry.label}
+                      {expiry.expired ? <X size={13} /> : <Check size={13} />}
+                      {expiry.label}
                     </p>
                     <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
                       {expiry.date}
