@@ -4,13 +4,9 @@ import { persist } from "zustand/middleware";
 import type { Tab, NewTabOptions } from "@/types";
 import { useNetworkStore } from "@/stores/network";
 
-function genId(): string {
-  return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 function buildTab(workspaceId: string, opts: NewTabOptions = {}): Tab {
   return {
-    id: genId(),
+    id: crypto.randomUUID(),
     title: opts.url ? opts.url : "New Tab",
     url: opts.url ?? "",
     favicon: opts.favicon ?? null,

@@ -100,11 +100,7 @@ function CompactToggle({
 
 export function SettingsPanel() {
   const settings = useSettingsStore((s) => s.settings);
-  const setTheme = useSettingsStore((s) => s.setTheme);
-  const setSearchEngine = useSettingsStore((s) => s.setSearchEngine);
-  const setCustomSearchUrl = useSettingsStore((s) => s.setCustomSearchUrl);
   const setPortScanInterval = useSettingsStore((s) => s.setPortScanInterval);
-  const setCompactMode = useSettingsStore((s) => s.setCompactMode);
   const update = useSettingsStore((s) => s.update);
   const toggleSettingsPanel = useUIStore((s) => s.toggleSettingsPanel);
 
@@ -149,19 +145,19 @@ export function SettingsPanel() {
           label="Dark"
           value="dark"
           current={settings.theme}
-          onSelect={setTheme}
+          onSelect={(theme) => update({ theme })}
         />
         <ThemeButton
           label="Light"
           value="light"
           current={settings.theme}
-          onSelect={setTheme}
+          onSelect={(theme) => update({ theme })}
         />
         <ThemeButton
           label="System"
           value="system"
           current={settings.theme}
-          onSelect={setTheme}
+          onSelect={(theme) => update({ theme })}
         />
       </div>
 
@@ -172,7 +168,7 @@ export function SettingsPanel() {
         </div>
         <CompactToggle
           value={settings.compactMode}
-          onToggle={() => setCompactMode(!settings.compactMode)}
+          onToggle={() => update({ compactMode: !settings.compactMode })}
         />
       </div>
 
@@ -208,25 +204,25 @@ export function SettingsPanel() {
           label="Google"
           value="google"
           current={settings.searchEngine}
-          onSelect={setSearchEngine}
+          onSelect={(searchEngine) => update({ searchEngine })}
         />
         <SearchEngineButton
           label="DuckDuckGo"
           value="duckduckgo"
           current={settings.searchEngine}
-          onSelect={setSearchEngine}
+          onSelect={(searchEngine) => update({ searchEngine })}
         />
         <SearchEngineButton
           label="Bing"
           value="bing"
           current={settings.searchEngine}
-          onSelect={setSearchEngine}
+          onSelect={(searchEngine) => update({ searchEngine })}
         />
         <SearchEngineButton
           label="Custom"
           value="custom"
           current={settings.searchEngine}
-          onSelect={setSearchEngine}
+          onSelect={(searchEngine) => update({ searchEngine })}
         />
       </div>
 
@@ -235,7 +231,7 @@ export function SettingsPanel() {
           type="text"
           placeholder="https://search.example.com?q=%s"
           value={settings.customSearchUrl}
-          onChange={(e) => setCustomSearchUrl(e.target.value)}
+          onChange={(e) => update({ customSearchUrl: e.target.value })}
           className="w-full mt-1 px-2 py-1 text-xs border rounded text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] outline-none focus:border-[var(--color-accent)]"
           style={{
             background: "var(--color-elevated)",

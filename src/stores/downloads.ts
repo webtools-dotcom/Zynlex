@@ -32,7 +32,7 @@ export const useDownloadsStore = create<DownloadsStore>()(
         set((s) => ({
           items: [
             {
-              id: `dl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              id: crypto.randomUUID(),
               url,
               filename: basename(destination),
               path: destination,

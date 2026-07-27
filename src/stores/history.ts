@@ -12,17 +12,13 @@ interface HistoryStore {
   clearAll: () => void;
 }
 
-function genId(): string {
-  return `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 export const useHistoryStore = create<HistoryStore>()(
   persist(
     (set) => ({
       entries: [],
       addEntry: (entry) =>
         set((s) => {
-          const newEntry: HistoryEntry = { ...entry, id: genId() };
+          const newEntry: HistoryEntry = { ...entry, id: crypto.randomUUID() };
           const filtered = s.entries.filter(
             (e) => !(e.url === newEntry.url && e.workspaceId === newEntry.workspaceId)
           );

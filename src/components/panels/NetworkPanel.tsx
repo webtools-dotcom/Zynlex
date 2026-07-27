@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useNetworkStore, type NetworkLogEntry, formatSize, formatDuration, resourceTypeLabel, entryIsError, entryIsSlow, entryIsApi } from "@/stores/network";
+import { useNetworkStore, type NetworkLogEntry, formatDuration, resourceTypeLabel } from "@/stores/network";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
-import { entryToCurl, entryToCurlCompact, entryToFetch, copyToClipboard } from "@/lib/networkCopy";
+import { entryToCurl, entryToFetch } from "@/lib/networkCopy";
+import { copyToClipboard } from "@/lib/clipboard";
+import { formatBytes } from "@/lib/format";
+import { hostOf } from "@/lib/url";
+import { useCopy } from "@/hooks/useCopy";
 import { setNetworkCapture } from "@/services/browser";
 
 const METHOD_COLORS: Record<string, string> = {
@@ -47,6 +51,20 @@ function statusColor(code: number): string {
   return "text-[var(--color-text-disabled)]";
 }
 
+const SLOW_THRESHOLD_MS = 1000;
+
+function entryIsError(e: NetworkLogEntry): boolean {
+  return e.statusCode >= 400;
+}
+
+function entryIsSlow(e: NetworkLogEntry): boolean {
+  return e.durationMs > SLOW_THRESHOLD_MS;
+}
+
+function entryIsApi(e: NetworkLogEntry): boolean {
+  return e.resourceType === "xhr" || e.resourceType === "fetch";
+}
+
 const BODY_PREVIEW_MAX = 500;
 
 function bodyPreview(body: string): string {
@@ -80,27 +98,12 @@ const STATUS_RANGES = [
   { id: "5xx", label: "5xx", test: (c: number) => c >= 500 },
 ];
 
-function hostOnly(url: string): string {
-  if (!url) return "—";
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
-
 const SELECT_CLASS =
   "text-micro bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded outline-none border border-[var(--color-border)] px-1 py-0.5";
 
 function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () => void }) {
   const [tab, setTab] = useState<"headers" | "body" | "copy">("headers");
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const handleCopy = async (label: string, text: string) => {
-    await copyToClipboard(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 1500);
-  };
+  const { copiedLabel: copied, copy: handleCopy } = useCopy();
 
   return (
     <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] text-micro font-mono">
@@ -135,7 +138,7 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
             </div>
             <div className="flex gap-3">
               <span className="text-[var(--color-text-muted)]">Size:</span>
-              <span>{formatSize(entry.contentLength)}</span>
+              <span>{formatBytes(entry.contentLength)}</span>
             </div>
             <div className="flex gap-3">
               <span className="text-[var(--color-text-muted)]">Time:</span>
@@ -179,7 +182,7 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[var(--color-text-muted)]">cURL</span>
                 <button
-                  onClick={() => handleCopy("curl", entryToCurl(entry))}
+                  onClick={() => handleCopy(entryToCurl(entry), "curl")}
                   className="text-micro px-2 py-0.5 rounded bg-[var(--color-hover)] hover:bg-[var(--color-border)]"
                 >
                   {copied === "curl" ? "Copied!" : "Copy"}
@@ -191,7 +194,7 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[var(--color-text-muted)]">fetch()</span>
                 <button
-                  onClick={() => handleCopy("fetch", entryToFetch(entry))}
+                  onClick={() => handleCopy(entryToFetch(entry), "fetch")}
                   className="text-micro px-2 py-0.5 rounded bg-[var(--color-hover)] hover:bg-[var(--color-border)]"
                 >
                   {copied === "fetch" ? "Copied!" : "Copy"}
@@ -209,7 +212,7 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
 function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSelected: boolean; onClick: () => void }) {
   const handleCopyCurl = (e: React.MouseEvent) => {
     e.stopPropagation();
-    copyToClipboard(entryToCurlCompact(entry));
+    copyToClipboard(entryToCurl(entry, true));
   };
 
   return (
@@ -234,10 +237,10 @@ function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSe
         {entry.url}
       </span>
       <span className="truncate text-[var(--color-text-muted)]" title={entry.referrer || undefined}>
-        {hostOnly(entry.referrer)}
+        {hostOf(entry.referrer, entry.referrer || "—")}
       </span>
       <span className="text-right tabular-nums whitespace-nowrap text-[var(--color-text-muted)]">
-        {formatSize(entry.contentLength)}
+        {formatBytes(entry.contentLength)}
       </span>
       <span className={`text-right tabular-nums whitespace-nowrap ${entry.durationMs > 1000 ? "text-[var(--color-warn)]" : "text-[var(--color-text-muted)]"}`}>
         {formatDuration(entry.durationMs)}
@@ -295,7 +298,7 @@ export function NetworkPanel() {
     let out = entries;
     if (filter === "errors") out = out.filter(entryIsError);
     else if (filter === "api") out = out.filter(entryIsApi);
-    else if (filter === "slow") out = out.filter((e) => entryIsSlow(e));
+    else if (filter === "slow") out = out.filter(entryIsSlow);
 
     if (methodFilter) out = out.filter((e) => e.method === methodFilter);
     if (typeFilter) out = out.filter((e) => e.resourceType === typeFilter);
@@ -318,7 +321,7 @@ export function NetworkPanel() {
   }, [entries]);
 
   const errorCount = useMemo(() => entries.filter(entryIsError).length, [entries]);
-  const slowCount = useMemo(() => entries.filter((e) => entryIsSlow(e)).length, [entries]);
+  const slowCount = useMemo(() => entries.filter(entryIsSlow).length, [entries]);
   const apiCount = useMemo(() => entries.filter(entryIsApi).length, [entries]);
 
   useEffect(() => {
@@ -340,7 +343,7 @@ export function NetworkPanel() {
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--color-border)]">
         <span className="text-micro font-medium text-[var(--color-text-muted)]">
           {filtered.length}/{entries.length} request{entries.length !== 1 ? "s" : ""}
-          {totalSize > 0 && <span className="ml-2 font-normal">({formatSize(totalSize)})</span>}
+          {totalSize > 0 && <span className="ml-2 font-normal">({formatBytes(totalSize)})</span>}
         </span>
         <div className="flex items-center gap-2 text-micro">
           {errorCount > 0 && <span className="text-[var(--color-dead)]">{errorCount} err</span>}

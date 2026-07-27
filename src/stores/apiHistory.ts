@@ -11,10 +11,6 @@ import type { ApiHistoryEntry } from "@/types";
 
 const MAX_HISTORY = 100;
 
-function genId(): string {
-  return `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 interface ApiHistoryStore {
   history: ApiHistoryEntry[];
   addHistory: (entry: Omit<ApiHistoryEntry, "id" | "createdAt">) => void;
@@ -29,7 +25,7 @@ export const useApiHistoryStore = create<ApiHistoryStore>()(
         set((s) => {
           s.history.unshift({
             ...entry,
-            id: genId(),
+            id: crypto.randomUUID(),
             createdAt: Date.now(),
           });
           if (s.history.length > MAX_HISTORY) {

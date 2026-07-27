@@ -1,3 +1,5 @@
+import { originOf } from "@/lib/url";
+
 interface StatusBarProps {
   isLoading: boolean;
   loadTime: number | null;
@@ -6,16 +8,8 @@ interface StatusBarProps {
   zoom: number;
 }
 
-function getOrigin(url: string): string | null {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return null;
-  }
-}
-
 export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom }: StatusBarProps) {
-  const origin = url ? getOrigin(url) : null;
+  const origin = url ? originOf(url) : "";
 
   let leftContent: React.ReactNode = null;
   if (hoveredUrl) {

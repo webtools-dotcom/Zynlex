@@ -20,11 +20,7 @@ const DEFAULTS: AppSettings = {
 interface SettingsStore {
   settings: AppSettings;
   update: (patch: Partial<AppSettings>) => void;
-  setTheme: (theme: AppSettings["theme"]) => void;
-  setSearchEngine: (engine: AppSettings["searchEngine"]) => void;
-  setCustomSearchUrl: (url: string) => void;
   setPortScanInterval: (seconds: number) => void;
-  setCompactMode: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -32,13 +28,9 @@ export const useSettingsStore = create<SettingsStore>()(
     immer((set) => ({
       settings: DEFAULTS,
       update: (patch) => { set((s) => { Object.assign(s.settings, patch); }); },
-      setTheme: (theme) => { set((s) => { s.settings.theme = theme; }); },
-      setSearchEngine: (engine) => { set((s) => { s.settings.searchEngine = engine; }); },
-      setCustomSearchUrl: (url) => { set((s) => { s.settings.customSearchUrl = url; }); },
       setPortScanInterval: (seconds) => {
         set((s) => { s.settings.portScanInterval = Math.max(5, Math.min(60, seconds)); });
       },
-      setCompactMode: (v) => { set((s) => { s.settings.compactMode = v; }); },
     })),
     {
       name: "xevo-settings",

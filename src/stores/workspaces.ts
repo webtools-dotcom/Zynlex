@@ -8,10 +8,6 @@ const COLORS = [
   "#10b981","#f59e0b","#06b6d4","#ef4444",
 ];
 
-function genId(): string {
-  return `ws-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 const INITIAL_WORKSPACE: Workspace = {
   id: "ws-default",
   name: "Personal",
@@ -91,7 +87,7 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
 
       createWorkspace: (name, color, icon = "📁") => {
         const idx = Object.keys(get().workspaces).length % COLORS.length;
-        const id = genId();
+        const id = crypto.randomUUID();
         set((s) => {
           s.workspaces[id] = {
             id, name, icon,

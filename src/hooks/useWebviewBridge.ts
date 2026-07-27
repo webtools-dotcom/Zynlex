@@ -57,6 +57,7 @@ import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { useNetworkStore } from "@/stores/network";
 import { useHeadersStore } from "@/stores/headers";
 import { setHeaderRules } from "@/services/browser";
+import { titleFromUrl } from "@/lib/url";
 
 let _netEntryId = 0;
 
@@ -222,9 +223,7 @@ export function useWebviewBridge(
       }
       const bounds = getActiveBounds(contentAreaRef);
       if (!bounds) return;
-      const displayTitle = url
-        .replace(/^https?:\/\/(www\.)?/, "")
-        .split("/")[0];
+      const displayTitle = titleFromUrl(url);
       let reservedNewSlot = false;
       try {
         if (activeTabId) {
@@ -350,7 +349,7 @@ export function useWebviewBridge(
       const wsId = tab?.workspaceId ?? wsState.activeWorkspaceId;
       useHistoryStore.getState().addEntry({
         url,
-        title: url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0],
+        title: titleFromUrl(url),
         favicon: null,
         timestamp: Date.now(),
         workspaceId: wsId,

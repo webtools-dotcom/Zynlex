@@ -10,7 +10,7 @@ import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { resolveInput } from "@/lib/url";
 import { takeScreenshot } from "@/services/browser";
-import { copyToClipboard } from "@/lib/screenshot";
+import { copyImageToClipboard } from "@/lib/clipboard";
 
 /**
  * Address-bar security indicator, derived purely from the URL scheme.
@@ -278,7 +278,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
       <button
         onClick={() => {
           takeScreenshot()
-            .then(({ bytes }) => copyToClipboard(bytes))
+            .then(({ bytes }) => copyImageToClipboard(bytes))
             .catch((error) => {
               useUIStore.getState().pushToast(
                 `Screenshot failed: ${String(error)}`,

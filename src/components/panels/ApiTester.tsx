@@ -23,6 +23,8 @@ import {
   History, Code2, FileText, Clipboard, Check, Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatBytes } from "@/lib/format";
+import { useCopy } from "@/hooks/useCopy";
 import { useServersStore } from "@/stores/servers";
 import { useApiHistoryStore } from "@/stores/apiHistory";
 import { useApiCollectionsStore, type SavedRequest } from "@/stores/apiCollections";
@@ -47,14 +49,10 @@ const METHOD_COLORS: Record<HttpMethod, string> = {
   OPTIONS: "#06b6d4",
 };
 
-function genId(): string {
-  return `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 function defaultHeaders(): ApiHeader[] {
   return [
-    { id: genId(), key: "Content-Type", value: "application/json", enabled: true },
-    { id: genId(), key: "Accept", value: "application/json", enabled: true },
+    { id: crypto.randomUUID(), key: "Content-Type", value: "application/json", enabled: true },
+    { id: crypto.randomUUID(), key: "Accept", value: "application/json", enabled: true },
   ];
 }
 
@@ -95,7 +93,7 @@ function parseCurl(input: string): ParsedCurl {
         const idx = v.indexOf(":");
         if (idx > 0) {
           result.headers.push({
-            id: genId(),
+            id: crypto.randomUUID(),
             key: v.slice(0, idx).trim(),
             value: v.slice(idx + 1).trim(),
             enabled: true,
@@ -114,7 +112,7 @@ function parseCurl(input: string): ParsedCurl {
         const idx = v.indexOf("=");
         if (idx > 0) {
           result.headers.push({
-            id: genId(),
+            id: crypto.randomUUID(),
             key: v.slice(0, idx).trim(),
             value: v.slice(idx + 1).trim(),
             enabled: true,
@@ -126,7 +124,7 @@ function parseCurl(input: string): ParsedCurl {
       if (v) {
         const encoded = btoa(v);
         result.headers.push({
-          id: genId(),
+          id: crypto.randomUUID(),
           key: "Authorization",
           value: `Basic ${encoded}`,
           enabled: true,
@@ -136,7 +134,7 @@ function parseCurl(input: string): ParsedCurl {
       const v = next();
       if (v) {
         result.headers.push({
-          id: genId(),
+          id: crypto.randomUUID(),
           key: "User-Agent",
           value: v,
           enabled: true,
@@ -146,7 +144,7 @@ function parseCurl(input: string): ParsedCurl {
       const v = next();
       if (v) {
         result.headers.push({
-          id: genId(),
+          id: crypto.randomUUID(),
           key: "Cookie",
           value: v,
           enabled: true,
@@ -227,7 +225,8 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
   const [error, setError] = useState<string | null>(null);
   const [responseTab, setResponseTab] = useState<ResponseTab>("body");
   const [historyOpen, setHistoryOpen] = useState<boolean>(!embedded);
-  const [copied, setCopied] = useState<boolean>(false);
+  const { copiedLabel, copy: copyText } = useCopy();
+  const copied = !!copiedLabel;
 
   const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -334,7 +333,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
   function addHeaderRow() {
     setHeaders((h) => [
       ...h,
-      { id: genId(), key: "", value: "", enabled: true },
+      { id: crypto.randomUUID(), key: "", value: "", enabled: true },
     ]);
   }
 
@@ -368,10 +367,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
 
   function copyResponse() {
     if (!response) return;
-    navigator.clipboard.writeText(response.body).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }).catch(() => {});
+    copyText(response.body);
   }
 
   const statusColor = response
@@ -1001,12 +997,6 @@ function TabButton({
       )}
     </button>
   );
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function EmbeddedBody(p: BodySharedProps) {
