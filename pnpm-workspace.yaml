@@ -1,2 +1,4 @@
+# No `packages:` key — this is a single-package repo. This file exists solely to
+# carry `allowBuilds`, which pnpm 10+ only reads from pnpm-workspace.yaml. Do not delete it.
 allowBuilds:
   esbuild: false
