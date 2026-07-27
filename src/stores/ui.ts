@@ -43,13 +43,6 @@ interface UIStore {
   viewportMode: boolean;
   viewports: Viewport[];
   selectedViewportId: string | null;
-  /** "focus" = only the selected device, "overview" = all of them side by side. */
-  viewportLayout: "focus" | "overview";
-  /** "fit" = auto-scale so every viewport fits the surface without scrolling. */
-  viewportZoom: number | "fit";
-  syncScroll: boolean;
-  syncClick: boolean;
-  syncInput: boolean;
 
   setSidebarOpen: (v: boolean) => void;
   toggleSidebar: () => void;
@@ -83,13 +76,8 @@ interface UIStore {
   addViewport: (preset: { label: string; width: number; height: number; category: "mobile" | "tablet" | "laptop"; deviceScaleFactor: number; mobile: boolean; touch: boolean; userAgent?: string }) => void;
   removeViewport: (id: string) => void;
   selectViewport: (id: string | null) => void;
-  setViewportLayout: (layout: "focus" | "overview") => void;
-  setViewportZoom: (zoom: number | "fit") => void;
   rotateViewport: (id: string) => void;
   resizeViewportDimensions: (id: string, width: number, height: number) => void;
-  toggleSyncScroll: () => void;
-  toggleSyncClick: () => void;
-  toggleSyncInput: () => void;
 }
 
 function genToastId(): string {
@@ -116,11 +104,6 @@ export const useUIStore = create<UIStore>()(
     viewportMode: false,
     viewports: [],
     selectedViewportId: null,
-    viewportLayout: "focus",
-    viewportZoom: "fit",
-    syncScroll: true,
-    syncClick: false,
-    syncInput: false,
 
     setSidebarOpen: (v) => set((s) => { s.sidebarOpen = v; }),
     toggleSidebar: () => set((s) => { s.sidebarOpen = !s.sidebarOpen; }),
@@ -207,10 +190,6 @@ export const useUIStore = create<UIStore>()(
       }
     }),
     selectViewport: (id) => set((s) => { s.selectedViewportId = id; }),
-    setViewportLayout: (layout) => set((s) => { s.viewportLayout = layout; }),
-    setViewportZoom: (zoom) => set((s) => {
-      s.viewportZoom = zoom === "fit" ? "fit" : Math.max(0.25, Math.min(1, zoom));
-    }),
     rotateViewport: (id) => set((s) => {
       const vp = s.viewports.find((v) => v.id === id);
       if (vp) {
@@ -227,8 +206,5 @@ export const useUIStore = create<UIStore>()(
         vp.height = Math.max(120, Math.min(3840, height));
       }
     }),
-    toggleSyncScroll: () => set((s) => { s.syncScroll = !s.syncScroll; }),
-    toggleSyncClick: () => set((s) => { s.syncClick = !s.syncClick; }),
-    toggleSyncInput: () => set((s) => { s.syncInput = !s.syncInput; }),
   }))
 );

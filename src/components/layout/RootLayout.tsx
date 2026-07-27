@@ -20,7 +20,6 @@ import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useSettingsStore } from "@/stores/settings";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
-import { useViewportSync } from "@/hooks/useViewportSync";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
@@ -56,7 +55,6 @@ export function RootLayout() {
 
   useKeyboardShortcuts(bridge);
   const viewportMode = useUIStore((s) => s.viewportMode);
-  useViewportSync();
 
   return (
     <ErrorBoundary>

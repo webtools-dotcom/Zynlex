@@ -2353,9 +2353,125 @@ pub async fn inspector_mutate(
     wv.eval(&script).map_err(|e| e.to_string())
 }
 
-// ─── Multi-Viewport Mode ──────────────────────────────────────────
+// ─── Viewport (device emulation) Mode ─────────────────────────────
 
-/// Create a viewport webview at the specified position and size
+/// One device's emulated characteristics.
+///
+/// `width`/`height` are the **measured frame rect**, not the preset — the
+/// frontend clamps the card to the panel with CSS and sends the rect it actually
+/// measured, so the CDP layout viewport and the webview bounds are the same
+/// number by construction and cannot drift apart.
+#[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceSpec {
+    pub width: u32,
+    pub height: u32,
+    pub device_scale_factor: f64,
+    pub mobile: bool,
+    pub touch: bool,
+    pub user_agent: Option<String>,
+}
+
+/// Apply device emulation to a viewport webview.
+///
+/// Deliberately does NOT scale anything. Earlier revisions carried a display
+/// scale so a whole device could be shown shrunk, which meant three values had
+/// to agree — webview bounds, WebView2 zoom factor, and the CDP layout-viewport
+/// override — set by separate async calls that raced. Whichever landed last won,
+/// and the two visible failures were a frame overflowing its card by exactly
+/// `1/scale` (zoom lost) and a page laid out wider than the surface showing it
+/// (override applied, zoom lost). The frame is now 1:1 and clamped by CSS, so
+/// there is no scale factor left to disagree about.
+///
+/// What stays here is only what geometry cannot express: DPR, the mobile flag
+/// (which is what makes a page with no viewport meta lay out at Chromium's 980px
+/// default and scale down, exactly as a real phone does) and touch.
+fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
+    #[cfg(windows)]
+    {
+        let spec = spec.clone();
+        let _ = webview.with_webview(move |platform| unsafe {
+            use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
+            use windows_core::HSTRING;
+            let core = match platform.controller().CoreWebView2() {
+                Ok(c) => c,
+                Err(e) => {
+                    xevo_log!("[xevo] viewport emulation: CoreWebView2 unavailable: {e:?}");
+                    return;
+                }
+            };
+            let call = |method: &str, params: String| {
+                let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+                    |_r: windows_core::Result<()>, _json: String| -> windows_core::Result<()> {
+                        Ok(())
+                    },
+                ));
+                let _ = core.CallDevToolsProtocolMethod(
+                    &HSTRING::from(method),
+                    &HSTRING::from(params),
+                    &handler,
+                );
+            };
+            call(
+                "Emulation.setDeviceMetricsOverride",
+                format!(
+                    r#"{{"width":{},"height":{},"deviceScaleFactor":{},"mobile":{}}}"#,
+                    spec.width, spec.height, spec.device_scale_factor, spec.mobile
+                ),
+            );
+            call(
+                "Emulation.setTouchEmulationEnabled",
+                format!(
+                    r#"{{"enabled":{},"maxTouchPoints":{}}}"#,
+                    spec.touch,
+                    if spec.touch { 5 } else { 0 }
+                ),
+            );
+            // Pin the page to 1:1. With `mobile: true` Chromium shrink-to-fits
+            // when anything overflows the viewport (an ad banner is enough),
+            // which showed up as a page scale of exactly 2/3 in both axes: the
+            // layout viewport was a correct 412 but `innerWidth` read 618 and
+            // the page rendered zoomed out. A real phone with
+            // `initial-scale=1`, and Chrome's device toolbar at 100%, both stay
+            // at scale 1 and let the overflow scroll.
+            call("Emulation.setPageScaleFactor", r#"{"pageScaleFactor":1}"#.to_string());
+            // User-Agent Client Hints. The build-time UA sets the header and
+            // `navigator.userAgent`, but NOT `Sec-CH-UA*` — so a site reading
+            // client hints still saw the real Edge-on-Windows and warned about
+            // the mismatch. Chromium prefers hints over the UA string, so this
+            // has to be overridden too or modern sites still serve desktop.
+            if let Some(ua) = &spec.user_agent {
+                let platform = if ua.contains("iPhone") || ua.contains("iPad") {
+                    "iOS"
+                } else if ua.contains("Android") {
+                    "Android"
+                } else {
+                    "Windows"
+                };
+                call(
+                    "Emulation.setUserAgentOverride",
+                    format!(
+                        r#"{{"userAgent":{},"platform":{},"userAgentMetadata":{{"platform":{},"platformVersion":"","architecture":"","model":"","mobile":{},"brands":[{{"brand":"Chromium","version":"125"}},{{"brand":"Google Chrome","version":"125"}},{{"brand":"Not.A/Brand","version":"24"}}]}}}}"#,
+                        serde_json::to_string(ua).unwrap_or_else(|_| "\"\"".into()),
+                        serde_json::to_string(platform).unwrap_or_else(|_| "\"\"".into()),
+                        serde_json::to_string(platform).unwrap_or_else(|_| "\"\"".into()),
+                        spec.mobile,
+                    ),
+                );
+            }
+        });
+    }
+}
+
+/// Create the viewport webview, built the same way a tab is: blank first,
+/// configured, then navigated.
+///
+/// The order matters and was the source of two shipped bugs. The user agent is a
+/// *build-time* builder attribute (same as `create_browser_webview`), so it has
+/// to be set here or server-side mobile detection never sees it. And emulation
+/// is re-applied on every `PageLoadEvent::Finished`, because a navigation commit
+/// can drop overrides — that's why the frame used to render full-size and
+/// overflow its card on open and on every navigation.
 #[tauri::command]
 pub async fn create_viewport(
     app: AppHandle,
@@ -2365,35 +2481,103 @@ pub async fn create_viewport(
     y: f64,
     width: f64,
     height: f64,
+    spec: DeviceSpec,
 ) -> Result<(), String> {
-    let parent = app
-        .get_window("main")
-        .ok_or("Main window not found")?;
-    let parsed_url = url::Url::parse(&url).map_err(|e| e.to_string())?;
+    let parent = app.get_window("main").ok_or("Main window not found")?;
+    let target_url = url::Url::parse(&url).map_err(|e| e.to_string())?;
 
-    if let Some(webview) = find_tab_webview(&app, &label) {
-        // One set_bounds call instead of set_position + set_size — same fix as
-        // browser_set_bounds: each was a separate wry event-loop message, so the
-        // viewport webview visibly moved on one frame and resized on the next.
-        let bounds = tauri::Rect {
-            position: Position::Logical(LogicalPosition::new(x, y)),
-            size: Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),
-        };
-        webview.set_bounds(bounds).map_err(|e| e.to_string())?;
-        webview.show().map_err(|e| e.to_string())?;
-        return Ok(());
+    if find_tab_webview(&app, &label).is_some() {
+        return Err(format!("viewport {label} already exists"));
     }
 
-    parent
+    let mut builder = WebviewBuilder::new(
+        &label,
+        WebviewUrl::External(
+            url::Url::parse("about:blank").expect("about:blank must parse"),
+        ),
+    )
+    .background_color(tauri::webview::Color(15, 15, 15, 255));
+
+    if let Some(ref ua) = spec.user_agent {
+        builder = builder.user_agent(ua);
+    }
+
+    let spec_for_load = spec.clone();
+    let app_for_load = app.clone();
+    let builder = builder.on_page_load(move |webview, payload| {
+        if matches!(payload.event(), PageLoadEvent::Finished) {
+            apply_viewport_emulation(&webview, &spec_for_load);
+            // Tells the frontend when to probe. Rust→frontend, unlike the
+            // page→Rust IPC that remote pages reject.
+            let _ = app_for_load.emit("viewport://loaded", serde_json::json!({}));
+        }
+    });
+
+    let webview = parent
         .add_child(
-            WebviewBuilder::new(&label, WebviewUrl::External(parsed_url))
-                .transparent(true),
+            builder,
             Position::Logical(LogicalPosition::new(x, y)),
             Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),
         )
         .map_err(|e| e.to_string())?;
 
+    // Emulate before the real navigation so the first document request already
+    // carries the device metrics, then navigate.
+    apply_viewport_emulation(&webview, &spec);
+    let _ = webview.navigate(target_url);
+
     Ok(())
+}
+
+/// Navigate the existing viewport webview. Used instead of destroy+recreate on
+/// URL change: recreating dropped the emulation and produced a full-size frame
+/// until the next device switch.
+#[tauri::command]
+pub async fn navigate_viewport(app: AppHandle, label: String, url: String) -> Result<(), String> {
+    if let Some(webview) = find_tab_webview(&app, &label) {
+        let parsed = url::Url::parse(&url).map_err(|e| e.to_string())?;
+        webview.navigate(parsed).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Ask the viewport page what it actually thinks it is, so the UI can show it
+/// instead of everyone inferring emulation state from screenshots.
+///
+/// Uses `eval_json` (Rust→page via `ExecuteScript`) rather than injected JS that
+/// calls back into Tauri — the app declares no `remote` capability scope, so
+/// page-originated IPC is silently dropped for `https://` content.
+#[tauri::command]
+pub async fn probe_viewport(app: AppHandle, label: String) -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let wv = find_tab_webview(&app, &label).ok_or("viewport not found")?;
+        // `screen.*` is also overwritten by setDeviceMetricsOverride, so it
+        // distinguishes "the override never applied" from "it applied and
+        // something else resized the viewport afterwards" — the two have
+        // completely different fixes.
+        eval_json(
+            &wv,
+            r#"(function(){return {
+                innerWidth: window.innerWidth,
+                innerHeight: window.innerHeight,
+                clientWidth: document.documentElement.clientWidth,
+                clientHeight: document.documentElement.clientHeight,
+                screenWidth: window.screen.width,
+                screenHeight: window.screen.height,
+                devicePixelRatio: window.devicePixelRatio,
+                maxTouchPoints: navigator.maxTouchPoints,
+                userAgent: navigator.userAgent
+            };})()"#
+                .to_string(),
+        )
+        .await
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, label);
+        Err("Viewport probe is only supported on Windows".to_string())
+    }
 }
 
 /// Destroy a viewport webview
@@ -2405,7 +2589,15 @@ pub async fn destroy_viewport(app: AppHandle, label: String) -> Result<(), Strin
     Ok(())
 }
 
-/// Resize and reposition a viewport webview
+/// Reposition/resize the viewport webview **and re-assert its emulation**, in
+/// that order, in one command.
+///
+/// These used to be two separate async invokes and nothing ordered them. A
+/// WebView2 controller resize resets the emulated viewport to the widget's
+/// natural size — while keeping `deviceScaleFactor` — so whenever the bounds
+/// change landed last, the page reported the raw widget size (e.g. 422×726 for
+/// a 412×707 frame) with DPR still correctly 3.5. Re-asserting the override
+/// after every bounds change, in the same command, makes that unorderable.
 #[tauri::command]
 pub async fn resize_viewport(
     app: AppHandle,
@@ -2414,6 +2606,7 @@ pub async fn resize_viewport(
     y: f64,
     width: f64,
     height: f64,
+    spec: DeviceSpec,
 ) -> Result<(), String> {
     if let Some(webview) = find_tab_webview(&app, &label) {
         // One set_bounds call, same reason as create_viewport: set_position +
@@ -2424,99 +2617,9 @@ pub async fn resize_viewport(
             size: Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),
         };
         webview.set_bounds(bounds).map_err(|e| e.to_string())?;
+        apply_viewport_emulation(&webview, &spec);
     }
     Ok(())
-}
-
-/// Emulate a device in a viewport webview: CDP `Emulation.*` for the device
-/// characteristics, `set_zoom` for the on-screen scale.
-///
-/// The split is deliberate. Zoom alone (the old approach) squeezes the CSS width
-/// but leaves `devicePixelRatio` at the monitor's, reports no touch and keeps the
-/// desktop UA, so a "phone" got desktop layouts and 1x images — that's what CDP
-/// fixes. But CDP's own `scale` field is documented as applying to the *resulting
-/// view image*; a live WebView2 controller composites normally and ignores it, so
-/// using it for display left the page rendering at full width and overflowing its
-/// card by exactly 1/scale. `set_zoom` is the only thing that scales live output.
-///
-/// The two agree rather than fight: bounds are `preset × scale`, so the CSS width
-/// the page sees is `bounds / zoom` = `preset`, the same value the metrics
-/// override pins. Do not pass `scale` to setDeviceMetricsOverride.
-#[tauri::command]
-pub async fn emulate_viewport(
-    app: AppHandle,
-    label: String,
-    width: u32,
-    height: u32,
-    device_scale_factor: f64,
-    mobile: bool,
-    touch: bool,
-    scale: f64,
-    user_agent: Option<String>,
-) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        let wv = match find_tab_webview(&app, &label) {
-            Some(wv) => wv,
-            None => return Ok(()),
-        };
-        // Display scale. Must be the zoom factor, not CDP's `scale` — see above.
-        wv.set_zoom(scale.clamp(0.1, 1.0))
-            .map_err(|e| format!("emulate_viewport zoom failed: {e}"))?;
-
-        wv.with_webview(move |platform| {
-            #[cfg(windows)]
-            unsafe {
-                use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
-                use windows_core::HSTRING;
-                let core = match platform.controller().CoreWebView2() {
-                    Ok(c) => c,
-                    Err(e) => {
-                        xevo_log!("[xevo] emulate_viewport: CoreWebView2 unavailable: {e:?}");
-                        return;
-                    }
-                };
-
-                let call = |method: &str, params: String| {
-                    let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
-                        |_r: windows_core::Result<()>, _json: String| -> windows_core::Result<()> {
-                            Ok(())
-                        },
-                    ));
-                    let _ = core.CallDevToolsProtocolMethod(
-                        &HSTRING::from(method),
-                        &HSTRING::from(params),
-                        &handler,
-                    );
-                };
-
-                call(
-                    "Emulation.setDeviceMetricsOverride",
-                    format!(
-                        r#"{{"width":{width},"height":{height},"deviceScaleFactor":{dsf},"mobile":{mobile}}}"#,
-                        dsf = device_scale_factor,
-                    ),
-                );
-                call(
-                    "Emulation.setTouchEmulationEnabled",
-                    format!(r#"{{"enabled":{touch},"maxTouchPoints":{}}}"#, if touch { 5 } else { 0 }),
-                );
-                if let Some(ua) = &user_agent {
-                    call(
-                        "Emulation.setUserAgentOverride",
-                        format!(r#"{{"userAgent":{}}}"#, serde_json::to_string(ua).unwrap_or_default()),
-                    );
-                }
-            }
-        })
-        .map_err(|e| format!("emulate_viewport failed: {e}"))?;
-        Ok(())
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app, label, width, height, device_scale_factor, mobile, touch, scale, user_agent);
-        Err("Viewport emulation is only supported on Windows".to_string())
-    }
 }
 
 /// Show a viewport webview
@@ -2533,65 +2636,6 @@ pub async fn show_viewport(app: AppHandle, label: String) -> Result<(), String> 
 pub async fn hide_viewport(app: AppHandle, label: String) -> Result<(), String> {
     if let Some(webview) = find_tab_webview(&app, &label) {
         webview.hide().map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-/// Scroll a viewport to a relative position (0.0..1.0) for sync.
-#[tauri::command]
-pub async fn scroll_viewport(
-    app: AppHandle,
-    label: String,
-    percent_x: f64,
-    percent_y: f64,
-) -> Result<(), String> {
-    if let Some(webview) = find_tab_webview(&app, &label) {
-        let script = format!(
-            r#"(function() {{
-  var el = document.scrollingElement || document.documentElement;
-  if (!el) return;
-  var maxX = Math.max(0, el.scrollWidth - el.clientWidth);
-  var maxY = Math.max(0, el.scrollHeight - el.clientHeight);
-  window.__xevoApplyingScrollSync = true;
-  window.scrollTo(maxX * {}, maxY * {});
-  setTimeout(function() {{ window.__xevoApplyingScrollSync = false; }}, 80);
-}})();"#,
-            percent_x.clamp(0.0, 1.0),
-            percent_y.clamp(0.0, 1.0)
-        );
-        webview.eval(&script).map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-/// Click at a position in a viewport (for sync)
-#[tauri::command]
-pub async fn click_viewport(
-    app: AppHandle,
-    label: String,
-    x: f64,
-    y: f64,
-) -> Result<(), String> {
-    if let Some(webview) = find_tab_webview(&app, &label) {
-        let script = format!(
-            r#"(function() {{
-  window.__xevoApplyingClickSync = true;
-  var el = document.elementFromPoint({}, {});
-  if (el && typeof el.click === "function") el.click();
-  setTimeout(function() {{ window.__xevoApplyingClickSync = false; }}, 80);
-}})();"#,
-            x, y
-        );
-        webview.eval(&script).map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-/// Eval a raw JavaScript string into a browser or viewport webview.
-#[tauri::command]
-pub async fn browser_eval_raw(app: AppHandle, label: String, script: String) -> Result<(), String> {
-    if let Some(wv) = find_tab_webview(&app, &label) {
-        wv.eval(&script).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -2983,94 +3027,6 @@ extern "system" {
         hSection: *mut std::ffi::c_void,
         offset: u32,
     ) -> *mut std::ffi::c_void;
-}
-
-/// Called by a viewport webview's scroll listener to notify the frontend.
-/// The frontend's useViewportSync hook then syncs other viewports.
-#[tauri::command]
-pub async fn notify_viewport_scroll(
-    app: AppHandle,
-    source_label: String,
-    percent_x: f64,
-    percent_y: f64,
-) -> Result<(), String> {
-    app.emit(
-        "viewport://scroll",
-        serde_json::json!({
-            "sourceLabel": source_label,
-            "percentX": percent_x,
-            "percentY": percent_y,
-        }),
-    )
-    .map_err(|e| e.to_string())
-}
-
-/// Called by a viewport webview's click listener to notify the frontend.
-#[tauri::command]
-pub async fn notify_viewport_click(
-    app: AppHandle,
-    source_label: String,
-    x: f64,
-    y: f64,
-) -> Result<(), String> {
-    app.emit(
-        "viewport://click",
-        serde_json::json!({
-            "sourceLabel": source_label,
-            "x": x,
-            "y": y,
-        }),
-    )
-    .map_err(|e| e.to_string())
-}
-
-/// Called by a viewport webview's input listener to notify the frontend.
-/// The frontend's useViewportSync hook then mirrors input to other viewports.
-#[tauri::command]
-pub async fn notify_viewport_input(
-    app: AppHandle,
-    source_label: String,
-    selector: String,
-    value: String,
-    checked: Option<bool>,
-    input_type: String,
-) -> Result<(), String> {
-    app.emit(
-        "viewport://input",
-        serde_json::json!({
-            "sourceLabel": source_label,
-            "selector": selector,
-            "value": value,
-            "checked": checked,
-            "inputType": input_type,
-        }),
-    )
-    .map_err(|e| e.to_string())
-}
-
-/// Called by a viewport webview's metrics probe to notify the frontend.
-#[tauri::command]
-pub async fn notify_viewport_metrics(
-    app: AppHandle,
-    source_label: String,
-    inner_width: f64,
-    inner_height: f64,
-    device_pixel_ratio: f64,
-    touch: bool,
-    user_agent: String,
-) -> Result<(), String> {
-    app.emit(
-        "viewport://metrics",
-        serde_json::json!({
-            "sourceLabel": source_label,
-            "innerWidth": inner_width,
-            "innerHeight": inner_height,
-            "devicePixelRatio": device_pixel_ratio,
-            "touch": touch,
-            "userAgent": user_agent,
-        }),
-    )
-    .map_err(|e| e.to_string())
 }
 
 // ─── Tab State Save/Restore ────────────────────────────────────────
