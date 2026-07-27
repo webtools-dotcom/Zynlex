@@ -31,8 +31,6 @@ static NETWORK_REQUEST_META: OnceLock<Mutex<HashMap<String, VecDeque<(Instant, S
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HeaderRule {
     #[serde(default)]
-    pub id: String,
-    #[serde(default)]
     pub pattern: String,
     pub name: String,
     pub value: String,
@@ -494,33 +492,6 @@ async fn wait_until_absent(app: &AppHandle, state: &crate::BrowserState, label: 
     }
 }
 
-fn is_ip_address(s: &str) -> bool {
-    s.parse::<std::net::Ipv4Addr>().is_ok() || s.parse::<std::net::Ipv6Addr>().is_ok()
-}
-
-fn resolve_url(input: &str) -> String {
-    let s = input.trim();
-    if s.starts_with("http://") || s.starts_with("https://") {
-        return s.to_string();
-    }
-    if s.starts_with("localhost") || s.starts_with("127.0.0.1") {
-        return format!("http://{}", s);
-    }
-    let has_dot = s.contains('.');
-    let has_space = s.contains(' ');
-    let has_slash = s.starts_with('/');
-    if has_dot && !has_space && !has_slash {
-        if is_ip_address(s.split(':').next().unwrap_or("")) {
-            return format!("http://{}", s);
-        }
-        return format!("https://{}", s);
-    }
-    format!(
-        "https://www.google.com/search?q={}",
-        urlencoding::encode(s)
-    )
-}
-
 /// Build a child Webview for a tab. Injects per-tab __XEVO_TAB_ID plus
 /// all shared init scripts (core, chrome features, JSON viewer).
 ///
@@ -693,7 +664,6 @@ pub async fn browser_create_tab(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    let resolved = resolve_url(&url);
     let label = webview_label_for_tab(&tab_id);
 
     // Destroy any stale handle in our persistent map for this label.
@@ -727,7 +697,7 @@ pub async fn browser_create_tab(
         }
     }
 
-    xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — creating label={} url={} x={} y={} w={} h={}", label, resolved, x, y, width, height);
+    xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — creating label={} url={} x={} y={} w={} h={}", label, url, x, y, width, height);
 
     // Hide ALL other browser webviews — this is authoritative.
     // The old approach (hide only active_tab_label) missed webviews hidden
@@ -738,7 +708,7 @@ pub async fn browser_create_tab(
     // A child webview is hidden and restored by the OS along with its parent
     // window, so minimize state no longer gates creation.
     let webview = create_webview_for_tab(
-        &app, &tab_id, &resolved, x, y, width, height, true,
+        &app, &tab_id, &url, x, y, width, height, true,
     )?;
 
     // Store a persistent strong reference to prevent the Webview
@@ -816,9 +786,8 @@ pub async fn browser_navigate_tab(
     url: String,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    let resolved = resolve_url(&url);
     if let Some(wv) = find_tab_webview(&app, &label) {
-        wv.navigate(resolved.parse().map_err(|e: url::ParseError| e.to_string())?)
+        wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
             .map_err(|e| {
                 #[cfg(debug_assertions)]
                 xevo_log!("[xevo] browser_navigate_tab failed: {e}");
@@ -889,14 +858,6 @@ pub async fn browser_set_bounds(
         }
     } else {
         xevo_log!("[XEVO-BOUNDS] browser_set_bounds — webview NOT FOUND for label: {}", label);
-        // Diagnostic: dump all registered webview labels to understand why lookup failed
-        let all_labels: Vec<String> = app.webviews()
-            .iter()
-            .map(|(l, _)| l.clone())
-            .collect();
-        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — registered webview labels: {:?}", all_labels);
-        let stored_labels: Vec<String> = state.webviews.lock().unwrap_or_else(|e| e.into_inner()).keys().cloned().collect();
-        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — stored webview labels: {:?}", stored_labels);
     }
     Ok(())
 }
@@ -1010,18 +971,12 @@ pub fn browser_bookmark_request(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub fn forward_shortcut(app: AppHandle, shortcut: String) -> Result<(), String> {
+/// Called from the native accelerator-key handler — never exposed as an
+/// IPC command, since it would let any page spoof a keyboard shortcut.
+fn forward_shortcut(app: AppHandle, shortcut: String) -> Result<(), String> {
     app.emit("xevo://shortcut", shortcut)
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[tauri::command]
-pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
-    app.opener()
-        .open_url(&url, None::<&str>)
-        .map_err(|e| e.to_string())
 }
 
 /// Open a downloaded file, or reveal it in the OS file manager.
@@ -1035,8 +990,9 @@ pub fn open_download(app: AppHandle, path: String, reveal: bool) -> Result<(), S
     }
 }
 
-#[tauri::command]
-pub fn update_tab_info(
+/// Called from the native title-changed handler — never exposed as an IPC
+/// command, since it would let any page spoof another tab's title/url/favicon.
+fn update_tab_info(
     app: AppHandle,
     tab_id: String,
     title: String,
@@ -1071,11 +1027,6 @@ fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<
     })
 }
 
-fn build_invoke_call(func_name: &str, args: Vec<String>) -> String {
-    let args_js = args.join(", ");
-    format!("window.{}({})", func_name, args_js)
-}
-
 fn js_string_literal(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -1106,14 +1057,10 @@ pub async fn browser_find(
     forward: Option<bool>,
 ) -> Result<(), String> {
     if query.is_empty() {
-        let script = build_invoke_call("__xevoClearFind", vec![]);
-        return eval_find_script(&app, &tab_id, &script);
+        return eval_find_script(&app, &tab_id, "window.__xevoClearFind()");
     }
     let fwd = forward.unwrap_or(true);
-    let body = build_invoke_call(
-        "__xevoFind",
-        vec![js_string_literal(&query), format!("{}", fwd)],
-    );
+    let body = format!("window.__xevoFind({}, {})", js_string_literal(&query), fwd);
     eval_find_script(&app, &tab_id, &body)
 }
 
@@ -1124,17 +1071,13 @@ pub async fn browser_find_next(
     forward: Option<bool>,
 ) -> Result<(), String> {
     let fwd = forward.unwrap_or(true);
-    let body = build_invoke_call(
-        "__xevoFindNext",
-        vec![format!("{}", fwd)],
-    );
+    let body = format!("window.__xevoFindNext({})", fwd);
     eval_find_script(&app, &tab_id, &body)
 }
 
 #[tauri::command]
 pub async fn browser_stop_find(app: AppHandle, tab_id: String) -> Result<(), String> {
-    let body = build_invoke_call("__xevoClearFind", vec![]);
-    eval_find_script(&app, &tab_id, &body)
+    eval_find_script(&app, &tab_id, "window.__xevoClearFind()")
 }
 
 #[tauri::command]
@@ -1406,7 +1349,6 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                 return;
             }
 
-            let app_req = app.clone();
             let tab_id_req = tab_id.clone();
             let req_handler = WebResourceRequestedEventHandler::create(Box::new(move |_webview, args| {
                 let args = match args {
@@ -1452,10 +1394,6 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                     return Ok(());
                 }
 
-                let mut method_ptr = PWSTR::null();
-                let _ = request.Method(&mut method_ptr);
-                let method = if method_ptr.is_null() { String::new() } else { method_ptr.to_string().unwrap_or_default() };
-
                 let mut resource_context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT(0);
                 let _ = args.ResourceContext(&mut resource_context);
                 let resource_type = match resource_context.0 {
@@ -1473,12 +1411,6 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                 if let Ok(mut map) = store.lock() {
                     map.entry(meta_key).or_default().push_back((now, resource_type.to_string()));
                 }
-
-                let _ = app_req.emit("browser://network-request", serde_json::json!({
-                    "tabId": tab_id_req,
-                    "method": method,
-                    "url": uri,
-                }));
 
                 Ok(())
             }));
@@ -2631,15 +2563,6 @@ pub async fn show_viewport(app: AppHandle, label: String) -> Result<(), String> 
     Ok(())
 }
 
-/// Hide a viewport webview
-#[tauri::command]
-pub async fn hide_viewport(app: AppHandle, label: String) -> Result<(), String> {
-    if let Some(webview) = find_tab_webview(&app, &label) {
-        webview.hide().map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
 /// Result of a screenshot capture: PNG bytes + saved file path.
 #[derive(serde::Serialize)]
 pub struct ScreenshotResult {
@@ -2649,12 +2572,10 @@ pub struct ScreenshotResult {
 
 /// Captures the active browser tab's page content as a PNG screenshot
 /// using the DevTools Protocol via the WebView2 COM API.
-/// Falls back to capturing the main window via PrintWindow if the
-/// webview-based capture is unavailable.
 #[tauri::command]
 pub async fn browser_screenshot(
     app: AppHandle,
-    window: tauri::WebviewWindow,
+    #[allow(unused_variables)] window: tauri::WebviewWindow,
 ) -> Result<ScreenshotResult, String> {
     #[cfg(target_os = "windows")]
     {
@@ -2665,24 +2586,14 @@ pub async fn browser_screenshot(
             .unwrap_or_else(|e| e.into_inner())
             .clone();
 
-        // Try DevTools Protocol on the active browser webview first
-        let png_result = if let Some(ref label) = active_label {
+        let png_bytes = if let Some(ref label) = active_label {
             if let Some(browser_wv) = find_tab_webview(&app, label) {
-                capture_browser_devtools(&browser_wv).await
+                capture_browser_devtools(&browser_wv).await?
             } else {
-                Err("No browser webview found".to_string())
+                return Err("No browser webview found".to_string());
             }
         } else {
-            Err("No active tab".to_string())
-        };
-
-        let png_bytes = match png_result {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                #[cfg(debug_assertions)]
-                xevo_log!("[xevo] DevTools screenshot failed ({e}), falling back to PrintWindow");
-                capture_main_window_printwindow(&window)?
-            }
+            return Err("No active tab".to_string());
         };
 
         // ── Save to app screenshots directory ────────────────────────
@@ -2837,196 +2748,6 @@ async fn capture_browser_devtools(
     .map_err(|e| format!("with_webview error: {e}"))?;
 
     rx.await.map_err(|_| "Screenshot channel closed".to_string())?
-}
-
-/// Fallback: capture the main window via PrintWindow.
-/// This captures the browser chrome but the webview area appears black
-/// (DirectComposition limitation), so it's only used when DevTools capture fails.
-#[cfg(target_os = "windows")]
-fn capture_main_window_printwindow(
-    window: &tauri::WebviewWindow,
-) -> Result<Vec<u8>, String> {
-    use raw_window_handle::HasWindowHandle;
-
-    if window.is_minimized().unwrap_or(true) {
-        return Err("Cannot screenshot a minimized window".to_string());
-    }
-
-    let handle = window.window_handle().map_err(|e| e.to_string())?;
-    let hwnd_ptr = match handle.as_raw() {
-        raw_window_handle::RawWindowHandle::Win32(w) => w.hwnd.get() as *mut std::ffi::c_void,
-        _ => return Err("Not a Windows window".to_string()),
-    };
-
-    unsafe {
-        let mut rect = RECT::default();
-        if GetWindowRect(hwnd_ptr, &mut rect) == 0 {
-            return Err("GetWindowRect failed".to_string());
-        }
-
-        let w = rect.right - rect.left;
-        let h = rect.bottom - rect.top;
-
-        if w <= 0 || h <= 0 {
-            return Err("Window has zero or negative dimensions".to_string());
-        }
-
-        let bmi = BITMAPINFO {
-            bmi_header: BITMAPINFOHEADER {
-                bi_size: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                bi_width: w,
-                bi_height: -h,
-                bi_planes: 1,
-                bi_bit_count: 32,
-                bi_compression: 0,
-                bi_size_image: 0,
-                bi_x_pels_per_meter: 0,
-                bi_y_pels_per_meter: 0,
-                bi_clr_used: 0,
-                bi_clr_important: 0,
-            },
-        };
-
-        let screen_dc = GetDC(std::ptr::null_mut());
-        if screen_dc.is_null() {
-            return Err("GetDC failed".to_string());
-        }
-
-        let mem_dc = CreateCompatibleDC(screen_dc);
-        if mem_dc.is_null() {
-            ReleaseDC(std::ptr::null_mut(), screen_dc);
-            return Err("CreateCompatibleDC failed".to_string());
-        }
-
-        let mut bits: *mut u8 = std::ptr::null_mut();
-        let hbmp = CreateDIBSection(
-            screen_dc,
-            &bmi as *const BITMAPINFO,
-            0,
-            &mut bits,
-            std::ptr::null_mut(),
-            0,
-        );
-
-        if hbmp.is_null() || bits.is_null() {
-            DeleteDC(mem_dc);
-            ReleaseDC(std::ptr::null_mut(), screen_dc);
-            return Err("CreateDIBSection failed".to_string());
-        }
-
-        let old_bmp = SelectObject(mem_dc, hbmp as *mut std::ffi::c_void);
-
-        let print_ok = PrintWindow(hwnd_ptr, mem_dc, 0x03) != 0;
-
-        SelectObject(mem_dc, old_bmp);  // restore before cleaning up
-
-        if !print_ok {
-            DeleteObject(hbmp as *mut std::ffi::c_void);
-            DeleteDC(mem_dc);
-            ReleaseDC(std::ptr::null_mut(), screen_dc);
-            return Err("PrintWindow failed".to_string());
-        }
-
-        let pixel_count = (w * h * 4) as usize;
-        let mut pixels = vec![0u8; pixel_count];
-        std::ptr::copy_nonoverlapping(bits, pixels.as_mut_ptr(), pixel_count);
-
-        for chunk in pixels.chunks_exact_mut(4) {
-            chunk.swap(0, 2);
-        }
-
-        DeleteObject(hbmp as *mut std::ffi::c_void);
-        DeleteDC(mem_dc);
-        ReleaseDC(std::ptr::null_mut(), screen_dc);
-
-        let img = image::RgbaImage::from_raw(w as u32, h as u32, pixels)
-            .ok_or("Failed to create image from raw pixels")?;
-
-        let mut buf = std::io::Cursor::new(Vec::new());
-        img.write_to(&mut buf, image::ImageFormat::Png)
-            .map_err(|e| e.to_string())?;
-
-        Ok(buf.into_inner())
-    }
-}
-
-// ── Win32 GDI FFI for screenshot capture ────────────────
-#[cfg(target_os = "windows")]
-#[repr(C)]
-struct RECT {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-}
-
-#[cfg(target_os = "windows")]
-impl Default for RECT {
-    fn default() -> Self {
-        Self {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-#[repr(C)]
-struct BITMAPINFOHEADER {
-    bi_size: u32,
-    bi_width: i32,
-    bi_height: i32,
-    bi_planes: u16,
-    bi_bit_count: u16,
-    bi_compression: u32,
-    bi_size_image: u32,
-    bi_x_pels_per_meter: i32,
-    bi_y_pels_per_meter: i32,
-    bi_clr_used: u32,
-    bi_clr_important: u32,
-}
-
-#[cfg(target_os = "windows")]
-#[repr(C)]
-struct BITMAPINFO {
-    bmi_header: BITMAPINFOHEADER,
-}
-
-#[cfg(target_os = "windows")]
-extern "system" {
-    fn GetWindowRect(
-        hWnd: *mut std::ffi::c_void,
-        lpRect: *mut RECT,
-    ) -> i32;
-    fn GetDC(hWnd: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
-    fn ReleaseDC(
-        hWnd: *mut std::ffi::c_void,
-        hDC: *mut std::ffi::c_void,
-    ) -> i32;
-    fn CreateCompatibleDC(
-        hdc: *mut std::ffi::c_void,
-    ) -> *mut std::ffi::c_void;
-    fn SelectObject(
-        hdc: *mut std::ffi::c_void,
-        h: *mut std::ffi::c_void,
-    ) -> *mut std::ffi::c_void;
-    fn DeleteDC(hdc: *mut std::ffi::c_void) -> i32;
-    fn DeleteObject(h: *mut std::ffi::c_void) -> i32;
-    fn PrintWindow(
-        hWnd: *mut std::ffi::c_void,
-        hDCBlt: *mut std::ffi::c_void,
-        nFlags: u32,
-    ) -> i32;
-    fn CreateDIBSection(
-        hdc: *mut std::ffi::c_void,
-        pbmi: *const BITMAPINFO,
-        usage: u32,
-        ppvBits: *mut *mut u8,
-        hSection: *mut std::ffi::c_void,
-        offset: u32,
-    ) -> *mut std::ffi::c_void;
 }
 
 // ─── Tab State Save/Restore ────────────────────────────────────────
