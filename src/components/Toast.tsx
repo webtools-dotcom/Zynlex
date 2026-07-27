@@ -6,15 +6,15 @@
  * Stack grows upward; max 5 visible (older ones clipped).
  */
 import { Check, Info, X } from "lucide-react";
-import { useUIStore, type Toast } from "@/stores/ui";
+import { useUIStore, type Toast as ToastData } from "@/stores/ui";
 
-const KIND_COLORS: Record<Toast["kind"], { bg: string; border: string; fg: string }> = {
+const KIND_COLORS: Record<ToastData["kind"], { bg: string; border: string; fg: string }> = {
   success: { bg: "var(--color-live)", border: "var(--color-live)", fg: "#0f0f0f" },
   info: { bg: "var(--color-elevated)", border: "var(--color-border)", fg: "var(--color-text-primary)" },
   danger: { bg: "var(--color-dead)", border: "var(--color-dead)", fg: "#fff" },
 };
 
-function ToastItem({ toast }: { toast: Toast }) {
+function ToastItem({ toast }: { toast: ToastData }) {
   const dismiss = useUIStore((s) => s.dismissToast);
   const c = KIND_COLORS[toast.kind];
   const Icon = toast.kind === "success" ? Check : toast.kind === "danger" ? X : Info;

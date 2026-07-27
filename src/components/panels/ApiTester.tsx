@@ -171,8 +171,7 @@ export function parseCurl(input: string): ParsedCurl {
 function tokenizeCurl(input: string): string[] {
   const out: string[] = [];
   const re = /\s*('([^'\\]*(?:\\.[^'\\]*)*)'|"([^"\\]*(?:\\.[^"\\]*)*)"|(\S+))/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(input)) !== null) {
+  for (const m of input.matchAll(re)) {
     out.push(m[2] ?? m[3] ?? m[4] ?? "");
   }
   return out;

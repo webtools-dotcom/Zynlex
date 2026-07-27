@@ -109,14 +109,14 @@ export function ShortcutHelp() {
         </div>
 
         <div className="overflow-y-auto py-2">
-          {SHORTCUTS.map((s, i) => (
+          {SHORTCUTS.map((s) => (
             <div
-              key={i}
+              key={s.description}
               className="flex items-center justify-between px-4 py-1.5 hover:bg-[var(--color-hover)]"
             >
               <div className="flex items-center gap-1 shrink-0">
                 {s.keys.map((k, j) => (
-                  <span key={j} className="flex items-center gap-1">
+                  <span key={k} className="flex items-center gap-1">
                     <Kbd>{k}</Kbd>
                     {j < s.keys.length - 1 && (
                       <span className="text-[var(--color-text-disabled)] text-micro">+</span>
