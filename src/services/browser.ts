@@ -313,7 +313,40 @@ export async function inspectorMutate(
   await invoke<void>("inspector_mutate", { tabId, operation, params });
 }
 
-// ─── Multi-Viewport Mode ──────────────────────────────────────────
+// ─── Viewport (device emulation) Mode ─────────────────────────────
+
+/** Device characteristics applied to the viewport webview.
+ *
+ *  `width`/`height` are the **measured frame rect**, not the preset — sending
+ *  the rect the DOM actually produced is what keeps the CDP layout viewport and
+ *  the webview bounds identical instead of two values that can drift. */
+export interface DeviceSpec {
+  width: number;
+  height: number;
+  deviceScaleFactor: number;
+  mobile: boolean;
+  touch: boolean;
+  userAgent?: string;
+}
+
+/** What the page reports about itself — shown in the card header so emulation
+ *  correctness is readable rather than inferred. */
+export interface ViewportProbe {
+  innerWidth: number;
+  innerHeight: number;
+  /** The **layout** viewport. `innerWidth`/`innerHeight` are the *visual*
+   *  viewport and move with page scale, so they are not the size to check. */
+  clientWidth: number;
+  clientHeight: number;
+  /** `screen.*` is overwritten by setDeviceMetricsOverride — if it matches the
+   *  device the override applied and something resized the viewport after; if
+   *  it's the monitor size the override never landed. */
+  screenWidth: number;
+  screenHeight: number;
+  devicePixelRatio: number;
+  maxTouchPoints: number;
+  userAgent: string;
+}
 
 export async function createViewport(
   label: string,
@@ -322,37 +355,42 @@ export async function createViewport(
   y: number,
   width: number,
   height: number,
+  spec: DeviceSpec,
 ): Promise<void> {
-  await invoke<void>("create_viewport", { label, url, x, y, width, height });
+  await invoke<void>("create_viewport", { label, url, x, y, width, height, spec });
 }
 
 export async function destroyViewport(label: string): Promise<void> {
   await invoke<void>("destroy_viewport", { label });
 }
 
+/** Navigate the existing viewport instead of destroy+recreate — recreating
+ *  dropped the emulation and left the frame rendering at full size. */
+export async function navigateViewport(label: string, url: string): Promise<void> {
+  await invoke<void>("navigate_viewport", { label, url });
+}
+
+/** Bounds + emulation in one call. They must not be two invokes: a controller
+ *  resize resets the emulated viewport, so whichever landed last won. */
 export async function resizeViewport(
   label: string,
   x: number,
   y: number,
   width: number,
   height: number,
+  spec: DeviceSpec,
 ): Promise<void> {
-  await invoke<void>("resize_viewport", { label, x, y, width, height });
+  await invoke<void>("resize_viewport", { label, x, y, width, height, spec });
 }
 
-export async function emulateViewport(
-  label: string,
-  opts: {
-    width: number;
-    height: number;
-    deviceScaleFactor: number;
-    mobile: boolean;
-    touch: boolean;
-    scale: number;
-    userAgent?: string;
-  },
-): Promise<void> {
-  await invoke<void>("emulate_viewport", { label, ...opts });
+export async function probeViewport(label: string): Promise<ViewportProbe> {
+  return invoke<ViewportProbe>("probe_viewport", { label });
+}
+
+/** Rust→frontend, fired from `on_page_load(Finished)`. Signals when a probe is
+ *  worth taking; page→Rust IPC is unavailable for remote content. */
+export function onViewportLoaded(callback: () => void): Promise<UnlistenFn> {
+  return listen("viewport://loaded", () => callback());
 }
 
 export async function showViewport(label: string): Promise<void> {
@@ -361,26 +399,6 @@ export async function showViewport(label: string): Promise<void> {
 
 export async function hideViewport(label: string): Promise<void> {
   await invoke<void>("hide_viewport", { label });
-}
-
-export async function scrollViewport(
-  label: string,
-  percentX: number,
-  percentY: number,
-): Promise<void> {
-  await invoke<void>("scroll_viewport", { label, percentX, percentY });
-}
-
-export async function clickViewport(
-  label: string,
-  x: number,
-  y: number,
-): Promise<void> {
-  await invoke<void>("click_viewport", { label, x, y });
-}
-
-export async function evalRaw(label: string, script: string): Promise<void> {
-  await invoke<void>("browser_eval_raw", { label, script });
 }
 
 export interface ScreenshotResult {
@@ -434,23 +452,5 @@ export async function setHeaderRules(
   rulesByTab: Record<string, HeaderRulePayload[]>
 ): Promise<void> {
   await invoke<void>("browser_set_header_rules", { rulesByTab });
-}
-
-export function onViewportScroll(
-  callback: (payload: { sourceLabel: string; percentX: number; percentY: number }) => void,
-): Promise<UnlistenFn> {
-  return listen<{ sourceLabel: string; percentX: number; percentY: number }>("viewport://scroll", (e) => callback(e.payload));
-}
-
-export function onViewportClick(
-  callback: (payload: { sourceLabel: string; x: number; y: number }) => void,
-): Promise<UnlistenFn> {
-  return listen<{ sourceLabel: string; x: number; y: number }>("viewport://click", (e) => callback(e.payload));
-}
-
-export function onViewportInput(
-  callback: (payload: { sourceLabel: string; selector: string; value: string; checked: boolean | null; inputType: string }) => void,
-): Promise<UnlistenFn> {
-  return listen<{ sourceLabel: string; selector: string; value: string; checked: boolean | null; inputType: string }>("viewport://input", (e) => callback(e.payload));
 }
 

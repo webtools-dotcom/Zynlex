@@ -1,24 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowUpFromLine,
-  ChevronDown,
-  Columns3,
-  Keyboard,
+  AlertTriangle,
+  Check,
   Monitor,
-  MousePointer2,
   Plus,
   RotateCw,
   Smartphone,
-  Square,
   Tablet,
   X,
-  ZoomIn,
-  AlertTriangle,
-  Check,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn } from "@/lib/utils";
-import { useUIStore, type Viewport } from "@/stores/ui";
+import { useUIStore } from "@/stores/ui";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
@@ -29,13 +22,14 @@ import {
 import {
   createViewport,
   destroyViewport,
-  evalRaw,
+  navigateViewport,
   resizeViewport,
-  emulateViewport,
   showViewport,
-  hideViewport,
+  probeViewport,
+  onViewportLoaded,
+  type DeviceSpec,
+  type ViewportProbe,
 } from "@/services/browser";
-import { listen } from "@tauri-apps/api/event";
 
 const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -46,157 +40,16 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
   laptop: Monitor,
 };
 
-const ZOOM_OPTIONS = ["fit", 0.25, 0.33, 0.5, 0.67, 0.75, 1] as const;
-
-/** Surface `p-3` padding and `gap-4` between cards. */
-const SURFACE_PAD = 12;
-const CARD_GAP = 16;
-/** Card header + borders, until a real card can be measured. Font-size driven,
- *  so it is not a constant — compact mode shrinks it. */
-const CARD_CHROME_FALLBACK = 34;
-
 /**
- * Fit scale: the surface never scrolls, because these frames are native child
- * webviews of the main window and clip to the *window*, not to any DOM scroll
- * container — a partly-scrolled frame would draw over the toolbar and sidebar.
- * So instead of clipping, everything is scaled to fit in one row.
+ * One device at a time, under one reused native webview.
  *
- * Always measured against the **whole device list**, never just the visible one.
- * Scaling each device individually to fill the panel made every phone render at
- * the same on-screen size — a 360×780 and a 430×932 both ended up ~700px tall,
- * so switching devices looked like nothing happened. One shared scale, sized to
- * the largest device, is what makes the size differences visible.
+ * The frame is a `Window::add_child` webview, which clips to the *window*, not
+ * to any DOM box — a frame bigger than the panel draws straight over the
+ * toolbar and sidebar. It is rendered 1:1 and clamped to the panel by CSS, so
+ * exceeding the panel is structurally impossible and there is no scale factor
+ * to get wrong. The page scrolls inside it, like a phone with a shorter screen.
  */
-function fitZoom(
-  all: { width: number; height: number }[],
-  box: { width: number; height: number },
-  cardChrome: number,
-  layout: "focus" | "overview"
-): number {
-  if (all.length === 0 || box.width === 0 || box.height === 0) return 1;
-  // Focus shows one frame at a time, so it only needs room for the widest.
-  const overview = layout === "overview";
-  const needW = overview
-    ? all.reduce((n, vp) => n + vp.width, 0)
-    : Math.max(...all.map((vp) => vp.width));
-  const needH = Math.max(...all.map((vp) => vp.height));
-  // Gaps are fixed pixels — they don't scale, so they come off the available
-  // width rather than being divided into it (that overflows by a few px).
-  const gaps = overview ? CARD_GAP * (all.length - 1) : 0;
-  const availW = box.width - SURFACE_PAD * 2 - gaps;
-  const availH = box.height - SURFACE_PAD * 2 - cardChrome;
-  return Math.max(0.15, Math.min(1, availW / needW, availH / needH));
-}
-
-function viewportLabel(id: string): string {
-  return `viewport-${id}`;
-}
-
-function escapeSingleQuotedJs(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-}
-
-function buildViewportSetupScript(label: string): string {
-  const labelEsc = escapeSingleQuotedJs(label);
-  return [
-    "window.__XEVO_VIEWPORT_LABEL = '" + labelEsc + "';",
-    "(function(){",
-    "  if (window.__xevoVpScrollInited) return;",
-    "  window.__xevoVpScrollInited = true;",
-    "  var ticking = false;",
-    '  document.addEventListener("scroll", function() {',
-    "    if (window.__xevoApplyingScrollSync) return;",
-    "    if (ticking) return;",
-    "    ticking = true;",
-    "    requestAnimationFrame(function() {",
-    "      ticking = false;",
-    "      var el = document.scrollingElement || document.documentElement;",
-    "      if (!el || !window.__TAURI_INTERNALS__ || !window.__TAURI_INTERNALS__.invoke) return;",
-    "      var maxX = el.scrollWidth - el.clientWidth;",
-    "      var maxY = el.scrollHeight - el.clientHeight;",
-    "      window.__TAURI_INTERNALS__.invoke('notify_viewport_scroll', {",
-    "        sourceLabel: '" + labelEsc + "',",
-    "        percentX: maxX > 0 ? el.scrollLeft / maxX : 0,",
-    "        percentY: maxY > 0 ? el.scrollTop / maxY : 0",
-    "      }).catch(function(){});",
-    "    });",
-    "  }, { passive: true });",
-    "})();",
-    "(function(){",
-    "  if (window.__xevoVpClickInited) return;",
-    "  window.__xevoVpClickInited = true;",
-    '  document.addEventListener("click", function(e) {',
-    "    if (window.__xevoApplyingClickSync) return;",
-    "    if (!window.__TAURI_INTERNALS__ || !window.__TAURI_INTERNALS__.invoke) return;",
-    "    window.__TAURI_INTERNALS__.invoke('notify_viewport_click', {",
-    "      sourceLabel: '" + labelEsc + "',",
-    "      x: e.clientX,",
-    "      y: e.clientY",
-    "    }).catch(function(){});",
-    "  }, { capture: true });",
-    "})();",
-    "(function(){",
-    "  if (window.__xevoVpInputInited) return;",
-    "  window.__xevoVpInputInited = true;",
-    "  function buildSelector(el) {",
-    "    if (el.id) return '#' + CSS.escape(el.id);",
-    '    if (el.name) return el.tagName.toLowerCase() + \'[name="\' + CSS.escape(el.name) + \'"]\';',
-    "    var path = [];",
-    "    var cur = el;",
-    "    while (cur && cur !== document.body) {",
-    "      var idx = 1;",
-    "      var sib = cur.previousElementSibling;",
-    "      while (sib) {",
-    "        if (sib.tagName === cur.tagName) idx++;",
-    "        sib = sib.previousElementSibling;",
-    "      }",
-    "      path.unshift(cur.tagName.toLowerCase() + ':nth-of-type(' + idx + ')');",
-    "      cur = cur.parentElement;",
-    "    }",
-    "    return path.join(' > ');",
-    "  }",
-    '  document.addEventListener("input", function(e) {',
-    "    var t = e.target;",
-    "    if (!t || !/^(input|textarea|select)$/i.test(t.tagName)) return;",
-    "    if (!window.__TAURI_INTERNALS__ || !window.__TAURI_INTERNALS__.invoke) return;",
-    "    window.__TAURI_INTERNALS__.invoke('notify_viewport_input', {",
-    "      sourceLabel: '" + labelEsc + "',",
-    "      selector: buildSelector(t),",
-    "      value: t.value || '',",
-    "      checked: t.type === 'checkbox' ? t.checked : null,",
-    "      inputType: t.type || 'text'",
-    "    }).catch(function(){});",
-    "  }, { capture: true });",
-    "})();",
-  ].join("\n");
-}
-
-function buildMetricsProbeScript(label: string): string {
-  const labelEsc = escapeSingleQuotedJs(label);
-  return [
-    "(function(){",
-    "  if (!window.__TAURI_INTERNALS__ || !window.__TAURI_INTERNALS__.invoke) return;",
-    "  window.__TAURI_INTERNALS__.invoke('notify_viewport_metrics', {",
-    "    sourceLabel: '" + labelEsc + "',",
-    "    innerWidth: window.innerWidth,",
-    "    innerHeight: window.innerHeight,",
-    "    devicePixelRatio: window.devicePixelRatio,",
-    "    touch: 'ontouchstart' in window || navigator.maxTouchPoints > 0,",
-    "    userAgent: navigator.userAgent",
-    "  }).catch(function(){});",
-    "})();",
-  ].join("\n");
-}
-
-// ─── Metrics tracking ──────────────────────────────────────────────
-
-interface ViewportMetrics {
-  innerWidth: number;
-  innerHeight: number;
-  devicePixelRatio: number;
-  touch: boolean;
-  userAgent: string;
-}
+const VIEWPORT_LABEL = "viewport-active";
 
 // ─── ViewportControlsPanel (sidebar) ───────────────────────────────
 
@@ -210,11 +63,6 @@ export function ViewportControlsPanel() {
 
   function addPreset(preset: DevicePreset) {
     addViewport(preset);
-  }
-
-  function remove(id: string) {
-    destroyViewport(viewportLabel(id)).catch(() => {});
-    removeViewport(id);
   }
 
   return (
@@ -265,7 +113,7 @@ export function ViewportControlsPanel() {
         </div>
 
         <span className="text-micro text-[var(--color-text-disabled)] ml-auto">
-          {viewports.length} viewport{viewports.length !== 1 ? "s" : ""}
+          {viewports.length} device{viewports.length !== 1 ? "s" : ""}
         </span>
       </div>
 
@@ -293,9 +141,9 @@ export function ViewportControlsPanel() {
                 {vp.width}x{vp.height}
               </span>
               <button
-                onClick={(e) => { e.stopPropagation(); remove(vp.id); }}
+                onClick={(e) => { e.stopPropagation(); removeViewport(vp.id); }}
                 className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--color-hover)] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
-                title="Remove viewport"
+                title="Remove device"
               >
                 <X size={12} />
               </button>
@@ -312,18 +160,8 @@ export function ViewportControlsPanel() {
 function ViewportToolbar() {
   const viewports = useUIStore((s) => s.viewports);
   const selectedViewportId = useUIStore((s) => s.selectedViewportId);
-  const viewportZoom = useUIStore((s) => s.viewportZoom);
-  const setViewportZoom = useUIStore((s) => s.setViewportZoom);
-  const viewportLayout = useUIStore((s) => s.viewportLayout);
-  const setViewportLayout = useUIStore((s) => s.setViewportLayout);
   const rotateViewport = useUIStore((s) => s.rotateViewport);
   const resizeViewportDimensions = useUIStore((s) => s.resizeViewportDimensions);
-  const syncScroll = useUIStore((s) => s.syncScroll);
-  const syncClick = useUIStore((s) => s.syncClick);
-  const syncInput = useUIStore((s) => s.syncInput);
-  const toggleSyncScroll = useUIStore((s) => s.toggleSyncScroll);
-  const toggleSyncClick = useUIStore((s) => s.toggleSyncClick);
-  const toggleSyncInput = useUIStore((s) => s.toggleSyncInput);
 
   const selected = viewports.find((v) => v.id === selectedViewportId);
 
@@ -347,7 +185,6 @@ function ViewportToolbar() {
   }
 
   const btnCls = "w-8 h-8 flex items-center justify-center rounded text-xs transition-colors";
-  const activeCls = "bg-[var(--color-accent-dim)] text-[var(--color-accent)]";
   const inactiveCls = "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]";
 
   return (
@@ -359,8 +196,8 @@ function ViewportToolbar() {
       }}
     >
       {/* Selected device label */}
-      <span className="text-xs text-[var(--color-text-muted)] font-medium truncate max-w-[120px]">
-        {selected ? selected.label : "No viewport"}
+      <span className="text-xs text-[var(--color-text-muted)] font-medium truncate max-w-[160px]">
+        {selected ? selected.label : "No device"}
       </span>
 
       {selected && (
@@ -404,75 +241,6 @@ function ViewportToolbar() {
           </button>
         </>
       )}
-
-      {/* Divider */}
-      <div className="w-px h-4 mx-0.5" style={{ background: "var(--color-border-subtle)" }} />
-
-      {/* Focus / Overview. Focus is the default — one device fits at ~90%,
-          three at ~47%, which is too small to actually work in. */}
-      <button
-        onClick={() => setViewportLayout("focus")}
-        className={cn(btnCls, viewportLayout === "focus" ? activeCls : inactiveCls)}
-        title="Focus — one device at a time"
-      >
-        <Square size={12} />
-      </button>
-      <button
-        onClick={() => setViewportLayout("overview")}
-        className={cn(btnCls, viewportLayout === "overview" ? activeCls : inactiveCls)}
-        title="Overview — all devices side by side"
-      >
-        <Columns3 size={12} />
-      </button>
-
-      {/* Divider */}
-      <div className="w-px h-4 mx-0.5" style={{ background: "var(--color-border-subtle)" }} />
-
-      {/* Zoom */}
-      <div className="relative flex items-center gap-0.5">
-        <ZoomIn size={12} className="text-[var(--color-text-disabled)]" />
-        <select
-          value={viewportZoom}
-          onChange={(e) =>
-            setViewportZoom(e.target.value === "fit" ? "fit" : Number(e.target.value))
-          }
-          className="h-7 text-xs font-mono rounded border bg-transparent text-[var(--color-text-muted)] px-1 pr-4 appearance-none cursor-pointer"
-          style={{ borderColor: "var(--color-border-subtle)" }}
-        >
-          {ZOOM_OPTIONS.map((z) => (
-            <option key={z} value={z}>
-              {z === "fit" ? "Fit" : `${Math.round(z * 100)}%`}
-            </option>
-          ))}
-        </select>
-        <ChevronDown size={11} className="absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--color-text-disabled)]" />
-      </div>
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Sync toggles */}
-      <button
-        onClick={toggleSyncScroll}
-        className={cn(btnCls, syncScroll ? activeCls : inactiveCls)}
-        title={syncScroll ? "Scroll sync on" : "Scroll sync off"}
-      >
-        <ArrowUpFromLine size={12} />
-      </button>
-      <button
-        onClick={toggleSyncClick}
-        className={cn(btnCls, syncClick ? activeCls : inactiveCls)}
-        title={syncClick ? "Click sync on" : "Click sync off"}
-      >
-        <MousePointer2 size={12} />
-      </button>
-      <button
-        onClick={toggleSyncInput}
-        className={cn(btnCls, syncInput ? activeCls : inactiveCls)}
-        title={syncInput ? "Input sync on" : "Input sync off"}
-      >
-        <Keyboard size={12} />
-      </button>
     </div>
   );
 }
@@ -481,13 +249,7 @@ function ViewportToolbar() {
 
 export function ViewportSurface() {
   const viewports = useUIStore((s) => s.viewports);
-  const removeViewport = useUIStore((s) => s.removeViewport);
   const selectedViewportId = useUIStore((s) => s.selectedViewportId);
-  const selectViewport = useUIStore((s) => s.selectViewport);
-  const viewportZoom = useUIStore((s) => s.viewportZoom);
-  const viewportLayout = useUIStore((s) => s.viewportLayout);
-  const setViewportLayout = useUIStore((s) => s.setViewportLayout);
-  const rotateViewport = useUIStore((s) => s.rotateViewport);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const { workspaces, activeWorkspaceId } = useWorkspacesStore();
@@ -496,250 +258,122 @@ export function ViewportSurface() {
   const activeTab = getLiveWorkspaceActiveTab(ws, tabs);
   const activeUrl = activeTab?.url || "about:blank";
 
-  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const createdLabelsRef = useRef<Set<string>>(new Set());
-  const urlByLabelRef = useRef<Map<string, string>>(new Map());
-  const emulationByLabelRef = useRef<Map<string, string>>(new Map());
-  const setupTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
-    new Map()
-  );
-  const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const [metrics, setMetrics] = useState<Map<string, ViewportMetrics>>(new Map());
-  const [surfaceBox, setSurfaceBox] = useState({ width: 0, height: 0 });
-  const [cardChrome, setCardChrome] = useState(CARD_CHROME_FALLBACK);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // Identity of the device the webview was *built* for. The user agent is a
+  // build-time builder attribute, so a different device means a rebuild.
+  const builtForRef = useRef<string | null>(null);
+  const urlRef = useRef<string | null>(null);
+  const busyRef = useRef(false);
 
-  // Focus mode renders the selected device only, which is what makes the fit
-  // scale usable — one phone fits at ~90%, three at ~47%. Falls back to the
-  // first viewport so focus is never blank.
-  const visible =
-    viewportLayout === "focus"
-      ? viewports.filter((vp) => vp.id === (selectedViewportId ?? viewports[0]?.id))
-      : viewports;
+  const [probe, setProbe] = useState<ViewportProbe | null>(null);
+  // The size we last handed to the webview. The probe is checked against this,
+  // not against a fresh DOM measurement taken during render — measuring in
+  // render races layout and compares the page to a rect it never received.
+  const [sentSize, setSentSize] = useState<{ width: number; height: number } | null>(null);
 
-  // Capped at fit even when a larger zoom is picked: the surface doesn't
-  // scroll, so anything past its edge is both unreachable and drawn over the
-  // browser chrome (these are native child webviews — they don't clip to the
-  // panel). The card header's @N% chip reports the scale actually used.
-  const fit = fitZoom(viewports, surfaceBox, cardChrome, viewportLayout);
-  const effectiveZoom = viewportZoom === "fit" ? fit : Math.min(viewportZoom, fit);
+  const device =
+    viewports.find((vp) => vp.id === selectedViewportId) ?? viewports[0] ?? null;
 
-  // Which viewports are rendered, as a stable dep. Switching between two
-  // devices of identical dimensions changes neither `viewports` nor the zoom,
-  // so without this the sync never fires and the old webview stays on screen.
-  const visibleKey = visible.map((vp) => vp.id).join(",");
+  const sync = useCallback(() => {
+    if (!IS_TAURI || busyRef.current) return;
 
-  const setCardRef = useCallback(
-    (id: string) => (node: HTMLDivElement | null) => {
-      if (node) cardRefs.current.set(id, node);
-      else cardRefs.current.delete(id);
-    },
-    []
-  );
-
-  const setupViewport = useCallback((label: string) => {
-    const existing = setupTimersRef.current.get(label);
-    if (existing) clearTimeout(existing);
-    const timer = setTimeout(() => {
-      setupTimersRef.current.delete(label);
-      evalRaw(label, buildViewportSetupScript(label)).catch(() => {});
-      // Run metrics probe after setup
-      setTimeout(() => {
-        evalRaw(label, buildMetricsProbeScript(label)).catch(() => {});
-      }, 1000);
-    }, 500);
-    setupTimersRef.current.set(label, timer);
-  }, []);
-  // Listen for metrics events
-  useEffect(() => {
-    if (!IS_TAURI) return;
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-    listen<{ sourceLabel: string; innerWidth: number; innerHeight: number; devicePixelRatio: number; touch: boolean; userAgent: string }>(
-      "viewport://metrics",
-      (e) => {
-        if (cancelled) return;
-        const { sourceLabel, ...data } = e.payload;
-        setMetrics((prev) => {
-          const next = new Map(prev);
-          next.set(sourceLabel, data);
-          return next;
-        });
+    if (!device) {
+      if (builtForRef.current) {
+        destroyViewport(VIEWPORT_LABEL).catch(() => {});
+        builtForRef.current = null;
+        urlRef.current = null;
       }
-    ).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
+      return;
+    }
+
+    const node = cardRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return;
+
+    // Window-relative, not screen: this is a child webview, so Tauri positions
+    // it against the main window's client area — the same space
+    // getBoundingClientRect() already reports in.
+    const x = Math.round(rect.left);
+    const y = Math.round(rect.top);
+    const width = Math.round(Math.max(1, rect.width));
+    const height = Math.round(Math.max(1, rect.height));
+
+    // The measured rect drives BOTH the webview bounds and the CDP layout
+    // viewport. They are the same number, so the layout viewport can never be
+    // wider than the surface showing it — which is what cropped the page — and
+    // there is no scale factor left to get lost.
+    const spec: DeviceSpec = {
+      width,
+      height,
+      deviceScaleFactor: device.deviceScaleFactor,
+      mobile: device.mobile,
+      touch: device.touch,
+      userAgent: device.userAgent,
     };
-  }, []);
-
-  // Check if a card's rect intersects the visible surface scroll area
-  const isCardVisible = useCallback((node: HTMLDivElement, surface: HTMLDivElement): boolean => {
-    const sr = surface.getBoundingClientRect();
-    const cr = node.getBoundingClientRect();
-    // Card must overlap the surface's visible area
-    return (
-      cr.bottom > sr.top &&
-      cr.top < sr.bottom &&
-      cr.right > sr.left &&
-      cr.left < sr.right
-    );
-  }, []);
-
-  // Keyed on the whole device signature, not just the scale — rotating swaps
-  // width/height and must re-emulate, which a zoom-only check would miss.
-  const applyEmulation = useCallback(
-    (label: string, vp: Viewport, scale: number) => {
-      const sig = `${vp.width}x${vp.height}:${vp.deviceScaleFactor}:${vp.mobile}:${vp.touch}:${scale}:${vp.userAgent ?? ""}`;
-      if (emulationByLabelRef.current.get(label) === sig) return;
-      emulationByLabelRef.current.set(label, sig);
-      emulateViewport(label, {
-        width: vp.width,
-        height: vp.height,
-        deviceScaleFactor: vp.deviceScaleFactor,
-        mobile: vp.mobile,
-        touch: vp.touch,
-        scale,
-        userAgent: vp.userAgent,
-      }).catch(() => {});
-    },
-    []
-  );
-
-  const syncNativeViewports = useCallback(() => {
-    if (!IS_TAURI) return;
-    const surface = surfaceRef.current;
-
-    const wanted = new Set(viewports.map((vp) => viewportLabel(vp.id)));
-    for (const label of Array.from(createdLabelsRef.current)) {
-      if (!wanted.has(label)) {
-        destroyViewport(label).catch(() => {});
-        createdLabelsRef.current.delete(label);
-        urlByLabelRef.current.delete(label);
-        emulationByLabelRef.current.delete(label);
-      }
-    }
-
-    for (const vp of viewports) {
-      const node = cardRefs.current.get(vp.id);
-      const label = viewportLabel(vp.id);
-
-      // No card = not rendered (focus mode hides every unselected device). The
-      // webview isn't destroyed — hiding keeps the page and its scroll position
-      // alive for switching back — but it MUST be hidden, or it stays painted
-      // on top of the focused one.
-      if (!node) {
-        if (createdLabelsRef.current.has(label)) {
-          hideViewport(label).catch(() => {});
-        }
-        continue;
-      }
-
-      // Visibility culling: hide off-screen viewport windows
-      if (surface && !isCardVisible(node, surface)) {
-        if (createdLabelsRef.current.has(label)) {
-          hideViewport(label).catch(() => {});
-        }
-        continue;
-      }
-
-      const rect = node.getBoundingClientRect();
-      if (rect.width < 10 || rect.height < 10) continue;
-
-      // Window-relative, not screen: viewport webviews are child webviews
-      // (Rust create_viewport uses Window::add_child), so Tauri positions
-      // them against the main window's client area — which is the same
-      // space getBoundingClientRect() already reports in.
-      const x = Math.round(rect.left);
-      const y = Math.round(rect.top);
-      const width = Math.round(Math.max(1, rect.width));
-      const height = Math.round(Math.max(1, rect.height));
-      const url = vp.url || activeUrl;
-
-      if (!createdLabelsRef.current.has(label) || urlByLabelRef.current.get(label) !== url) {
-        if (createdLabelsRef.current.has(label)) {
-          destroyViewport(label).catch(() => {});
-          createdLabelsRef.current.delete(label);
-          urlByLabelRef.current.delete(label);
-          emulationByLabelRef.current.delete(label);
-        }
-        createViewport(label, url, x, y, width, height)
-          .then(() => {
-            createdLabelsRef.current.add(label);
-            urlByLabelRef.current.set(label, url);
-            applyEmulation(label, vp, effectiveZoom);
-            setupViewport(label);
-          })
-          .catch(() => {});
-      } else {
-        resizeViewport(label, x, y, width, height).catch(() => {});
-        applyEmulation(label, vp, effectiveZoom);
-        // Re-show in case it was hidden
-        showViewport(label).catch(() => {});
-      }
-    }
-  }, [activeUrl, setupViewport, viewports, effectiveZoom, visibleKey, isCardVisible]);
-
-  // Surface size drives the fit scale, so it must never go stale — a stale box
-  // means frames sized for the old surface, i.e. the overflow this fixes. Fed
-  // by the observer plus every other signal that already moves this layout
-  // (mount, sidebar, window resize); each is a cheap no-op when nothing moved.
-  const measureSurface = useCallback(() => {
-    const surface = surfaceRef.current;
-    if (!surface) return;
-    const r = surface.getBoundingClientRect();
-    setSurfaceBox((prev) =>
-      Math.abs(prev.width - r.width) < 1 && Math.abs(prev.height - r.height) < 1
-        ? prev
-        : { width: r.width, height: r.height }
+    setSentSize((prev) =>
+      prev && prev.width === width && prev.height === height ? prev : { width, height }
     );
 
-    // Card chrome = header + borders, i.e. everything the scaled body doesn't
-    // occupy. Font-size driven, so it never changes with zoom — measuring it
-    // here can't feed back into the fit it feeds.
-    const body = cardRefs.current.values().next().value;
-    const card = body?.parentElement;
-    if (!card) return;
-    const chrome = card.getBoundingClientRect().height - body.getBoundingClientRect().height;
-    if (chrome > 0) {
-      setCardChrome((prev) => (Math.abs(prev - chrome) < 1 ? prev : chrome));
+    if (builtForRef.current !== device.id) {
+      // New device — rebuild, because the user agent can only be set on the
+      // builder. That reloads the page, which is what makes server-side mobile
+      // detection correct from the very first request.
+      busyRef.current = true;
+      const hadOne = builtForRef.current !== null;
+      builtForRef.current = device.id;
+      const start = hadOne
+        ? destroyViewport(VIEWPORT_LABEL).catch(() => {})
+        : Promise.resolve();
+      start
+        .then(() => createViewport(VIEWPORT_LABEL, activeUrl, x, y, width, height, spec))
+        .then(() => {
+          urlRef.current = activeUrl;
+          return showViewport(VIEWPORT_LABEL).catch(() => {});
+        })
+        .catch(() => {
+          // Leave it unbuilt so the next sync retries.
+          builtForRef.current = null;
+        })
+        .finally(() => {
+          busyRef.current = false;
+        });
+      return;
     }
-  }, []);
+
+    // Bounds + emulation together, unconditionally. Not cached on a signature:
+    // a controller resize resets the emulated viewport, so the override has to
+    // be re-asserted after every bounds change even when the spec is unchanged.
+    resizeViewport(VIEWPORT_LABEL, x, y, width, height, spec).catch(() => {});
+
+    if (urlRef.current !== activeUrl) {
+      // Navigate the existing webview. Destroy+recreate used to drop the
+      // emulation, leaving the frame rendering full-size over the chrome.
+      urlRef.current = activeUrl;
+      navigateViewport(VIEWPORT_LABEL, activeUrl).catch(() => {});
+    }
+  }, [device, activeUrl]);
 
   useEffect(() => {
-    measureSurface();
-    const timer = setTimeout(syncNativeViewports, 50);
+    const timer = setTimeout(sync, 50);
     return () => clearTimeout(timer);
-  }, [syncNativeViewports, measureSurface, sidebarOpen, sidebarWidth]);
+  }, [sync, sidebarOpen, sidebarWidth]);
 
-  useEffect(() => {
-    const surface = surfaceRef.current;
-    if (!surface) return;
-    measureSurface();
-    const observer = new ResizeObserver(measureSurface);
-    observer.observe(surface);
-    return () => observer.disconnect();
-  }, [measureSurface]);
-
+  // The card is CSS-clamped, so its rect changes on any layout change. Watching
+  // the card itself is what keeps bounds and the CDP viewport in step.
   useEffect(() => {
     if (!IS_TAURI) return;
-    const observer = new ResizeObserver(() => syncNativeViewports());
+    const observer = new ResizeObserver(() => sync());
     observer.observe(document.documentElement);
-    if (surfaceRef.current) observer.observe(surfaceRef.current);
-    for (const node of cardRefs.current.values()) observer.observe(node);
+    if (cardRef.current) observer.observe(cardRef.current);
 
-    // No onMoved listener: viewport webviews are children of the main window,
-    // so the OS moves them with it. onResized stays — a window resize changes
-    // the card layout, which is a real bounds change.
+    // No onMoved listener: the viewport webview is a child of the main window,
+    // so the OS moves it with the window. onResized stays — a window resize
+    // changes the card layout, which is a real bounds change.
     let cancelled = false;
     let unresize: (() => void) | null = null;
     getCurrentWindow()
-      .onResized(() => {
-        measureSurface();
-        setTimeout(syncNativeViewports, 50);
-      })
+      .onResized(() => setTimeout(sync, 50))
       .then((fn) => {
         if (cancelled) fn();
         else unresize = fn;
@@ -750,171 +384,179 @@ export function ViewportSurface() {
       observer.disconnect();
       unresize?.();
     };
-  }, [syncNativeViewports, measureSurface]);
+  }, [sync]);
 
+  // Probe after each load. This is the whole point of the rewrite: the frame
+  // reports what it actually is, instead of it being inferred from screenshots.
   useEffect(() => {
+    if (!IS_TAURI) return;
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    const take = () => {
+      probeViewport(VIEWPORT_LABEL)
+        .then((p) => { if (!cancelled) setProbe(p); })
+        .catch(() => { if (!cancelled) setProbe(null); });
+    };
+    onViewportLoaded(() => setTimeout(take, 60)).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
     return () => {
-      for (const timer of setupTimersRef.current.values()) clearTimeout(timer);
-      setupTimersRef.current.clear();
-      for (const label of createdLabelsRef.current) {
-        destroyViewport(label).catch(() => {});
-      }
-      createdLabelsRef.current.clear();
-      urlByLabelRef.current.clear();
-      emulationByLabelRef.current.clear();
+      cancelled = true;
+      unlisten?.();
     };
   }, []);
 
-  function remove(id: string) {
-    const label = viewportLabel(id);
-    destroyViewport(label).catch(() => {});
-    createdLabelsRef.current.delete(label);
-    urlByLabelRef.current.delete(label);
-    emulationByLabelRef.current.delete(label);
-    removeViewport(id);
-  }
+  // ...and again whenever the frame is resized. Probing only on load meant the
+  // readout kept reporting the size the page had when it loaded, so any window
+  // resize showed a false mismatch even though the emulation had re-applied.
+  useEffect(() => {
+    if (!IS_TAURI || !sentSize) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      probeViewport(VIEWPORT_LABEL)
+        .then((p) => { if (!cancelled) setProbe(p); })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [sentSize]);
 
-  function getMetricsBadge(vp: typeof viewports[0]) {
-    const label = viewportLabel(vp.id);
-    const m = metrics.get(label);
-    if (!m) return null;
+  // A different device means different expected metrics — drop the stale probe
+  // rather than showing the previous device's numbers against the new one.
+  useEffect(() => {
+    setProbe(null);
+  }, [device?.id]);
 
-    // The webview is zoomed by the same factor its box is scaled by, so the
-    // page reports the preset's true size at any zoom.
-    const matches =
-      Math.abs(m.innerWidth - vp.width) <= 2 && Math.abs(m.innerHeight - vp.height) <= 2;
-
-    if (matches) {
-      return (
-        <span className="flex items-center gap-0.5 text-micro text-green-400" title={`Actual: ${m.innerWidth}×${m.innerHeight} DPR:${m.devicePixelRatio}`}>
-          <Check size={11} />
-        </span>
-      );
-    }
-
-    return (
-      <span
-        className="flex items-center gap-0.5 text-micro text-amber-400"
-        title={`Expected ${vp.width}×${vp.height}, actual ${m.innerWidth}×${m.innerHeight}`}
-      >
-        <AlertTriangle size={11} />
-      </span>
-    );
-  }
+  useEffect(() => {
+    return () => {
+      destroyViewport(VIEWPORT_LABEL).catch(() => {});
+      builtForRef.current = null;
+      urlRef.current = null;
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
       <ViewportToolbar />
-      {/* overflow-hidden, never auto: these frames are native child webviews
-          that clip to the window, not to this box, so a scrolled-out frame
-          would draw over the browser chrome. Everything is fit-scaled instead. */}
-      <div ref={surfaceRef} className="flex-1 min-h-0 overflow-hidden p-3">
-        {viewports.length === 0 ? (
+      {/* overflow-hidden, never auto: the frame is a native child webview that
+          clips to the window, not to this box, so anything past this box's edge
+          would draw over the browser chrome. The card is CSS-clamped to fit. */}
+      <div className="flex-1 min-h-0 overflow-hidden p-3 flex justify-center">
+        {!device ? (
           <div className="text-center py-8">
             <Monitor
               size={24}
               className="mx-auto mb-2 text-[var(--color-text-disabled)] opacity-30"
             />
-            <p className="text-micro text-[var(--color-text-muted)]">
-              No viewports
-            </p>
+            <p className="text-micro text-[var(--color-text-muted)]">No device</p>
             <p className="text-xs text-[var(--color-text-disabled)] mt-1">
               Click a device preset in the sidebar to add one
             </p>
           </div>
         ) : (
           <div
-            className={cn(
-              "flex flex-nowrap items-start gap-4",
-              viewportLayout === "focus" && "justify-center"
-            )}
+            className="flex flex-col rounded overflow-hidden"
+            style={{
+              // Explicit width, not shrink-to-fit. Without this the card sizes
+              // to its widest child — the header — and the body stretches to
+              // match, so the frame came out wider than the device and that
+              // wrong width was what got sent to CDP.
+              //
+              // content-box so the 1px border sits outside the device width;
+              // under the global border-box the frame came out 2px narrow, and
+              // that 410 would have been the emulated viewport.
+              boxSizing: "content-box",
+              width: device.width,
+              maxWidth: "100%",
+              maxHeight: "100%",
+              border: "1px solid var(--color-border)",
+              background: "var(--color-elevated)",
+            }}
           >
-            {visible.map((vp) => {
-              const scaledW = Math.round(vp.width * effectiveZoom);
-              const scaledH = Math.round(vp.height * effectiveZoom);
-              // Only meaningful when there is something to select between —
-              // in focus mode the one frame is always selected, so the accent
-              // ring just boxed every device in a bright ivory outline.
-              const showSelection =
-                viewportLayout === "overview" && selectedViewportId === vp.id;
-
-              return (
-                <div
-                  key={vp.id}
-                  onClick={() => {
-                    // In overview the grid doubles as a device picker.
-                    selectViewport(vp.id);
-                    if (viewportLayout === "overview") setViewportLayout("focus");
-                  }}
-                  className="flex flex-col rounded overflow-hidden shrink-0 cursor-pointer transition-shadow"
-                  style={{
-                    width: scaledW,
-                    border: showSelection
-                      ? "1px solid var(--color-accent)"
-                      : "1px solid var(--color-border)",
-                    background: "var(--color-elevated)",
-                  }}
-                >
-                  {/* Card header */}
-                  <div
-                    className="flex items-center gap-1 px-2 py-1 text-xs flex-shrink-0"
-                    style={{
-                      background: "var(--color-surface)",
-                      borderBottom: "1px solid var(--color-border-subtle)",
-                      color: "var(--color-text-muted)",
-                    }}
-                  >
-                    <span className="font-medium truncate">{vp.label}</span>
-                    <span className="text-micro font-mono text-[var(--color-text-disabled)]">
-                      {vp.width}×{vp.height}
-                    </span>
-                    {/* Metrics badge */}
-                    {getMetricsBadge(vp)}
-                    {/* Scale indicator */}
-                    {effectiveZoom < 1 && (
-                      <span className="text-micro text-[var(--color-text-disabled)]">
-                        @{Math.round(effectiveZoom * 100)}%
-                      </span>
-                    )}
-                    {/* Rotate */}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); rotateViewport(vp.id); }}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--color-hover)] text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] transition-colors"
-                      title="Rotate"
-                    >
-                      <RotateCw size={11} />
-                    </button>
-                    {/* Remove */}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); remove(vp.id); }}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--color-hover)] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors ml-auto"
-                      title="Remove viewport"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                  {/* Card body — native webview overlays this */}
-                  <div
-                    ref={setCardRef(vp.id)}
-                    className="relative"
-                    style={{
-                      width: "100%",
-                      height: scaledH,
-                      minHeight: 120,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div className="absolute inset-0 flex items-center justify-center text-xs text-[var(--color-text-disabled)] pointer-events-none">
-                      {vp.url || activeUrl}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {/* Card header — the probe readout is the point: what the page says
+                it is, not what we assume it is. `min-w-0` + truncation keep it
+                from ever pushing the card wider than the device. */}
+            <div
+              className="flex items-center gap-1.5 px-2 py-1 text-xs flex-shrink-0 min-w-0 overflow-hidden"
+              style={{
+                background: "var(--color-surface)",
+                borderBottom: "1px solid var(--color-border-subtle)",
+                color: "var(--color-text-muted)",
+              }}
+            >
+              <span className="font-medium truncate shrink">{device.label}</span>
+              <span className="text-micro font-mono text-[var(--color-text-disabled)] shrink-0">
+                {device.width}×{device.height}
+              </span>
+              {probe && <ProbeReadout probe={probe} expected={sentSize} />}
+            </div>
+            {/* Card body — 1:1, clamped by CSS. Its measured rect is the single
+                source of truth for the webview bounds AND the CDP viewport. */}
+            <div
+              ref={cardRef}
+              className="relative min-h-0"
+              style={{
+                width: "100%",
+                height: device.height,
+                maxHeight: "100%",
+                overflow: "hidden",
+              }}
+            >
+              <div className="absolute inset-0 flex items-center justify-center text-xs text-[var(--color-text-disabled)] pointer-events-none">
+                {activeUrl}
+              </div>
+            </div>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+/** Shows what the page reports, and flags it when that disagrees with the size
+ *  the webview was actually given. Replaces inferring emulation from screenshots. */
+function ProbeReadout({
+  probe,
+  expected,
+}: {
+  probe: ViewportProbe;
+  expected: { width: number; height: number } | null;
+}) {
+  // Against the LAYOUT viewport. `innerWidth`/`innerHeight` are the visual
+  // viewport and move with page scale, so comparing them flagged a correct
+  // 412 layout as wrong whenever Chromium shrink-to-fit the page.
+  const ok =
+    !!expected &&
+    Math.abs(probe.clientWidth - expected.width) <= 2 &&
+    Math.abs(probe.clientHeight - expected.height) <= 2;
+
+  // Float32 round-trips DPR to things like 3.4999999403953552.
+  const dpr = Math.round(probe.devicePixelRatio * 100) / 100;
+
+  return (
+    <span
+      className={cn(
+        "flex items-center gap-1 text-micro font-mono shrink-0",
+        ok ? "text-green-400" : "text-amber-400"
+      )}
+      title={
+        `layout ${probe.clientWidth}×${probe.clientHeight} · DPR ${dpr} · ` +
+        `touch ${probe.maxTouchPoints}` +
+        (expected ? `\nframe is ${expected.width}×${expected.height}` : "") +
+        `\nscreen ${probe.screenWidth}×${probe.screenHeight}` +
+        // Diverges from layout only when a page scale is in play — the signal
+        // that made the shrink-to-fit diagnosable.
+        `\nvisual ${probe.innerWidth}×${probe.innerHeight}` +
+        `\n${probe.userAgent}`
+      }
+    >
+      {ok ? <Check size={11} /> : <AlertTriangle size={11} />}
+      {probe.clientWidth}×{probe.clientHeight}
+      <span className="text-[var(--color-text-disabled)]">@{dpr}x</span>
+    </span>
   );
 }
 
