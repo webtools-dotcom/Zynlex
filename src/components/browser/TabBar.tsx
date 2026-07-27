@@ -17,7 +17,7 @@ interface TabBarProps {
   vertical?: boolean;
 }
 
-export const VERTICAL_TAB_BAR_WIDTH = 200;
+const VERTICAL_TAB_BAR_WIDTH = 200;
 
 interface ContextMenuState {
   tabId: string;

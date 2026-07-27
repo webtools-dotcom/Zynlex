@@ -238,5 +238,3 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
     </div>
   );
 }
-
-export default HomePage;

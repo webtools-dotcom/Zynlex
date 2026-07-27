@@ -24,7 +24,7 @@ function getHost(url: string): string {
   }
 }
 
-export function BookmarksPanel() {
+function BookmarksPanel() {
   const bookmarks = useBookmarksStore((s) => s.bookmarks);
   const lastAddedId = useBookmarksStore((s) => s.lastAddedId);
   const removeBookmark = useBookmarksStore((s) => s.removeBookmark);

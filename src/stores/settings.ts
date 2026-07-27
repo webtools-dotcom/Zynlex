@@ -11,7 +11,6 @@ const DEFAULTS: AppSettings = {
   homePage: "xevo://home",
   portScanInterval: 10,
   customPorts: [],
-  clearOnClose: false,
   compactMode: false,
   bookmarkBarVisible: false,
   maxConcurrentWebviews: 10,
@@ -26,7 +25,6 @@ interface SettingsStore {
   setCustomSearchUrl: (url: string) => void;
   setPortScanInterval: (seconds: number) => void;
   setCompactMode: (v: boolean) => void;
-  reset: () => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -41,17 +39,12 @@ export const useSettingsStore = create<SettingsStore>()(
         set((s) => { s.settings.portScanInterval = Math.max(5, Math.min(60, seconds)); });
       },
       setCompactMode: (v) => { set((s) => { s.settings.compactMode = v; }); },
-      reset: () => { set((s) => { s.settings = DEFAULTS; }); },
     })),
     {
       name: "xevo-settings",
       version: 2,
       migrate: (persistedState, version) => {
-        if (version === 0) {
-          const state = persistedState as any;
-          return { settings: { ...DEFAULTS, ...(state.settings || {}) } };
-        }
-        if (version === 1) {
+        if (version < 2) {
           const state = persistedState as any;
           return { settings: { ...DEFAULTS, ...(state.settings || {}) } };
         }

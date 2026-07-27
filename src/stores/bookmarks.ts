@@ -16,7 +16,7 @@ function genId(prefix = "bm"): string {
 }
 
 /** Shape of the JSON produced by exportWorkspace / accepted by importWorkspace. */
-export interface BookmarkExport {
+interface BookmarkExport {
   version: 1;
   bookmarks: Bookmark[];
   folders: BookmarkFolder[];

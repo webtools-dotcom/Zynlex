@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { PanelId, OverlayPanelId } from "@/types";
 
-export type ToastKind = "success" | "info" | "danger";
+type ToastKind = "success" | "info" | "danger";
 
 export interface Toast {
   id: string;
@@ -10,7 +10,7 @@ export interface Toast {
   kind: ToastKind;
 }
 
-export interface Viewport {
+interface Viewport {
   id: string;
   url: string;
   width: number;

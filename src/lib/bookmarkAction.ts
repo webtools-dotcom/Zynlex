@@ -15,8 +15,7 @@
  * toggle behavior, side-effect feedback) stay in a single place.
  *
  * The function pushes a toast, switches the sidebar to the Bookmarks panel,
- * and updates the lastAddedId for the green ring highlight. Returns a small
- * result object so callers can decide whether to do anything else.
+ * and updates the lastAddedId for the green ring highlight.
  */
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
@@ -24,11 +23,7 @@ import { useBookmarksStore } from "@/stores/bookmarks";
 import { useUIStore } from "@/stores/ui";
 import { getLiveWorkspaceActiveTabId } from "@/lib/workspaceTabs";
 
-export type BookmarkResult =
-  | { ok: false; reason: "no-tab" | "no-url" }
-  | { ok: true; action: "added" | "removed"; title: string };
-
-export function toggleBookmarkForActiveTab(): BookmarkResult {
+export function toggleBookmarkForActiveTab(): void {
   const wsState = useWorkspacesStore.getState();
   const wsId = wsState.activeWorkspaceId;
   const activeTabId = getLiveWorkspaceActiveTabId(
@@ -38,13 +33,13 @@ export function toggleBookmarkForActiveTab(): BookmarkResult {
 
   if (!activeTabId) {
     useUIStore.getState().pushToast("No active tab to bookmark", "info");
-    return { ok: false, reason: "no-tab" };
+    return;
   }
 
   const tab = useTabsStore.getState().tabs[activeTabId];
   if (!tab || !tab.url) {
     useUIStore.getState().pushToast("No URL to bookmark", "info");
-    return { ok: false, reason: "no-url" };
+    return;
   }
 
   const isBookmarked = useBookmarksStore
@@ -64,10 +59,4 @@ export function toggleBookmarkForActiveTab(): BookmarkResult {
   }
 
   useUIStore.getState().setActivePanel("bookmarks");
-
-  return {
-    ok: true,
-    action: isBookmarked ? "removed" : "added",
-    title: tab.title || tab.url,
-  };
 }

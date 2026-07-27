@@ -212,5 +212,3 @@ export function FindBar() {
     </div>
   );
 }
-
-export default FindBar;

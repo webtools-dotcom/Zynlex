@@ -22,7 +22,7 @@ export interface ScannedPort {
   status: number | null;
 }
 
-export interface TabInfo {
+interface TabInfo {
   tabId: string;
   title: string;
   url: string;
@@ -150,14 +150,14 @@ export async function webviewStopFind(tabId: string): Promise<void> {
 
 // ─── API Tester (real HTTP client, bypasses the app's own CSP/CORS) ──
 
-export interface ApiFetchRequest {
+interface ApiFetchRequest {
   method: string;
   url: string;
   headers: Record<string, string>;
   body?: string;
 }
 
-export interface ApiFetchResponse {
+interface ApiFetchResponse {
   status: number;
   statusText: string;
   headers: Record<string, string>;
@@ -230,13 +230,13 @@ export function onNewTabRequested(
 
 // ─── Downloads ──────────────────────────────────────────────────────
 
-export interface DownloadStarted {
+interface DownloadStarted {
   tabId: string;
   url: string;
   destination: string;
 }
 
-export interface DownloadFinished {
+interface DownloadFinished {
   url: string;
   path: string | null;
   success: boolean;
@@ -291,7 +291,7 @@ export async function evalInspector(
   await invoke<void>("browser_eval_inspector", { tabId, inspectorType });
 }
 
-export interface InspectorDataEvent {
+interface InspectorDataEvent {
   tabId: string;
   dataType: string;
   data: { error?: string } & Record<string, unknown>;
@@ -397,11 +397,7 @@ export async function showViewport(label: string): Promise<void> {
   await invoke<void>("show_viewport", { label });
 }
 
-export async function hideViewport(label: string): Promise<void> {
-  await invoke<void>("hide_viewport", { label });
-}
-
-export interface ScreenshotResult {
+interface ScreenshotResult {
   bytes: number[];
   path: string;
 }
@@ -411,7 +407,7 @@ export async function takeScreenshot(): Promise<{ bytes: Uint8Array; path: strin
   return { bytes: new Uint8Array(result.bytes), path: result.path };
 }
 
-export interface NetworkEntryPayload {
+interface NetworkEntryPayload {
   tabId: string;
   method: string;
   url: string;
@@ -440,7 +436,7 @@ export async function setNetworkCapture(active: boolean): Promise<void> {
 
 // ─── Header Injection (COM WebResourceRequested, per-tab rule sets) ──
 
-export interface HeaderRulePayload {
+interface HeaderRulePayload {
   id: string;
   pattern: string;
   name: string;

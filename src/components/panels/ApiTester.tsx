@@ -70,7 +70,7 @@ interface ParsedCurl {
   body: string;
 }
 
-export function parseCurl(input: string): ParsedCurl {
+function parseCurl(input: string): ParsedCurl {
   const result: ParsedCurl = {
     method: "GET",
     url: "",
@@ -1053,5 +1053,3 @@ function FullPageBody(p: BodySharedProps & { onClose?: () => void }) {
     </div>
   );
 }
-
-export default ApiTester;

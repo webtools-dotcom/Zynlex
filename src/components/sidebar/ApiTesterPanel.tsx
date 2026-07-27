@@ -175,7 +175,7 @@ function CollectionsCard() {
   );
 }
 
-export function ApiTesterPanel() {
+function ApiTesterPanel() {
   const openOverlay = useUIStore((s) => s.openOverlay);
   const history = useApiHistoryStore((s) => s.history);
   const clearHistory = useApiHistoryStore((s) => s.clearHistory);

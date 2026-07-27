@@ -11,7 +11,6 @@ export interface Tab {
   favicon: string | null;
   isLoading: boolean;
   isPinned: boolean;
-  isMuted: boolean;
   workspaceId: string;
   createdAt: number;
   savedFormState: string | null;
@@ -54,9 +53,9 @@ export interface LocalServer {
 
 // ─── Settings ────────────────────────────────────────────────────
 
-export type SearchEngine = "google" | "duckduckgo" | "bing" | "custom";
+type SearchEngine = "google" | "duckduckgo" | "bing" | "custom";
 export type ThemeMode = "dark" | "light" | "system";
-export type TabBarPosition = "top" | "left";
+type TabBarPosition = "top" | "left";
 export type PanelId =
   | "servers"
   | "bookmarks"
@@ -81,20 +80,11 @@ export interface AppSettings {
   /** Port scan interval in seconds (5..60, default 10) */
   portScanInterval: number;
   customPorts: number[];
-  clearOnClose: boolean;
   compactMode: boolean;
   /** Bookmark bar strip under the toolbar. Off by default. */
   bookmarkBarVisible: boolean;
   /** Soft limit on concurrent webview processes (default 10). Oldest background tab is discarded when exceeded. */
   maxConcurrentWebviews: number;
-}
-
-// ─── Find in Page ─────────────────────────────────────────────────
-
-export interface FindResult {
-  active_match: number;
-  total_matches: number;
-  final_update: boolean;
 }
 
 // ─── Bookmarks ────────────────────────────────────────────────────
@@ -160,7 +150,7 @@ export interface HistoryEntry {
 
 // ─── Inspector ────────────────────────────────────────────────
 
-export interface MetaTag {
+interface MetaTag {
   name: string;
   content: string;
   charset: string | null;
