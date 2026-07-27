@@ -1,24 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  Check,
-  Monitor,
-  Plus,
-  RotateCw,
-  Smartphone,
-  Tablet,
-  X,
-} from "lucide-react";
+import { AlertTriangle, Check, Monitor, Plus, RotateCw, Smartphone, Tablet, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
-import {
-  DEVICE_PRESETS,
-  type DevicePreset,
-} from "@/components/panels/ViewportPresets";
+import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportPresets";
 import {
   createViewport,
   destroyViewport,
@@ -31,8 +19,7 @@ import {
   type ViewportProbe,
 } from "@/services/browser";
 
-const IS_TAURI =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
   mobile: Smartphone,
@@ -74,14 +61,12 @@ export function ViewportControlsPanel() {
             return (
               <div key={key} className="relative group">
                 <button
-                  onClick={() =>
-                    setSelectedCategory(selectedCategory === key ? "" : key)
-                  }
+                  onClick={() => setSelectedCategory(selectedCategory === key ? "" : key)}
                   className={cn(
                     "w-7 h-7 flex items-center justify-center rounded text-xs transition-colors",
                     selectedCategory === key
                       ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
-                      : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]"
+                      : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]",
                   )}
                   title={key.charAt(0).toUpperCase() + key.slice(1)}
                 >
@@ -127,10 +112,11 @@ export function ViewportControlsPanel() {
                 "flex items-center gap-2 px-2 py-1 rounded border cursor-pointer transition-colors",
                 selectedViewportId === vp.id
                   ? "border-[var(--color-accent)]"
-                  : "hover:bg-[var(--color-hover)]"
+                  : "hover:bg-[var(--color-hover)]",
               )}
               style={{
-                borderColor: selectedViewportId === vp.id ? undefined : "var(--color-border-subtle)",
+                borderColor:
+                  selectedViewportId === vp.id ? undefined : "var(--color-border-subtle)",
                 background: "var(--color-elevated)",
               }}
             >
@@ -141,7 +127,10 @@ export function ViewportControlsPanel() {
                 {vp.width}x{vp.height}
               </span>
               <button
-                onClick={(e) => { e.stopPropagation(); removeViewport(vp.id); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeViewport(vp.id);
+                }}
                 className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--color-hover)] text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] transition-colors"
                 title="Remove device"
               >
@@ -185,7 +174,8 @@ function ViewportToolbar() {
   }
 
   const btnCls = "w-8 h-8 flex items-center justify-center rounded text-xs transition-colors";
-  const inactiveCls = "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]";
+  const inactiveCls =
+    "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]";
 
   return (
     <div
@@ -211,7 +201,9 @@ function ViewportToolbar() {
             value={widthInput}
             onChange={(e) => setWidthInput(e.target.value)}
             onBlur={commitSize}
-            onKeyDown={(e) => { if (e.key === "Enter") commitSize(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitSize();
+            }}
             className="w-12 h-7 text-xs text-center font-mono rounded border bg-transparent text-[var(--color-text-muted)]"
             style={{ borderColor: "var(--color-border-subtle)" }}
             min={120}
@@ -224,7 +216,9 @@ function ViewportToolbar() {
             value={heightInput}
             onChange={(e) => setHeightInput(e.target.value)}
             onBlur={commitSize}
-            onKeyDown={(e) => { if (e.key === "Enter") commitSize(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitSize();
+            }}
             className="w-12 h-7 text-xs text-center font-mono rounded border bg-transparent text-[var(--color-text-muted)]"
             style={{ borderColor: "var(--color-border-subtle)" }}
             min={120}
@@ -271,8 +265,7 @@ export function ViewportSurface() {
   // render races layout and compares the page to a rect it never received.
   const [sentSize, setSentSize] = useState<{ width: number; height: number } | null>(null);
 
-  const device =
-    viewports.find((vp) => vp.id === selectedViewportId) ?? viewports[0] ?? null;
+  const device = viewports.find((vp) => vp.id === selectedViewportId) ?? viewports[0] ?? null;
 
   const sync = useCallback(() => {
     if (!IS_TAURI || busyRef.current) return;
@@ -312,7 +305,7 @@ export function ViewportSurface() {
       userAgent: device.userAgent,
     };
     setSentSize((prev) =>
-      prev && prev.width === width && prev.height === height ? prev : { width, height }
+      prev && prev.width === width && prev.height === height ? prev : { width, height },
     );
 
     if (builtForRef.current !== device.id) {
@@ -322,9 +315,7 @@ export function ViewportSurface() {
       busyRef.current = true;
       const hadOne = builtForRef.current !== null;
       builtForRef.current = device.id;
-      const start = hadOne
-        ? destroyViewport(VIEWPORT_LABEL).catch(() => {})
-        : Promise.resolve();
+      const start = hadOne ? destroyViewport(VIEWPORT_LABEL).catch(() => {}) : Promise.resolve();
       start
         .then(() => createViewport(VIEWPORT_LABEL, activeUrl, x, y, width, height, spec))
         .then(() => {
@@ -394,8 +385,12 @@ export function ViewportSurface() {
     let unlisten: (() => void) | null = null;
     const take = () => {
       probeViewport(VIEWPORT_LABEL)
-        .then((p) => { if (!cancelled) setProbe(p); })
-        .catch(() => { if (!cancelled) setProbe(null); });
+        .then((p) => {
+          if (!cancelled) setProbe(p);
+        })
+        .catch(() => {
+          if (!cancelled) setProbe(null);
+        });
     };
     onViewportLoaded(() => setTimeout(take, 60)).then((fn) => {
       if (cancelled) fn();
@@ -415,7 +410,9 @@ export function ViewportSurface() {
     let cancelled = false;
     const t = setTimeout(() => {
       probeViewport(VIEWPORT_LABEL)
-        .then((p) => { if (!cancelled) setProbe(p); })
+        .then((p) => {
+          if (!cancelled) setProbe(p);
+        })
         .catch(() => {});
     }, 250);
     return () => {
@@ -540,7 +537,7 @@ function ProbeReadout({
     <span
       className={cn(
         "flex items-center gap-1 text-micro font-mono shrink-0",
-        ok ? "text-green-400" : "text-amber-400"
+        ok ? "text-green-400" : "text-amber-400",
       )}
       title={
         `layout ${probe.clientWidth}×${probe.clientHeight} · DPR ${dpr} · ` +

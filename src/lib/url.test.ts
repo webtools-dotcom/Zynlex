@@ -20,19 +20,17 @@ describe("resolveInput", () => {
 
   it("falls back to the search engine for anything else", () => {
     expect(resolveInput("how to center a div", "google", "")).toBe(
-      "https://google.com/search?q=how%20to%20center%20a%20div"
+      "https://google.com/search?q=how%20to%20center%20a%20div",
     );
     expect(resolveInput("hello world", "duckduckgo", "")).toBe(
-      "https://duckduckgo.com/search?q=hello%20world"
+      "https://duckduckgo.com/search?q=hello%20world",
     );
-    expect(resolveInput("hello world", "bing", "")).toBe(
-      "https://bing.com/search?q=hello%20world"
-    );
+    expect(resolveInput("hello world", "bing", "")).toBe("https://bing.com/search?q=hello%20world");
   });
 
   it("uses the custom search URL when searchEngine is custom", () => {
     expect(resolveInput("cats", "custom", "https://kagi.com/search?q=%s")).toBe(
-      "https://kagi.com/search?q=cats"
+      "https://kagi.com/search?q=cats",
     );
   });
 

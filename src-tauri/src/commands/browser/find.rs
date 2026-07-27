@@ -1,6 +1,6 @@
-use tauri::{AppHandle, Emitter};
-use crate::xevo_log;
 use super::{find_tab_webview, webview_label_for_tab};
+use crate::xevo_log;
+use tauri::{AppHandle, Emitter};
 
 fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<(), String> {
     let label = webview_label_for_tab(tab_id);
@@ -9,7 +9,6 @@ fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<
     // ponytail: script_body already JS-escaped via js_string_literal — no re-escaping needed
     let wrapped = format!("(function() {{ {} }})();", script_body);
     wv.eval(&wrapped).map_err(|e| {
-        #[cfg(debug_assertions)]
         xevo_log!("[xevo] browser find eval failed: {e}");
         e.to_string()
     })
@@ -24,11 +23,7 @@ pub(super) fn js_string_literal(s: &str) -> String {
 }
 
 #[tauri::command]
-pub async fn browser_find(
-    app: AppHandle,
-    tab_id: String,
-    query: String,
-) -> Result<(), String> {
+pub async fn browser_find(app: AppHandle, tab_id: String, query: String) -> Result<(), String> {
     if query.is_empty() {
         return eval_find_script(&app, &tab_id, "window.__xevoClearFind()");
     }

@@ -11,7 +11,7 @@ export function DownloadsPanel() {
 
   function reveal(path: string, inFolder: boolean) {
     openDownload(path, inFolder).catch((err) =>
-      useUIStore.getState().pushToast(String(err), "danger")
+      useUIStore.getState().pushToast(String(err), "danger"),
     );
   }
 
@@ -35,7 +35,10 @@ export function DownloadsPanel() {
       {items.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center py-4">
-            <Download size={22} className="mx-auto mb-1.5 text-[var(--color-text-disabled)] opacity-40" />
+            <Download
+              size={22}
+              className="mx-auto mb-1.5 text-[var(--color-text-disabled)] opacity-40"
+            />
             <p className="text-sm text-[var(--color-text-muted)]">No downloads yet</p>
             <p className="text-xs text-[var(--color-text-disabled)] mt-0.5">
               Files you download will appear here
@@ -50,7 +53,10 @@ export function DownloadsPanel() {
               className="group flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--color-hover)] transition-colors"
             >
               {d.status === "active" ? (
-                <Loader2 size={12} className="animate-spin text-[var(--color-accent)] flex-shrink-0" />
+                <Loader2
+                  size={12}
+                  className="animate-spin text-[var(--color-accent)] flex-shrink-0"
+                />
               ) : (
                 <FileText
                   size={12}

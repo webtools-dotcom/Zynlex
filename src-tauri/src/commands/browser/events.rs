@@ -5,9 +5,9 @@
 // panel fix above. These go through native WebView2 events instead: no
 // page-originated IPC, so no ACL to satisfy.
 
-use tauri::{AppHandle, Emitter, Manager};
-use crate::xevo_log;
 use super::{pwstr_to_string, webview_label_for_tab};
+use crate::xevo_log;
+use tauri::{AppHandle, Emitter, Manager};
 
 // ─── Bookmark & Shortcut forwarding (global, not tab-specific) ───────
 
@@ -54,8 +54,11 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
     let _ = wv.with_webview(move |platform| {
         #[cfg(windows)]
         unsafe {
-            use webview2_com::{AcceleratorKeyPressedEventHandler, ContainsFullScreenElementChangedEventHandler, DocumentTitleChangedEventHandler};
             use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+            use webview2_com::{
+                AcceleratorKeyPressedEventHandler, ContainsFullScreenElementChangedEventHandler,
+                DocumentTitleChangedEventHandler,
+            };
 
             let core = match platform.controller().CoreWebView2() {
                 Ok(core) => core,
@@ -68,102 +71,115 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             let app_title = app.clone();
             let tab_id_title = tab_id.clone();
             let core_title = core.clone();
-            let title_handler = DocumentTitleChangedEventHandler::create(Box::new(move |_webview, _args| {
-                let title = pwstr_to_string(|p| { let _ = core_title.DocumentTitle(p); });
-                let url = pwstr_to_string(|p| { let _ = core_title.Source(p); });
+            let title_handler =
+                DocumentTitleChangedEventHandler::create(Box::new(move |_webview, _args| {
+                    let title = pwstr_to_string(|p| {
+                        let _ = core_title.DocumentTitle(p);
+                    });
+                    let url = pwstr_to_string(|p| {
+                        let _ = core_title.Source(p);
+                    });
 
-                let _ = update_tab_info(app_title.clone(), tab_id_title.clone(), title, url, None);
-                Ok(())
-            }));
+                    let _ =
+                        update_tab_info(app_title.clone(), tab_id_title.clone(), title, url, None);
+                    Ok(())
+                }));
             let mut title_token: i64 = 0;
             let _ = core.add_DocumentTitleChanged(&title_handler, &mut title_token);
 
             let app_key = app.clone();
             let controller = platform.controller();
-            let key_handler = AcceleratorKeyPressedEventHandler::create(Box::new(move |_controller, args| {
-                let args = match args {
-                    Some(a) => a,
-                    None => return Ok(()),
-                };
-                let mut kind = Default::default();
-                let _ = args.KeyEventKind(&mut kind);
-                if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN {
-                    return Ok(());
-                }
-                let mut vkey: u32 = 0;
-                let _ = args.VirtualKey(&mut vkey);
-
-                // Mirrors the key set the old injected CORE_SCRIPT mapped
-                // (ctrl+t/w/b/,/l/1-9, ctrl+shift+t, ctrl+shift+tab, ctrl+?, alt+left/right, escape).
-                let ctrl = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
-                    windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL.0 as i32,
-                ) < 0;
-                let shift = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
-                    windows::Win32::UI::Input::KeyboardAndMouse::VK_SHIFT.0 as i32,
-                ) < 0;
-                let alt = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
-                    windows::Win32::UI::Input::KeyboardAndMouse::VK_MENU.0 as i32,
-                ) < 0;
-
-                let shortcut = if vkey == 0x1B {
-                    Some("escape")
-                } else if alt && !ctrl && !shift && vkey == 0x25 {
-                    Some("alt+left")
-                } else if alt && !ctrl && !shift && vkey == 0x27 {
-                    Some("alt+right")
-                } else if ctrl && shift && !alt && vkey == 0x54 {
-                    Some("ctrl+shift+t")
-                } else if ctrl && shift && !alt && vkey == 0x09 {
-                    Some("ctrl+shift+tab")
-                } else if ctrl && shift && !alt && vkey == 0x52 {
-                    Some("ctrl+shift+r")
-                } else if ctrl && shift && !alt && (0x31..=0x39).contains(&vkey) {
-                    // Ctrl+Shift+1..9 → switch workspace. Table, not format!, so
-                    // the whole match stays &'static str.
-                    const WS: [&str; 9] = [
-                        "ctrl+shift+1", "ctrl+shift+2", "ctrl+shift+3",
-                        "ctrl+shift+4", "ctrl+shift+5", "ctrl+shift+6",
-                        "ctrl+shift+7", "ctrl+shift+8", "ctrl+shift+9",
-                    ];
-                    Some(WS[(vkey - 0x31) as usize])
-                } else if ctrl && shift && !alt && (vkey == 0xBF || vkey == 0x6F) {
-                    Some("ctrl+?")
-                } else if ctrl && !shift && !alt {
-                    match vkey {
-                        0x4B => Some("ctrl+k"),
-                        0x54 => Some("ctrl+t"),
-                        0x57 => Some("ctrl+w"),
-                        0x42 => Some("ctrl+b"),
-                        0xBC => Some("ctrl+,"),
-                        0x4C => Some("ctrl+l"),
-                        0x48 => Some("ctrl+h"),
-                        0x31 => Some("ctrl+1"),
-                        0x32 => Some("ctrl+2"),
-                        0x33 => Some("ctrl+3"),
-                        0x34 => Some("ctrl+4"),
-                        0x35 => Some("ctrl+5"),
-                        0x36 => Some("ctrl+6"),
-                        0x37 => Some("ctrl+7"),
-                        0x38 => Some("ctrl+8"),
-                        0x39 => Some("ctrl+9"),
-                        // Zoom: forwarded (and SetHandled) so the app's per-tab
-                        // zoom store stays the single source of truth. Ctrl+wheel
-                        // is still handled natively by zoom_hotkeys_enabled.
-                        0xBB | 0x6B => Some("ctrl+="),
-                        0xBD | 0x6D => Some("ctrl+-"),
-                        0x30 | 0x60 => Some("ctrl+0"),
-                        _ => None,
+            let key_handler =
+                AcceleratorKeyPressedEventHandler::create(Box::new(move |_controller, args| {
+                    let args = match args {
+                        Some(a) => a,
+                        None => return Ok(()),
+                    };
+                    let mut kind = Default::default();
+                    let _ = args.KeyEventKind(&mut kind);
+                    if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN {
+                        return Ok(());
                     }
-                } else {
-                    None
-                };
+                    let mut vkey: u32 = 0;
+                    let _ = args.VirtualKey(&mut vkey);
 
-                if let Some(s) = shortcut {
-                    let _ = forward_shortcut(app_key.clone(), s.to_string());
-                    let _ = args.SetHandled(true);
-                }
-                Ok(())
-            }));
+                    // Mirrors the key set the old injected CORE_SCRIPT mapped
+                    // (ctrl+t/w/b/,/l/1-9, ctrl+shift+t, ctrl+shift+tab, ctrl+?, alt+left/right, escape).
+                    let ctrl = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
+                        windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL.0 as i32,
+                    ) < 0;
+                    let shift = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
+                        windows::Win32::UI::Input::KeyboardAndMouse::VK_SHIFT.0 as i32,
+                    ) < 0;
+                    let alt = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
+                        windows::Win32::UI::Input::KeyboardAndMouse::VK_MENU.0 as i32,
+                    ) < 0;
+
+                    let shortcut = if vkey == 0x1B {
+                        Some("escape")
+                    } else if alt && !ctrl && !shift && vkey == 0x25 {
+                        Some("alt+left")
+                    } else if alt && !ctrl && !shift && vkey == 0x27 {
+                        Some("alt+right")
+                    } else if ctrl && shift && !alt && vkey == 0x54 {
+                        Some("ctrl+shift+t")
+                    } else if ctrl && shift && !alt && vkey == 0x09 {
+                        Some("ctrl+shift+tab")
+                    } else if ctrl && shift && !alt && vkey == 0x52 {
+                        Some("ctrl+shift+r")
+                    } else if ctrl && shift && !alt && (0x31..=0x39).contains(&vkey) {
+                        // Ctrl+Shift+1..9 → switch workspace. Table, not format!, so
+                        // the whole match stays &'static str.
+                        const WS: [&str; 9] = [
+                            "ctrl+shift+1",
+                            "ctrl+shift+2",
+                            "ctrl+shift+3",
+                            "ctrl+shift+4",
+                            "ctrl+shift+5",
+                            "ctrl+shift+6",
+                            "ctrl+shift+7",
+                            "ctrl+shift+8",
+                            "ctrl+shift+9",
+                        ];
+                        Some(WS[(vkey - 0x31) as usize])
+                    } else if ctrl && shift && !alt && (vkey == 0xBF || vkey == 0x6F) {
+                        Some("ctrl+?")
+                    } else if ctrl && !shift && !alt {
+                        match vkey {
+                            0x4B => Some("ctrl+k"),
+                            0x54 => Some("ctrl+t"),
+                            0x57 => Some("ctrl+w"),
+                            0x42 => Some("ctrl+b"),
+                            0xBC => Some("ctrl+,"),
+                            0x4C => Some("ctrl+l"),
+                            0x48 => Some("ctrl+h"),
+                            0x31 => Some("ctrl+1"),
+                            0x32 => Some("ctrl+2"),
+                            0x33 => Some("ctrl+3"),
+                            0x34 => Some("ctrl+4"),
+                            0x35 => Some("ctrl+5"),
+                            0x36 => Some("ctrl+6"),
+                            0x37 => Some("ctrl+7"),
+                            0x38 => Some("ctrl+8"),
+                            0x39 => Some("ctrl+9"),
+                            // Zoom: forwarded (and SetHandled) so the app's per-tab
+                            // zoom store stays the single source of truth. Ctrl+wheel
+                            // is still handled natively by zoom_hotkeys_enabled.
+                            0xBB | 0x6B => Some("ctrl+="),
+                            0xBD | 0x6D => Some("ctrl+-"),
+                            0x30 | 0x60 => Some("ctrl+0"),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+
+                    if let Some(s) = shortcut {
+                        let _ = forward_shortcut(app_key.clone(), s.to_string());
+                        let _ = args.SetHandled(true);
+                    }
+                    Ok(())
+                }));
             let mut key_token: i64 = 0;
             let _ = controller.add_AcceleratorKeyPressed(&key_handler, &mut key_token);
 
@@ -176,31 +192,40 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             let app_fs = app.clone();
             let core_fs = core.clone();
             let label_fs = webview_label_for_tab(&tab_id);
-            let fs_handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(move |_sender, _args| {
-                let mut is_fs = windows_core::BOOL(0);
-                let _ = core_fs.ContainsFullScreenElement(&mut is_fs);
-                let entering = is_fs.as_bool();
-                let state = app_fs.state::<crate::BrowserState>();
-                // Record *which* tab owns fullscreen, so switching to another tab
-                // or closing this one can clear it — a global flag stayed stuck.
-                {
-                    let mut fs = state.fullscreen_tab.lock().unwrap_or_else(|e| e.into_inner());
-                    *fs = if entering { Some(label_fs.clone()) } else { None };
-                }
-                if let Some(main) = app_fs.get_window("main") {
-                    let _ = main.set_fullscreen(entering);
-                    if let Ok(sz) = main.inner_size() {
-                        let scale = main.scale_factor().unwrap_or(1.0);
-                        crate::apply_active_child_bounds(
-                            &app_fs,
-                            sz.width as f64 / scale,
-                            sz.height as f64 / scale,
-                            false,
-                        );
+            let fs_handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(
+                move |_sender, _args| {
+                    let mut is_fs = windows_core::BOOL(0);
+                    let _ = core_fs.ContainsFullScreenElement(&mut is_fs);
+                    let entering = is_fs.as_bool();
+                    let state = app_fs.state::<crate::BrowserState>();
+                    // Record *which* tab owns fullscreen, so switching to another tab
+                    // or closing this one can clear it — a global flag stayed stuck.
+                    {
+                        let mut fs = state
+                            .fullscreen_tab
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        *fs = if entering {
+                            Some(label_fs.clone())
+                        } else {
+                            None
+                        };
                     }
-                }
-                Ok(())
-            }));
+                    if let Some(main) = app_fs.get_window("main") {
+                        let _ = main.set_fullscreen(entering);
+                        if let Ok(sz) = main.inner_size() {
+                            let scale = main.scale_factor().unwrap_or(1.0);
+                            crate::apply_active_child_bounds(
+                                &app_fs,
+                                sz.width as f64 / scale,
+                                sz.height as f64 / scale,
+                                false,
+                            );
+                        }
+                    }
+                    Ok(())
+                },
+            ));
             let mut fs_token: i64 = 0;
             let _ = core.add_ContainsFullScreenElementChanged(&fs_handler, &mut fs_token);
         }

@@ -7,8 +7,19 @@
  */
 import { useState, useRef, useMemo, useEffect } from "react";
 import {
-  Send, Plus, X, Trash2, Clock, ChevronDown, ChevronUp,
-  History, Code2, FileText, Clipboard, Check, Save,
+  Send,
+  Plus,
+  X,
+  Trash2,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  History,
+  Code2,
+  FileText,
+  Clipboard,
+  Check,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
@@ -23,9 +34,7 @@ import type { HttpMethod, ApiHeader, ApiHistoryEntry } from "@/types";
 /** Fired by the sidebar collection list to load a saved request in here. */
 export const LOAD_REQUEST_EVENT = "xevo:load-api-request";
 
-const METHODS: HttpMethod[] = [
-  "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
-];
+const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
 
 const METHOD_COLORS: Record<HttpMethod, string> = {
   GET: "#22c55e",
@@ -88,7 +97,13 @@ function parseCurl(input: string): ParsedCurl {
           });
         }
       }
-    } else if (tok === "-d" || tok === "--data" || tok === "--data-raw" || tok === "--data-binary" || tok === "--data-urlencode") {
+    } else if (
+      tok === "-d" ||
+      tok === "--data" ||
+      tok === "--data-raw" ||
+      tok === "--data-binary" ||
+      tok === "--data-urlencode"
+    ) {
       const v = next();
       if (v != null) {
         result.body += result.body ? "\n" + v : v;
@@ -138,7 +153,16 @@ function parseCurl(input: string): ParsedCurl {
           enabled: true,
         });
       }
-    } else if (tok === "-L" || tok === "--location" || tok === "-k" || tok === "--insecure" || tok === "-s" || tok === "--silent" || tok === "-i" || tok === "--include") {
+    } else if (
+      tok === "-L" ||
+      tok === "--location" ||
+      tok === "-k" ||
+      tok === "--insecure" ||
+      tok === "-s" ||
+      tok === "--silent" ||
+      tok === "-i" ||
+      tok === "--include"
+    ) {
       // skip flags we don't surface
     } else if (tok.startsWith("-") && tok.length > 2) {
       // combined short flags like -sSL, -iL - skip
@@ -254,7 +278,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
         .filter((s) => s.isAlive)
         .map((s) => `${s.protocol}://localhost:${s.port}`)
         .slice(0, 6),
-    [servers]
+    [servers],
   );
 
   async function send() {
@@ -275,10 +299,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
       }
     }
 
-    const hasBody =
-      body.trim().length > 0 &&
-      method !== "GET" &&
-      method !== "HEAD";
+    const hasBody = body.trim().length > 0 && method !== "GET" && method !== "HEAD";
 
     try {
       const res = await apiFetch({
@@ -319,10 +340,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
   }
 
   function addHeaderRow() {
-    setHeaders((h) => [
-      ...h,
-      { id: crypto.randomUUID(), key: "", value: "", enabled: true },
-    ]);
+    setHeaders((h) => [...h, { id: crypto.randomUUID(), key: "", value: "", enabled: true }]);
   }
 
   function updateHeader(id: string, patch: Partial<ApiHeader>) {
@@ -612,9 +630,7 @@ function RequestEditor(p: BodySharedProps) {
                 <input
                   type="checkbox"
                   checked={h.enabled}
-                  onChange={(e) =>
-                    p.updateHeader(h.id, { enabled: e.target.checked })
-                  }
+                  onChange={(e) => p.updateHeader(h.id, { enabled: e.target.checked })}
                   className="accent-[var(--color-accent)] flex-shrink-0"
                 />
                 <input
@@ -698,10 +714,7 @@ function RequestEditor(p: BodySharedProps) {
 function ResponseViewer(p: BodySharedProps) {
   if (p.error) {
     return (
-      <div
-        className="p-3 text-sm font-mono"
-        style={{ color: "var(--color-dead)" }}
-      >
+      <div className="p-3 text-sm font-mono" style={{ color: "var(--color-dead)" }}>
         {p.error}
       </div>
     );
@@ -779,9 +792,7 @@ function ResponseViewer(p: BodySharedProps) {
           <div className="space-y-0.5">
             {Object.entries(r.headers).map(([k, v]) => (
               <div key={k} className="flex text-sm font-mono">
-                <span className="text-[var(--color-accent)] mr-2 flex-shrink-0">
-                  {k}:
-                </span>
+                <span className="text-[var(--color-accent)] mr-2 flex-shrink-0">{k}:</span>
                 <span className="text-[var(--color-text-primary)] break-all">{v}</span>
               </div>
             ))}
@@ -807,10 +818,7 @@ function HistoryPanel(p: BodySharedProps) {
     );
   }
   return (
-    <div
-      className="border-t"
-      style={{ borderColor: "var(--color-border)" }}
-    >
+    <div className="border-t" style={{ borderColor: "var(--color-border)" }}>
       <div className="flex items-center justify-between px-3 py-1.5">
         <span className="text-xs font-semibold tracking-wider text-[var(--color-text-disabled)] uppercase flex items-center gap-1">
           <History size={12} /> History
@@ -858,17 +866,21 @@ function HistoryPanel(p: BodySharedProps) {
               <span
                 className="text-xs font-mono flex-shrink-0"
                 style={{
-                  color: h.status >= 200 && h.status < 300
-                    ? "var(--color-live)"
-                    : h.status >= 400
-                      ? "var(--color-dead)"
-                      : "var(--color-warn)",
+                  color:
+                    h.status >= 200 && h.status < 300
+                      ? "var(--color-live)"
+                      : h.status >= 400
+                        ? "var(--color-dead)"
+                        : "var(--color-warn)",
                   fontFeatureSettings: '"tnum" 1',
                 }}
               >
                 {h.status}
               </span>
-              <span className="text-xs text-[var(--color-text-disabled)] flex-shrink-0" style={{ fontFeatureSettings: '"tnum" 1' }}>
+              <span
+                className="text-xs text-[var(--color-text-disabled)] flex-shrink-0"
+                style={{ fontFeatureSettings: '"tnum" 1' }}
+              >
                 {h.durationMs}ms
               </span>
             </button>
@@ -886,9 +898,7 @@ function QuickUrls(p: BodySharedProps) {
       className="flex items-center gap-1 flex-wrap px-3 py-2 border-t"
       style={{ borderColor: "var(--color-border)" }}
     >
-      <span className="text-xs text-[var(--color-text-disabled)] mr-1">
-        Quick:
-      </span>
+      <span className="text-xs text-[var(--color-text-disabled)] mr-1">Quick:</span>
       {p.quickUrls.map((u) => (
         <button
           key={u}
@@ -967,7 +977,7 @@ function TabButton({
         active
           ? "bg-[var(--color-hover)] text-[var(--color-text-primary)]"
           : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]",
-        disabled && "opacity-40 cursor-not-allowed"
+        disabled && "opacity-40 cursor-not-allowed",
       )}
     >
       {icon}

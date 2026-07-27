@@ -103,14 +103,7 @@ export interface BookmarkFolder {
 
 // ─── API Tester ───────────────────────────────────────────────────
 
-export type HttpMethod =
-  | "GET"
-  | "POST"
-  | "PUT"
-  | "DELETE"
-  | "PATCH"
-  | "HEAD"
-  | "OPTIONS";
+export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 
 export interface ApiHeader {
   id: string;

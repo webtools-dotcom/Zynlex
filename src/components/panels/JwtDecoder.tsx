@@ -13,7 +13,7 @@ function b64urlDecode(str: string): string {
   base64 += "=".repeat((4 - (base64.length % 4)) % 4);
   const binary = atob(base64);
   return decodeURIComponent(
-    Array.from(binary, (c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("")
+    Array.from(binary, (c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join(""),
   );
 }
 
@@ -145,12 +145,12 @@ export function JwtDecoder() {
 
           {/* Header */}
           <div>
-          <button
-            onClick={() => setHeaderOpen(!headerOpen)}
-            className="text-xs font-semibold tracking-widest uppercase w-full text-left py-1"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            {headerOpen ? "▾ HEADER" : "▸ HEADER"}
+            <button
+              onClick={() => setHeaderOpen(!headerOpen)}
+              className="text-xs font-semibold tracking-widest uppercase w-full text-left py-1"
+              style={{ color: "var(--color-text-muted)" }}
+            >
+              {headerOpen ? "▾ HEADER" : "▸ HEADER"}
             </button>
             {headerOpen && (
               <div className="flex flex-col">
@@ -181,11 +181,11 @@ export function JwtDecoder() {
           {/* Payload */}
           <div>
             <button
-            onClick={() => setPayloadOpen(!payloadOpen)}
-            className="text-xs font-semibold tracking-widest uppercase w-full text-left py-1"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            {payloadOpen ? "▾ PAYLOAD" : "▸ PAYLOAD"}
+              onClick={() => setPayloadOpen(!payloadOpen)}
+              className="text-xs font-semibold tracking-widest uppercase w-full text-left py-1"
+              style={{ color: "var(--color-text-muted)" }}
+            >
+              {payloadOpen ? "▾ PAYLOAD" : "▸ PAYLOAD"}
             </button>
             {payloadOpen && (
               <div className="flex flex-col">

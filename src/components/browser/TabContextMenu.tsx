@@ -40,14 +40,7 @@ function adjustPosition(x: number, y: number): { x: number; y: number } {
   return { x: nx, y: ny };
 }
 
-export function TabContextMenu({
-  tabId,
-  workspaceId,
-  x,
-  y,
-  onClose,
-  bridge,
-}: TabContextMenuProps) {
+export function TabContextMenu({ tabId, workspaceId, x, y, onClose, bridge }: TabContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const tab = useTabsStore((s) => s.tabs[tabId]);
 
@@ -106,7 +99,7 @@ export function TabContextMenu({
     const ws = useWorkspacesStore.getState().workspaces[workspaceId];
     if (!ws) return;
     const others = getLiveWorkspaceTabIds(ws, useTabsStore.getState().tabs).filter(
-      (id) => id !== tabId
+      (id) => id !== tabId,
     );
     for (const id of others) {
       useWorkspacesStore.getState().removeTabFromWorkspace(workspaceId, id);

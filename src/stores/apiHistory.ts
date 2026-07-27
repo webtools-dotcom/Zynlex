@@ -43,6 +43,6 @@ export const useApiHistoryStore = create<ApiHistoryStore>()(
       name: "xevo-api-history",
       version: 1,
       partialize: (s) => ({ history: s.history }) as unknown as ApiHistoryStore,
-    }
-  )
+    },
+  ),
 );

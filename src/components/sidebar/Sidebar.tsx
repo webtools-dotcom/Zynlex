@@ -1,7 +1,18 @@
 import { useState, useEffect, useCallback, useRef, Suspense, lazy } from "react";
 import {
-  Server, Bookmark, Clock, Activity, Code2, KeyRound, Binary,
-  FlaskConical, RefreshCw, Globe, Monitor, Shield, Download,
+  Server,
+  Bookmark,
+  Clock,
+  Activity,
+  Code2,
+  KeyRound,
+  Binary,
+  FlaskConical,
+  RefreshCw,
+  Globe,
+  Monitor,
+  Shield,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui";
@@ -15,27 +26,43 @@ import type { PanelId } from "@/types";
 
 const BookmarksPanel = lazy(() => import("@/components/sidebar/BookmarksPanel"));
 const ApiTesterPanel = lazy(() => import("@/components/sidebar/ApiTesterPanel"));
-const HistoryPanel = lazy(() => import("@/components/sidebar/HistoryPanel").then(m => ({ default: m.HistoryPanel })));
-const NetworkPanel = lazy(() => import("@/components/panels/NetworkPanel").then(m => ({ default: m.NetworkPanel })));
-const JwtDecoder = lazy(() => import("@/components/panels/JwtDecoder").then(m => ({ default: m.JwtDecoder })));
-const Base64Tool = lazy(() => import("@/components/panels/Base64Tool").then(m => ({ default: m.Base64Tool })));
-const InspectorPanel = lazy(() => import("@/components/panels/InspectorPanel").then(m => ({ default: m.InspectorPanel })));
-const UserAgentPanel = lazy(() => import("@/components/panels/UserAgentPanel").then(m => ({ default: m.UserAgentPanel })));
-const HeadersPanel = lazy(() => import("@/components/panels/HeadersPanel").then(m => ({ default: m.HeadersPanel })));
-const DownloadsPanel = lazy(() => import("@/components/sidebar/DownloadsPanel").then(m => ({ default: m.DownloadsPanel })));
+const HistoryPanel = lazy(() =>
+  import("@/components/sidebar/HistoryPanel").then((m) => ({ default: m.HistoryPanel })),
+);
+const NetworkPanel = lazy(() =>
+  import("@/components/panels/NetworkPanel").then((m) => ({ default: m.NetworkPanel })),
+);
+const JwtDecoder = lazy(() =>
+  import("@/components/panels/JwtDecoder").then((m) => ({ default: m.JwtDecoder })),
+);
+const Base64Tool = lazy(() =>
+  import("@/components/panels/Base64Tool").then((m) => ({ default: m.Base64Tool })),
+);
+const InspectorPanel = lazy(() =>
+  import("@/components/panels/InspectorPanel").then((m) => ({ default: m.InspectorPanel })),
+);
+const UserAgentPanel = lazy(() =>
+  import("@/components/panels/UserAgentPanel").then((m) => ({ default: m.UserAgentPanel })),
+);
+const HeadersPanel = lazy(() =>
+  import("@/components/panels/HeadersPanel").then((m) => ({ default: m.HeadersPanel })),
+);
+const DownloadsPanel = lazy(() =>
+  import("@/components/sidebar/DownloadsPanel").then((m) => ({ default: m.DownloadsPanel })),
+);
 const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
-  { id: "servers",    Icon: Server,       label: "Live Servers" },
-  { id: "network",    Icon: Activity,     label: "Network" },
-  { id: "inspector",  Icon: FlaskConical, label: "Inspector" },
-  { id: "api",        Icon: Code2,        label: "API Tester" },
-  { id: "headers",    Icon: Shield,       label: "Header Injection" },
-  { id: "jwt",        Icon: KeyRound,     label: "JWT Decoder" },
-  { id: "base64",     Icon: Binary,       label: "Base64" },
-  { id: "ua",         Icon: Globe,        label: "User Agent" },
-  { id: "viewport",   Icon: Monitor,      label: "Viewports" },
-  { id: "bookmarks",  Icon: Bookmark,     label: "Bookmarks" },
-  { id: "history",    Icon: Clock,        label: "History" },
-  { id: "downloads",  Icon: Download,     label: "Downloads" },
+  { id: "servers", Icon: Server, label: "Live Servers" },
+  { id: "network", Icon: Activity, label: "Network" },
+  { id: "inspector", Icon: FlaskConical, label: "Inspector" },
+  { id: "api", Icon: Code2, label: "API Tester" },
+  { id: "headers", Icon: Shield, label: "Header Injection" },
+  { id: "jwt", Icon: KeyRound, label: "JWT Decoder" },
+  { id: "base64", Icon: Binary, label: "Base64" },
+  { id: "ua", Icon: Globe, label: "User Agent" },
+  { id: "viewport", Icon: Monitor, label: "Viewports" },
+  { id: "bookmarks", Icon: Bookmark, label: "Bookmarks" },
+  { id: "history", Icon: Clock, label: "History" },
+  { id: "downloads", Icon: Download, label: "Downloads" },
 ];
 
 function LiveServersPanel() {
@@ -60,13 +87,10 @@ function LiveServersPanel() {
   });
 
   const visible = sorted.filter(
-    (s) =>
-      s.isPinned ||
-      s.isAlive ||
-      (s.lastSeen && Date.now() - s.lastSeen < 60 * 60 * 1000)
+    (s) => s.isPinned || s.isAlive || (s.lastSeen && Date.now() - s.lastSeen < 60 * 60 * 1000),
   );
 
-  function openServer(server: typeof servers[number]) {
+  function openServer(server: (typeof servers)[number]) {
     const url = `${server.protocol}://localhost:${server.port}`;
     const id = addTab(activeWorkspaceId, {
       url,
@@ -135,9 +159,7 @@ function LiveServersPanel() {
                 backgroundColor: server.isAlive
                   ? "var(--color-live)"
                   : "var(--color-text-disabled)",
-                boxShadow: server.isAlive
-                  ? "0 0 6px var(--color-live-glow)"
-                  : "none",
+                boxShadow: server.isAlive ? "0 0 6px var(--color-live-glow)" : "none",
                 animation: server.isAlive ? "live-pulse 3s infinite" : "none",
               }}
             />
@@ -155,13 +177,19 @@ function LiveServersPanel() {
             </span>
 
             {server.protocol === "https" && (
-              <span className="text-micro opacity-60 flex-shrink-0" style={{ color: "var(--color-live)" }}>
+              <span
+                className="text-micro opacity-60 flex-shrink-0"
+                style={{ color: "var(--color-live)" }}
+              >
                 https
               </span>
             )}
 
             {server.isPinned && (
-              <span className="text-micro opacity-60 flex-shrink-0" style={{ color: "var(--color-accent)" }}>
+              <span
+                className="text-micro opacity-60 flex-shrink-0"
+                style={{ color: "var(--color-accent)" }}
+              >
                 •
               </span>
             )}
@@ -209,7 +237,7 @@ export function Sidebar() {
       dragStartRef.current = { x: e.clientX, width: sidebarWidth };
       setResizing(true);
     },
-    [sidebarWidth]
+    [sidebarWidth],
   );
 
   useEffect(() => {

@@ -18,7 +18,7 @@ export function toggleBookmarkForActiveTab(): void {
   const wsId = wsState.activeWorkspaceId;
   const activeTabId = getLiveWorkspaceActiveTabId(
     wsState.workspaces[wsId],
-    useTabsStore.getState().tabs
+    useTabsStore.getState().tabs,
   );
 
   if (!activeTabId) {
@@ -32,20 +32,14 @@ export function toggleBookmarkForActiveTab(): void {
     return;
   }
 
-  const isBookmarked = useBookmarksStore
-    .getState()
-    .isBookmarked(wsId, tab.url);
+  const isBookmarked = useBookmarksStore.getState().isBookmarked(wsId, tab.url);
 
   if (isBookmarked) {
     useBookmarksStore.getState().removeBookmarkByUrl(wsId, tab.url);
-    useUIStore
-      .getState()
-      .pushToast(`Removed bookmark: ${tab.title || tab.url}`, "info");
+    useUIStore.getState().pushToast(`Removed bookmark: ${tab.title || tab.url}`, "info");
   } else {
     useBookmarksStore.getState().addBookmark(wsId, tab.url, tab.title);
-    useUIStore
-      .getState()
-      .pushToast(`Bookmarked: ${tab.title || tab.url}`, "success");
+    useUIStore.getState().pushToast(`Bookmarked: ${tab.title || tab.url}`, "success");
   }
 
   useUIStore.getState().setActivePanel("bookmarks");

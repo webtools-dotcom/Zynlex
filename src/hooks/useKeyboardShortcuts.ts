@@ -15,10 +15,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useUIStore } from "@/stores/ui";
 import { useTabsStore } from "@/stores/tabs";
-import {
-  getLiveWorkspaceActiveTabId,
-  getLiveWorkspaceTabIds,
-} from "@/lib/workspaceTabs";
+import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { closeTabWebview, takeScreenshot, setTabZoom, hardReload } from "@/services/browser";
 import { copyImageToClipboard } from "@/lib/clipboard";
@@ -33,7 +30,7 @@ function hardReloadActiveTab() {
   const wsState = useWorkspacesStore.getState();
   const tabId = getLiveWorkspaceActiveTabId(
     wsState.workspaces[wsState.activeWorkspaceId],
-    useTabsStore.getState().tabs
+    useTabsStore.getState().tabs,
   );
   if (tabId) hardReload(tabId).catch(() => {});
 }
@@ -48,10 +45,7 @@ function switchWorkspace(index: number) {
 function applyZoom(dir: -1 | 0 | 1) {
   const wsState = useWorkspacesStore.getState();
   const wsId = wsState.activeWorkspaceId;
-  const tabId = getLiveWorkspaceActiveTabId(
-    wsState.workspaces[wsId],
-    useTabsStore.getState().tabs
-  );
+  const tabId = getLiveWorkspaceActiveTabId(wsState.workspaces[wsId], useTabsStore.getState().tabs);
   if (!tabId) return;
 
   let next = 1;
@@ -134,10 +128,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     takeScreenshot()
       .then(({ bytes }) => copyImageToClipboard(bytes))
       .catch((error) => {
-        useUIStore.getState().pushToast(
-          `Screenshot failed: ${String(error)}`,
-          "danger"
-        );
+        useUIStore.getState().pushToast(`Screenshot failed: ${String(error)}`, "danger");
       });
     return;
   }
@@ -172,7 +163,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
       const wsId = wsState.activeWorkspaceId;
       const tabId = getLiveWorkspaceActiveTabId(
         wsState.workspaces[wsId],
-        useTabsStore.getState().tabs
+        useTabsStore.getState().tabs,
       );
       if (tabId) {
         const tab = useTabsStore.getState().tabs[tabId];
@@ -246,10 +237,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     if (!workspace) return;
     const tabIds = getLiveWorkspaceTabIds(workspace, useTabsStore.getState().tabs);
     if (tabIds.length === 0) return;
-    const currentTabId = getLiveWorkspaceActiveTabId(
-      workspace,
-      useTabsStore.getState().tabs
-    );
+    const currentTabId = getLiveWorkspaceActiveTabId(workspace, useTabsStore.getState().tabs);
     const currentIndex = tabIds.indexOf(currentTabId ?? "");
     const nextIndex = (currentIndex + 1) % tabIds.length;
     const nextTabId = tabIds[nextIndex];
@@ -266,10 +254,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     if (!workspace) return;
     const tabIds = getLiveWorkspaceTabIds(workspace, useTabsStore.getState().tabs);
     if (tabIds.length === 0) return;
-    const currentTabId = getLiveWorkspaceActiveTabId(
-      workspace,
-      useTabsStore.getState().tabs
-    );
+    const currentTabId = getLiveWorkspaceActiveTabId(workspace, useTabsStore.getState().tabs);
     const currentIndex = tabIds.indexOf(currentTabId ?? "");
     const prevIndex = (currentIndex - 1 + tabIds.length) % tabIds.length;
     const prevTabId = tabIds[prevIndex];
@@ -302,7 +287,7 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
           const wsId = wsState.activeWorkspaceId;
           const tabId = getLiveWorkspaceActiveTabId(
             wsState.workspaces[wsId],
-            useTabsStore.getState().tabs
+            useTabsStore.getState().tabs,
           );
           if (tabId) {
             const tab = useTabsStore.getState().tabs[tabId];
@@ -458,10 +443,7 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         if (!workspace) return;
         const tabIds = getLiveWorkspaceTabIds(workspace, useTabsStore.getState().tabs);
         if (tabIds.length === 0) return;
-        const currentTabId = getLiveWorkspaceActiveTabId(
-          workspace,
-          useTabsStore.getState().tabs
-        );
+        const currentTabId = getLiveWorkspaceActiveTabId(workspace, useTabsStore.getState().tabs);
         const currentIndex = tabIds.indexOf(currentTabId ?? "");
         const nextIndex = (currentIndex + 1) % tabIds.length;
         const nextTabId = tabIds[nextIndex];
@@ -480,13 +462,9 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         if (!workspace) return;
         const tabIds = getLiveWorkspaceTabIds(workspace, useTabsStore.getState().tabs);
         if (tabIds.length === 0) return;
-        const currentTabId = getLiveWorkspaceActiveTabId(
-          workspace,
-          useTabsStore.getState().tabs
-        );
+        const currentTabId = getLiveWorkspaceActiveTabId(workspace, useTabsStore.getState().tabs);
         const currentIndex = tabIds.indexOf(currentTabId ?? "");
-        const prevIndex =
-          (currentIndex - 1 + tabIds.length) % tabIds.length;
+        const prevIndex = (currentIndex - 1 + tabIds.length) % tabIds.length;
         const prevTabId = tabIds[prevIndex];
         if (prevTabId) {
           useWorkspacesStore.getState().setActiveTab(wsId, prevTabId);
@@ -520,10 +498,7 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         takeScreenshot()
           .then(({ bytes }) => copyImageToClipboard(bytes))
           .catch((error) => {
-            useUIStore.getState().pushToast(
-              `Screenshot failed: ${String(error)}`,
-              "danger"
-            );
+            useUIStore.getState().pushToast(`Screenshot failed: ${String(error)}`, "danger");
           });
         return;
       }
@@ -559,4 +534,3 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
     };
   }, []);
 }
-

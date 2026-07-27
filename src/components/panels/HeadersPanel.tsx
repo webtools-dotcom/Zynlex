@@ -91,7 +91,10 @@ function AddRuleForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-1.5 px-2 py-2 border-b border-[var(--color-border)]">
+    <form
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-1.5 px-2 py-2 border-b border-[var(--color-border)]"
+    >
       <input
         value={pattern}
         onChange={(e) => setPattern(e.target.value)}
@@ -133,7 +136,10 @@ export function HeadersPanel() {
   const defaultPattern = activeTab?.url ? originOf(activeTab.url, "*") : "*";
 
   const rulesByWs = useHeadersStore((s) => s.rulesByWs);
-  const rules = useMemo(() => rulesByWs[activeWorkspaceId] ?? EMPTY_RULES, [rulesByWs, activeWorkspaceId]);
+  const rules = useMemo(
+    () => rulesByWs[activeWorkspaceId] ?? EMPTY_RULES,
+    [rulesByWs, activeWorkspaceId],
+  );
   const addRule = useHeadersStore((s) => s.addRule);
   const updateRule = useHeadersStore((s) => s.updateRule);
   const removeRule = useHeadersStore((s) => s.removeRule);
@@ -170,8 +176,8 @@ export function HeadersPanel() {
       <div className="flex-1 overflow-y-auto">
         {rules.length === 0 ? (
           <div className="text-micro text-[var(--color-text-muted)] px-3 py-4 italic">
-            No header injection rules. Add one above. Note: WebSocket connections aren't
-            covered — only regular HTTP/HTTPS requests.
+            No header injection rules. Add one above. Note: WebSocket connections aren't covered —
+            only regular HTTP/HTTPS requests.
           </div>
         ) : (
           rules.map((rule) => (

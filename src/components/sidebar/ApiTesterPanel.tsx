@@ -40,10 +40,7 @@ function CollectionsCard() {
   function load(req: SavedRequest) {
     openOverlay("api-tester");
     // The overlay mounts on the same tick; dispatch after it can listen.
-    setTimeout(
-      () => window.dispatchEvent(new CustomEvent(LOAD_REQUEST_EVENT, { detail: req })),
-      0
-    );
+    setTimeout(() => window.dispatchEvent(new CustomEvent(LOAD_REQUEST_EVENT, { detail: req })), 0);
   }
 
   function Row({ req }: { req: SavedRequest }) {
@@ -60,17 +57,13 @@ function CollectionsCard() {
           >
             {req.method}
           </span>
-          <span className="text-xs text-[var(--color-text-muted)] truncate">
-            {req.name}
-          </span>
+          <span className="text-xs text-[var(--color-text-muted)] truncate">{req.name}</span>
         </button>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           {folders.length > 0 && (
             <select
               value={req.folderId ?? ""}
-              onChange={(e) =>
-                updateRequest(wsId, req.id, { folderId: e.target.value || null })
-              }
+              onChange={(e) => updateRequest(wsId, req.id, { folderId: e.target.value || null })}
               aria-label="Move to folder"
               className="text-micro bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded outline-none border border-[var(--color-border)]"
             >
@@ -146,9 +139,11 @@ function CollectionsCard() {
         </div>
       ) : (
         <div className="max-h-64 overflow-y-auto">
-          {requests.filter((r) => !r.folderId).map((r) => (
-            <Row key={r.id} req={r} />
-          ))}
+          {requests
+            .filter((r) => !r.folderId)
+            .map((r) => (
+              <Row key={r.id} req={r} />
+            ))}
           {folders.map((f) => (
             <div key={f.id}>
               <div className="group flex items-center gap-1.5 px-2 py-1 bg-[var(--color-surface)]">
@@ -164,9 +159,11 @@ function CollectionsCard() {
                   <Trash2 size={11} />
                 </ConfirmButton>
               </div>
-              {requests.filter((r) => r.folderId === f.id).map((r) => (
-                <Row key={r.id} req={r} />
-              ))}
+              {requests
+                .filter((r) => r.folderId === f.id)
+                .map((r) => (
+                  <Row key={r.id} req={r} />
+                ))}
             </div>
           ))}
         </div>
@@ -215,14 +212,8 @@ function ApiTesterPanel() {
         </div>
         <div className="grid grid-cols-2 gap-1">
           {Object.entries(METHOD_COLORS).map(([m, c]) => (
-            <div
-              key={m}
-              className="flex items-center gap-1.5 text-xs font-mono"
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                style={{ background: c }}
-              />
+            <div key={m} className="flex items-center gap-1.5 text-xs font-mono">
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: c }} />
               <span style={{ color: c }}>{m}</span>
             </div>
           ))}
@@ -251,9 +242,7 @@ function ApiTesterPanel() {
         </div>
         {history.length === 0 ? (
           <div className="px-2 py-3 text-center">
-            <p className="text-xs text-[var(--color-text-disabled)]">
-              No requests yet
-            </p>
+            <p className="text-xs text-[var(--color-text-disabled)]">No requests yet</p>
             <p className="text-micro text-[var(--color-text-disabled)] mt-0.5">
               Open the tester and send one
             </p>

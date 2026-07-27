@@ -17,8 +17,15 @@ interface TabItemProps {
 }
 
 export function TabItem({
-  tab, isActive, onActivate, onClose, onContextMenu,
-  onPointerDown, isDropTarget, isDragging, vertical = false,
+  tab,
+  isActive,
+  onActivate,
+  onClose,
+  onContextMenu,
+  onPointerDown,
+  isDropTarget,
+  isDragging,
+  vertical = false,
 }: TabItemProps) {
   const [faviconError, setFaviconError] = useState<boolean>(false);
 
@@ -32,7 +39,10 @@ export function TabItem({
   }
 
   function handleMouseDown(e: React.MouseEvent) {
-    if (e.button === 1) { e.preventDefault(); onClose(); }
+    if (e.button === 1) {
+      e.preventDefault();
+      onClose();
+    }
   }
 
   function handleClick() {
@@ -47,7 +57,12 @@ export function TabItem({
       onClick={handleClick}
       onMouseDown={handleMouseDown}
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onActivate();
+        }
+      }}
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
       className={cn(
@@ -93,13 +108,16 @@ export function TabItem({
             onError={() => setFaviconError(true)}
           />
         ) : (
-          <div className="w-4 h-4 rounded-[3px] flex-shrink-0" style={{ background: "var(--color-hover)" }} />
+          <div
+            className="w-4 h-4 rounded-[3px] flex-shrink-0"
+            style={{ background: "var(--color-hover)" }}
+          />
         )}
       </div>
 
       {/* Title */}
       <span className="flex-1 min-w-0 text-md font-medium leading-none truncate">
-        {tab.isLoading ? "Loading…" : (tab.title || "New Tab")}
+        {tab.isLoading ? "Loading…" : tab.title || "New Tab"}
       </span>
 
       {/* Close button OR pin indicator */}

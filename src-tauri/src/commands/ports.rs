@@ -1,6 +1,6 @@
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::{timeout, Duration};
-use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
 /// Result of scanning a single port.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -68,11 +68,7 @@ async fn scan_single_host(port: u16, host: &'static str) -> ScannedPort {
     let addr = loopback_addr(host, port);
 
     // Step 1: TCP connect with 350ms timeout
-    let tcp_result = timeout(
-        Duration::from_millis(350),
-        TcpStream::connect(&addr),
-    )
-    .await;
+    let tcp_result = timeout(Duration::from_millis(350), TcpStream::connect(&addr)).await;
 
     let alive = matches!(tcp_result, Ok(Ok(_)));
 
@@ -87,17 +83,17 @@ async fn scan_single_host(port: u16, host: &'static str) -> ScannedPort {
     }
 
     // Step 2: HTTP GET to check status + extract title (800ms total timeout)
-    let http_result = timeout(
-        Duration::from_millis(800),
-        http_get_title(host, port),
-    )
-    .await;
+    let http_result = timeout(Duration::from_millis(800), http_get_title(host, port)).await;
 
     match http_result {
         Ok(Ok((status, title, is_tls))) => ScannedPort {
             port,
             alive: true,
-            protocol: if is_tls { "https".to_string() } else { "http".to_string() },
+            protocol: if is_tls {
+                "https".to_string()
+            } else {
+                "http".to_string()
+            },
             title,
             status: Some(status),
         },
@@ -123,9 +119,7 @@ fn looks_like_tls_record(buf: &[u8]) -> bool {
 /// Send a basic HTTP GET and return (status_code, Option<title>, looks_like_tls).
 async fn http_get_title(host: &str, port: u16) -> Result<(u16, Option<String>, bool), String> {
     let addr = loopback_addr(host, port);
-    let mut stream = TcpStream::connect(&addr)
-        .await
-        .map_err(|e| e.to_string())?;
+    let mut stream = TcpStream::connect(&addr).await.map_err(|e| e.to_string())?;
 
     // Send minimal HTTP/1.0 GET request
     let request = format!(

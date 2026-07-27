@@ -1,7 +1,9 @@
-use tauri::webview::{PageLoadEvent, WebviewBuilder};
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl};
-use super::{find_tab_webview, eval_json};
+use super::{eval_json, find_tab_webview};
 use crate::xevo_log;
+use tauri::webview::{PageLoadEvent, WebviewBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl,
+};
 
 // ─── Viewport (device emulation) Mode ─────────────────────────────
 
@@ -69,14 +71,16 @@ fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
                     "height": spec.height,
                     "deviceScaleFactor": spec.device_scale_factor,
                     "mobile": spec.mobile,
-                }).to_string(),
+                })
+                .to_string(),
             );
             call(
                 "Emulation.setTouchEmulationEnabled",
                 serde_json::json!({
                     "enabled": spec.touch,
                     "maxTouchPoints": if spec.touch { 5 } else { 0 },
-                }).to_string(),
+                })
+                .to_string(),
             );
             // Pin the page to 1:1. With `mobile: true` Chromium shrink-to-fits
             // when anything overflows the viewport (an ad banner is enough),
@@ -119,7 +123,8 @@ fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
                                 { "brand": "Not.A/Brand", "version": "24" },
                             ],
                         },
-                    }).to_string(),
+                    })
+                    .to_string(),
                 );
             }
         });
@@ -156,9 +161,7 @@ pub async fn create_viewport(
 
     let mut builder = WebviewBuilder::new(
         &label,
-        WebviewUrl::External(
-            url::Url::parse("about:blank").expect("about:blank must parse"),
-        ),
+        WebviewUrl::External(url::Url::parse("about:blank").expect("about:blank must parse")),
     )
     .background_color(tauri::webview::Color(15, 15, 15, 255));
 
@@ -220,11 +223,7 @@ pub async fn probe_viewport(app: AppHandle, label: String) -> Result<serde_json:
         // distinguishes "the override never applied" from "it applied and
         // something else resized the viewport afterwards" — the two have
         // completely different fixes.
-        eval_json(
-            &wv,
-            include_str!("scripts/viewport_probe.js").to_string(),
-        )
-        .await
+        eval_json(&wv, include_str!("scripts/viewport_probe.js").to_string()).await
     }
     #[cfg(not(target_os = "windows"))]
     {

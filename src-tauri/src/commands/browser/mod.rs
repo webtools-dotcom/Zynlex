@@ -12,11 +12,13 @@ pub use viewport::*;
 mod net;
 pub use net::*;
 
-use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl};
-use std::sync::atomic::Ordering;
-use crate::BrowserState;
 use crate::xevo_log;
+use crate::BrowserState;
+use std::sync::atomic::Ordering;
+use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl,
+};
 use tauri_plugin_opener::OpenerExt;
 
 /// Reads a single COM `PWSTR` out-parameter into an owned `String`, treating a
@@ -25,7 +27,11 @@ use tauri_plugin_opener::OpenerExt;
 unsafe fn pwstr_to_string(f: impl FnOnce(*mut windows::core::PWSTR)) -> String {
     let mut p = windows::core::PWSTR::null();
     f(&mut p);
-    if p.is_null() { String::new() } else { p.to_string().unwrap_or_default() }
+    if p.is_null() {
+        String::new()
+    } else {
+        p.to_string().unwrap_or_default()
+    }
 }
 
 // ─── Injected Scripts ────────────────────────────────────────────────
@@ -56,7 +62,11 @@ pub fn find_tab_webview(app: &AppHandle, label: &str) -> Option<tauri::Webview> 
 
 /// Hide all browser-* webviews EXCEPT the one with the given label.
 /// This is the authoritative way to ensure exactly one webview is visible.
-fn hide_all_browser_webviews_except(app: &AppHandle, state: &crate::BrowserState, except_label: &str) {
+fn hide_all_browser_webviews_except(
+    app: &AppHandle,
+    state: &crate::BrowserState,
+    except_label: &str,
+) {
     // Hide via Tauri's built-in registry
     for (label, wv) in app.webviews() {
         if label.starts_with("browser-") && label != except_label {
@@ -90,7 +100,10 @@ fn exit_fullscreen_unless(
     state: &crate::BrowserState,
     keep: Option<&str>,
 ) -> bool {
-    let mut fs = state.fullscreen_tab.lock().unwrap_or_else(|e| e.into_inner());
+    let mut fs = state
+        .fullscreen_tab
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     match fs.as_deref() {
         None => false,
         Some(current) if Some(current) == keep => true,
@@ -113,7 +126,11 @@ fn exit_fullscreen_unless(
 async fn wait_until_absent(app: &AppHandle, state: &crate::BrowserState, label: &str) {
     for _ in 0..25 {
         let present = app.get_webview(label).is_some()
-            || state.webviews.lock().unwrap_or_else(|e| e.into_inner()).contains_key(label);
+            || state
+                .webviews
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .contains_key(label);
         if !present {
             return;
         }
@@ -147,9 +164,7 @@ fn create_webview_for_tab(
     let width = width.max(1.0);
     let height = height.max(1.0);
     let label = webview_label_for_tab(tab_id);
-    let parsed = url
-        .parse::<url::Url>()
-        .map_err(|e| e.to_string())?;
+    let parsed = url.parse::<url::Url>().map_err(|e| e.to_string())?;
     let target_url = parsed.clone();
 
     let tab_id_nav = tab_id.to_string();
@@ -164,94 +179,115 @@ fn create_webview_for_tab(
     let tab_id_init = format!("window.__XEVO_TAB_ID = \"{}\";", tab_id);
 
     let state = app.state::<BrowserState>();
-    let user_agent = state.user_agent.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let user_agent = state
+        .user_agent
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
 
-    let main_window = app
-        .get_window("main")
-        .ok_or("main window not found")?;
+    let main_window = app.get_window("main").ok_or("main window not found")?;
 
     // decorations/resizable/inner_size/position are window concepts — a child
     // webview gets its geometry from add_child's position/size arguments below.
     // No .data_directory() — a data directory that differs from the main window's
     // spawns a second WebView2 environment, and with it a duplicate browser + GPU +
     // network process set. Sharing the default keeps every webview in one tree.
-    let mut builder = WebviewBuilder::new(&label, WebviewUrl::External(url::Url::parse("about:blank").expect("about:blank must parse")))
-        // Ctrl +/- and Ctrl+mousewheel zoom natively inside the page (WebView2
-        // IsZoomControlEnabled). Builder attribute — only affects new webviews.
-        .zoom_hotkeys_enabled(true)
-        // Matches tauri.conf.json's backgroundColor (#0f0f0f). Without this,
-        // WebView2's own default paints the strip newly exposed by a resize
-        // before the page repaints it — a flash against the dark chrome.
-        // Hardcoded to dark: in light theme this becomes a dark flash instead
-        // of a light one — wiring it to the theme store is a separate change.
-        .background_color(tauri::webview::Color(15, 15, 15, 255))
-        .initialization_script(&tab_id_init)
-        .initialization_script(CHROME_FEATURES_SCRIPT)
-        .initialization_script(JSON_VIEWER_SCRIPT);
+    let mut builder = WebviewBuilder::new(
+        &label,
+        WebviewUrl::External(url::Url::parse("about:blank").expect("about:blank must parse")),
+    )
+    // Ctrl +/- and Ctrl+mousewheel zoom natively inside the page (WebView2
+    // IsZoomControlEnabled). Builder attribute — only affects new webviews.
+    .zoom_hotkeys_enabled(true)
+    // Matches tauri.conf.json's backgroundColor (#0f0f0f). Without this,
+    // WebView2's own default paints the strip newly exposed by a resize
+    // before the page repaints it — a flash against the dark chrome.
+    // Hardcoded to dark: in light theme this becomes a dark flash instead
+    // of a light one — wiring it to the theme store is a separate change.
+    .background_color(tauri::webview::Color(15, 15, 15, 255))
+    .initialization_script(&tab_id_init)
+    .initialization_script(CHROME_FEATURES_SCRIPT)
+    .initialization_script(JSON_VIEWER_SCRIPT);
 
     if let Some(ref ua) = user_agent {
         builder = builder.user_agent(ua);
     }
 
     let builder = builder
-            .on_navigation(move |nav_url| {
-                let scheme = nav_url.scheme();
-                let allowed = matches!(scheme, "http" | "https" | "" | "tauri");
-                if !allowed {
-                    return false;
-                }
-                let url_str = nav_url.to_string();
-                let _ = app_for_nav.emit("browser://url-changed", serde_json::json!({
+        .on_navigation(move |nav_url| {
+            let scheme = nav_url.scheme();
+            let allowed = matches!(scheme, "http" | "https" | "" | "tauri");
+            if !allowed {
+                return false;
+            }
+            let url_str = nav_url.to_string();
+            let _ = app_for_nav.emit(
+                "browser://url-changed",
+                serde_json::json!({
                     "tabId": tab_id_nav,
                     "url": url_str,
-                }));
-                true
-            })
-            .on_page_load(move |_webview, payload| {
-                match payload.event() {
-                    PageLoadEvent::Started => {
-                        let _ = app_for_load.emit("browser://loading", serde_json::json!({
-                            "tabId": tab_id_load,
-                            "loading": true,
-                        }));
-                    }
-                    PageLoadEvent::Finished => {
-                        let _ = app_for_load.emit("browser://loading", serde_json::json!({
-                            "tabId": tab_id_load,
-                            "loading": false,
-                        }));
-                    }
-                }
-            })
-            .on_new_window(move |url, _features| {
-                let _ = app_for_new_window.emit("browser://open-new-tab", serde_json::json!({
+                }),
+            );
+            true
+        })
+        .on_page_load(move |_webview, payload| match payload.event() {
+            PageLoadEvent::Started => {
+                let _ = app_for_load.emit(
+                    "browser://loading",
+                    serde_json::json!({
+                        "tabId": tab_id_load,
+                        "loading": true,
+                    }),
+                );
+            }
+            PageLoadEvent::Finished => {
+                let _ = app_for_load.emit(
+                    "browser://loading",
+                    serde_json::json!({
+                        "tabId": tab_id_load,
+                        "loading": false,
+                    }),
+                );
+            }
+        })
+        .on_new_window(move |url, _features| {
+            let _ = app_for_new_window.emit(
+                "browser://open-new-tab",
+                serde_json::json!({
                     "url": url.to_string()
-                }));
-                tauri::webview::NewWindowResponse::Deny
-            })
-            // Downloads go to the OS default destination. Tauri's DownloadEvent
-            // exposes no progress callback, so the UI shows started → finished,
-            // not a percentage.
-            .on_download(move |_webview, event| {
-                match event {
-                    DownloadEvent::Requested { url, destination } => {
-                        let _ = app_for_download.emit("xevo://download-started", serde_json::json!({
+                }),
+            );
+            tauri::webview::NewWindowResponse::Deny
+        })
+        // Downloads go to the OS default destination. Tauri's DownloadEvent
+        // exposes no progress callback, so the UI shows started → finished,
+        // not a percentage.
+        .on_download(move |_webview, event| {
+            match event {
+                DownloadEvent::Requested { url, destination } => {
+                    let _ = app_for_download.emit(
+                        "xevo://download-started",
+                        serde_json::json!({
                             "tabId": tab_id_download,
                             "url": url.to_string(),
                             "destination": destination.to_string_lossy(),
-                        }));
-                    }
-                    DownloadEvent::Finished { url, path, success } => {
-                        let _ = app_for_download.emit("xevo://download-finished", serde_json::json!({
+                        }),
+                    );
+                }
+                DownloadEvent::Finished { url, path, success } => {
+                    let _ = app_for_download.emit(
+                        "xevo://download-finished",
+                        serde_json::json!({
                             "url": url.to_string(),
                             "path": path.as_ref().map(|p| p.to_string_lossy().to_string()),
                             "success": success,
-                        }));
-                    }
-                    _ => {}
+                        }),
+                    );
                 }
-                true
-            });
+                _ => {}
+            }
+            true
+        });
 
     // Position/size are relative to the main window's client area, not the
     // screen — this is what makes window moves free.
@@ -303,14 +339,20 @@ pub async fn browser_create_tab(
     {
         let mut webviews = state.webviews.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(old_wv) = webviews.remove(&label) {
-            xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — closing stale handle for label={}", label);
+            xevo_log!(
+                "[XEVO-LIFECYCLE] browser_create_tab — closing stale handle for label={}",
+                label
+            );
             let _ = old_wv.close();
         }
     }
 
     // Close any orphan webview in Tauri's registry with this label.
     if let Some(orphan) = app.get_webview(&label) {
-        xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — closing orphan label={}", label);
+        xevo_log!(
+            "[XEVO-LIFECYCLE] browser_create_tab — closing orphan label={}",
+            label
+        );
         let _ = orphan.close();
     }
 
@@ -324,11 +366,22 @@ pub async fn browser_create_tab(
         let webviews = state.webviews.lock().unwrap_or_else(|e| e.into_inner());
         if app.get_webview(&label).is_some() || webviews.contains_key(&label) {
             xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — label={} did not release after waiting, aborting", label);
-            return Err(format!("webview for tab {} did not release in time", tab_id));
+            return Err(format!(
+                "webview for tab {} did not release in time",
+                tab_id
+            ));
         }
     }
 
-    xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — creating label={} url={} x={} y={} w={} h={}", label, url, x, y, width, height);
+    xevo_log!(
+        "[XEVO-LIFECYCLE] browser_create_tab — creating label={} url={} x={} y={} w={} h={}",
+        label,
+        url,
+        x,
+        y,
+        width,
+        height
+    );
 
     // Hide ALL other browser webviews — this is authoritative.
     // The old approach (hide only active_tab_label) missed webviews hidden
@@ -338,9 +391,7 @@ pub async fn browser_create_tab(
 
     // A child webview is hidden and restored by the OS along with its parent
     // window, so minimize state no longer gates creation.
-    let webview = create_webview_for_tab(
-        &app, &tab_id, &url, x, y, width, height, true,
-    )?;
+    let webview = create_webview_for_tab(&app, &tab_id, &url, x, y, width, height, true)?;
 
     // Store a persistent strong reference to prevent the Webview
     // from being destroyed when this async function returns (Tauri #14843).
@@ -359,7 +410,10 @@ pub async fn browser_create_tab(
     }
 
     // Track as active
-    *state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner()) = Some(webview.label().to_string());
+    *state
+        .active_tab_label
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(webview.label().to_string());
 
     Ok(())
 }
@@ -373,7 +427,12 @@ pub async fn browser_close_tab(
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
     let exists = app.get_webview(&label).is_some();
-    xevo_log!("[XEVO-LIFECYCLE] browser_close_tab — label={} tab_id={} exists_before={}", label, tab_id, exists);
+    xevo_log!(
+        "[XEVO-LIFECYCLE] browser_close_tab — label={} tab_id={} exists_before={}",
+        label,
+        tab_id,
+        exists
+    );
 
     // If the tab being closed owns fullscreen, leave fullscreen now. Its
     // ContainsFullScreenElementChanged handler dies with the webview, so nothing
@@ -383,15 +442,29 @@ pub async fn browser_close_tab(
     // Remove from our persistent map FIRST — this is the authoritative source
     // of strong references. The handle will drop after removal, allowing the
     // OS window to be destroyed naturally (confirming the close on Rust's side).
-    state.webviews.lock().unwrap_or_else(|e| e.into_inner()).remove(&label);
+    state
+        .webviews
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&label);
     if let Some(wv) = app.get_webview(&label) {
         wv.close().map_err(|e| e.to_string())?;
-        xevo_log!("[XEVO-LIFECYCLE] browser_close_tab — label={} closed OK, still_exists={}", label, app.get_webview(&label).is_some());
+        xevo_log!(
+            "[XEVO-LIFECYCLE] browser_close_tab — label={} closed OK, still_exists={}",
+            label,
+            app.get_webview(&label).is_some()
+        );
     } else {
-        xevo_log!("[XEVO-LIFECYCLE] browser_close_tab — label={} not found (already closed?)", label);
+        xevo_log!(
+            "[XEVO-LIFECYCLE] browser_close_tab — label={} not found (already closed?)",
+            label
+        );
     }
     // If this was the active tab, clear the tracker
-    let mut active = state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner());
+    let mut active = state
+        .active_tab_label
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     if active.as_deref() == Some(&label) {
         *active = None;
     }
@@ -420,7 +493,6 @@ pub async fn browser_navigate_tab(
     if let Some(wv) = find_tab_webview(&app, &label) {
         wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
             .map_err(|e| {
-                #[cfg(debug_assertions)]
                 xevo_log!("[xevo] browser_navigate_tab failed: {e}");
                 e.to_string()
             })?;
@@ -456,7 +528,14 @@ pub async fn browser_set_bounds(
     {
         return Ok(());
     }
-    xevo_log!("[XEVO-BOUNDS] browser_set_bounds called — label={} x={} y={} w={} h={}", label, x, y, width, height);
+    xevo_log!(
+        "[XEVO-BOUNDS] browser_set_bounds called — label={} x={} y={} w={} h={}",
+        label,
+        x,
+        y,
+        width,
+        height
+    );
     // Try Tauri's registry first, then fallback to our persistent handle map
     let wv = find_tab_webview(&app, &label);
     if let Some(wv) = wv {
@@ -484,11 +563,17 @@ pub async fn browser_set_bounds(
                 let win_w = win_size.width as f64 / scale;
                 let win_h = win_size.height as f64 / scale;
                 let insets = (x, y, win_w - x - width, win_h - y - height);
-                *state.content_insets.lock().unwrap_or_else(|e| e.into_inner()) = Some(insets);
+                *state
+                    .content_insets
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(insets);
             }
         }
     } else {
-        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — webview NOT FOUND for label: {}", label);
+        xevo_log!(
+            "[XEVO-BOUNDS] browser_set_bounds — webview NOT FOUND for label: {}",
+            label
+        );
     }
     Ok(())
 }
@@ -553,9 +638,9 @@ pub async fn browser_hard_reload(app: AppHandle, tab_id: String) -> Result<(), S
                     }
                 };
                 let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
-                    |_result: windows_core::Result<()>, _json: String| -> windows_core::Result<()> {
-                        Ok(())
-                    },
+                    |_result: windows_core::Result<()>,
+                     _json: String|
+                     -> windows_core::Result<()> { Ok(()) },
                 ));
                 let _ = core.CallDevToolsProtocolMethod(
                     &HSTRING::from("Page.reload"),
@@ -593,7 +678,6 @@ pub async fn browser_stop_loading(app: AppHandle, tab_id: String) -> Result<(), 
     Ok(())
 }
 
-
 /// Open a downloaded file, or reveal it in the OS file manager.
 #[tauri::command]
 pub fn open_download(app: AppHandle, path: String, reveal: bool) -> Result<(), String> {
@@ -601,10 +685,11 @@ pub fn open_download(app: AppHandle, path: String, reveal: bool) -> Result<(), S
     if reveal {
         opener.reveal_item_in_dir(&path).map_err(|e| e.to_string())
     } else {
-        opener.open_path(&path, None::<&str>).map_err(|e| e.to_string())
+        opener
+            .open_path(&path, None::<&str>)
+            .map_err(|e| e.to_string())
     }
 }
-
 
 // ─── Theme (apply to all webviews) ───────────────────────────────────
 
@@ -620,8 +705,7 @@ pub fn apply_color_scheme(wv: &tauri::Webview, dark: bool) {
         #[cfg(windows)]
         unsafe {
             use webview2_com::Microsoft::Web::WebView2::Win32::{
-                ICoreWebView2_13,
-                COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK,
+                ICoreWebView2_13, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK,
                 COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT,
             };
             use windows_core::Interface;
@@ -684,16 +768,25 @@ pub async fn browser_hide_tab(
     let wv = find_tab_webview(&app, &label);
     if let Some(wv) = wv {
         wv.hide().map_err(|e| format!("failed to hide tab: {e}"))?;
-        xevo_log!("[XEVO-LIFECYCLE] browser_hide_tab — label={} hidden OK", label);
+        xevo_log!(
+            "[XEVO-LIFECYCLE] browser_hide_tab — label={} hidden OK",
+            label
+        );
         // Clear active_tab_label if we just hid the tracked webview.
         // This prevents stale state where active_tab_label points to a
         // hidden webview — which causes orphan floating windows on restore.
-        let mut active = state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner());
+        let mut active = state
+            .active_tab_label
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if active.as_deref() == Some(&label) {
             *active = None;
         }
     } else {
-        xevo_log!("[XEVO-LIFECYCLE] browser_hide_tab — label={} not found", label);
+        xevo_log!(
+            "[XEVO-LIFECYCLE] browser_hide_tab — label={} not found",
+            label
+        );
     }
     Ok(())
 }
@@ -725,8 +818,11 @@ pub async fn browser_show_tab(
     if let Some(wv) = wv {
         wv.set_position(Position::Logical(LogicalPosition::new(x, y)))
             .map_err(|e| format!("failed to set position: {e}"))?;
-        wv.set_size(Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))))
-            .map_err(|e| format!("failed to set size: {e}"))?;
+        wv.set_size(Size::Logical(LogicalSize::new(
+            width.max(1.0),
+            height.max(1.0),
+        )))
+        .map_err(|e| format!("failed to set size: {e}"))?;
         // Hide every other browser webview — authoritative, same as
         // browser_create_tab. Without this, `show` trusted the frontend to have
         // hidden the outgoing tab, so any missed or out-of-order hide left the
@@ -736,10 +832,19 @@ pub async fn browser_show_tab(
         wv.show().map_err(|e| format!("failed to show tab: {e}"))?;
         // browser_hide_tab clears active_tab_label when it hides the tracked
         // webview; the native resize path reads it to find the child to resize.
-        *state.active_tab_label.lock().unwrap_or_else(|e| e.into_inner()) = Some(label.clone());
-        xevo_log!("[XEVO-BOUNDS] browser_show_tab — restored active_tab_label to {}", label);
+        *state
+            .active_tab_label
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(label.clone());
+        xevo_log!(
+            "[XEVO-BOUNDS] browser_show_tab — restored active_tab_label to {}",
+            label
+        );
     } else {
-        xevo_log!("[XEVO-BOUNDS] browser_show_tab — webview NOT FOUND for label: {}", label);
+        xevo_log!(
+            "[XEVO-BOUNDS] browser_show_tab — webview NOT FOUND for label: {}",
+            label
+        );
     }
     Ok(())
 }
@@ -747,12 +852,13 @@ pub async fn browser_show_tab(
 // ─── User Agent ─────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn browser_set_user_agent(
-    app: AppHandle,
-    user_agent: String,
-) -> Result<(), String> {
+pub async fn browser_set_user_agent(app: AppHandle, user_agent: String) -> Result<(), String> {
     let state = app.state::<BrowserState>();
-    let ua = if user_agent.is_empty() { None } else { Some(user_agent) };
+    let ua = if user_agent.is_empty() {
+        None
+    } else {
+        Some(user_agent)
+    };
     *state.user_agent.lock().unwrap_or_else(|e| e.into_inner()) = ua;
     Ok(())
 }
@@ -767,8 +873,7 @@ pub fn apply_memory_target(wv: &tauri::Webview, low: bool) {
         #[cfg(windows)]
         unsafe {
             use webview2_com::Microsoft::Web::WebView2::Win32::{
-                ICoreWebView2_19,
-                COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+                ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
                 COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
             };
             use windows_core::Interface;
@@ -803,12 +908,18 @@ pub async fn browser_set_memory_target(
     low: bool,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    xevo_log!("[XEVO-LIFECYCLE] browser_set_memory_target — label={} low={}", label, low);
-    let wv = find_tab_webview(&app, &label)
-        .ok_or_else(|| {
-            xevo_log!("[XEVO-LIFECYCLE] browser_set_memory_target — label={} NOT FOUND", label);
-            format!("no webview for tab {}", tab_id)
-        })?;
+    xevo_log!(
+        "[XEVO-LIFECYCLE] browser_set_memory_target — label={} low={}",
+        label,
+        low
+    );
+    let wv = find_tab_webview(&app, &label).ok_or_else(|| {
+        xevo_log!(
+            "[XEVO-LIFECYCLE] browser_set_memory_target — label={} NOT FOUND",
+            label
+        );
+        format!("no webview for tab {}", tab_id)
+    })?;
     apply_memory_target(&wv, low);
     Ok(())
 }
@@ -818,13 +929,10 @@ pub async fn browser_set_memory_target(
 /// Ask a tab's webview to capture its state (scroll + forms).
 /// The webview's init script will call browser_tab_state_saved back with the result.
 #[tauri::command]
-pub async fn browser_save_tab_state(
-    app: AppHandle,
-    tab_id: String,
-) -> Result<(), String> {
+pub async fn browser_save_tab_state(app: AppHandle, tab_id: String) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    let wv = find_tab_webview(&app, &label)
-        .ok_or_else(|| format!("no webview for tab {}", tab_id))?;
+    let wv =
+        find_tab_webview(&app, &label).ok_or_else(|| format!("no webview for tab {}", tab_id))?;
 
     let capture_script = include_str!("scripts/capture_tab_state.js");
 
@@ -842,10 +950,13 @@ pub fn browser_tab_state_saved(
     tab_id: String,
     state_json: String,
 ) -> Result<(), String> {
-    app.emit("browser://tab-state-saved", serde_json::json!({
-        "tabId": tab_id,
-        "stateJson": state_json,
-    }))
+    app.emit(
+        "browser://tab-state-saved",
+        serde_json::json!({
+            "tabId": tab_id,
+            "stateJson": state_json,
+        }),
+    )
     .map_err(|e| e.to_string())
 }
 
@@ -857,8 +968,8 @@ pub async fn browser_restore_tab_state(
     state_json: String,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    let wv = find_tab_webview(&app, &label)
-        .ok_or_else(|| format!("no webview for tab {}", tab_id))?;
+    let wv =
+        find_tab_webview(&app, &label).ok_or_else(|| format!("no webview for tab {}", tab_id))?;
 
     // ponytail: state_json is already valid JSON — embed directly as JS expression, no string escaping
     let restore_script = format!(
@@ -898,4 +1009,3 @@ pub async fn browser_restore_tab_state(
 
     Ok(())
 }
-

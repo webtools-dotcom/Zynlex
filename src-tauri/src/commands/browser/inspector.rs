@@ -1,6 +1,6 @@
-use tauri::{AppHandle, Emitter};
+use super::{find_tab_webview, js_string_literal, pwstr_to_string, webview_label_for_tab};
 use std::sync::Mutex;
-use super::{find_tab_webview, webview_label_for_tab, pwstr_to_string, js_string_literal};
+use tauri::{AppHandle, Emitter};
 
 // ─── Inspector ────────────────────────────────────────────────────
 
@@ -13,7 +13,10 @@ use super::{find_tab_webview, webview_label_for_tab, pwstr_to_string, js_string_
 /// multi-megabyte localStorage dump could be slow to marshal. Upgrade path:
 /// chunk large stores if this becomes a real complaint.
 #[cfg(target_os = "windows")]
-pub(super) async fn eval_json(wv: &tauri::Webview, script: String) -> Result<serde_json::Value, String> {
+pub(super) async fn eval_json(
+    wv: &tauri::Webview,
+    script: String,
+) -> Result<serde_json::Value, String> {
     use std::sync::Arc;
     use tokio::sync::oneshot;
     use webview2_com::ExecuteScriptCompletedHandler;
@@ -68,7 +71,8 @@ pub(super) async fn eval_json(wv: &tauri::Webview, script: String) -> Result<ser
     })
     .map_err(|e| format!("with_webview error: {e}"))?;
 
-    rx.await.map_err(|_| "Inspector eval channel closed".to_string())?
+    rx.await
+        .map_err(|_| "Inspector eval channel closed".to_string())?
 }
 
 /// Marshal one WebView2 cookie into JSON. Must be called on the UI thread —
@@ -80,10 +84,18 @@ unsafe fn cookie_to_json(
 ) -> serde_json::Value {
     use windows_core::BOOL;
 
-    let name = pwstr_to_string(|p| { let _ = c.Name(p); });
-    let value = pwstr_to_string(|p| { let _ = c.Value(p); });
-    let domain = pwstr_to_string(|p| { let _ = c.Domain(p); });
-    let path = pwstr_to_string(|p| { let _ = c.Path(p); });
+    let name = pwstr_to_string(|p| {
+        let _ = c.Name(p);
+    });
+    let value = pwstr_to_string(|p| {
+        let _ = c.Value(p);
+    });
+    let domain = pwstr_to_string(|p| {
+        let _ = c.Domain(p);
+    });
+    let path = pwstr_to_string(|p| {
+        let _ = c.Path(p);
+    });
 
     let mut expires: f64 = -1.0;
     let _ = c.Expires(&mut expires);
@@ -120,7 +132,8 @@ unsafe fn cookie_to_json(
 /// The shared slot every WebView2 async COM call in this file uses to bridge
 /// a completion handler back to an `async fn` via `oneshot`.
 #[cfg(target_os = "windows")]
-type OneshotSlot<T> = std::sync::Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<T, String>>>>>;
+type OneshotSlot<T> =
+    std::sync::Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<T, String>>>>>;
 
 /// Sends `msg` as the (only) error response on a one-shot channel, if nothing
 /// has claimed it yet.
@@ -153,10 +166,16 @@ unsafe fn get_cookie_manager(
         .CoreWebView2()
         .map_err(|e| format!("CoreWebView2 failed: {e:?}"))?;
 
-    let url = pwstr_to_string(|p| { let _ = core.Source(p); });
+    let url = pwstr_to_string(|p| {
+        let _ = core.Source(p);
+    });
 
-    let core2: ICoreWebView2_2 = core.cast().map_err(|e| format!("ICoreWebView2_2 unavailable: {e:?}"))?;
-    let manager = core2.CookieManager().map_err(|e| format!("CookieManager unavailable: {e:?}"))?;
+    let core2: ICoreWebView2_2 = core
+        .cast()
+        .map_err(|e| format!("ICoreWebView2_2 unavailable: {e:?}"))?;
+    let manager = core2
+        .CookieManager()
+        .map_err(|e| format!("CookieManager unavailable: {e:?}"))?;
 
     Ok((manager, url))
 }
@@ -219,7 +238,8 @@ async fn read_cookies(wv: &tauri::Webview) -> Result<serde_json::Value, String> 
     })
     .map_err(|e| format!("with_webview error: {e}"))?;
 
-    rx.await.map_err(|_| "Cookie read channel closed".to_string())?
+    rx.await
+        .map_err(|_| "Cookie read channel closed".to_string())?
 }
 
 /// Cookie writes through the native cookie manager, so domain/path are exact
@@ -293,7 +313,8 @@ async fn mutate_cookies(
                         .filter(|c| {
                             let j = cookie_to_json(c);
                             j["name"].as_str() == Some(name)
-                                && (want_domain.is_empty() || j["domain"].as_str() == Some(want_domain))
+                                && (want_domain.is_empty()
+                                    || j["domain"].as_str() == Some(want_domain))
                                 && (want_path.is_empty() || j["path"].as_str() == Some(want_path))
                         })
                         .cloned()
@@ -305,7 +326,11 @@ async fn mutate_cookies(
                         // clear-cookies targets everything visible to the page —
                         // NOT DeleteAllCookies(), which would wipe every site in
                         // the shared profile.
-                        let victims = if operation == "clear-cookies" { &all } else { &matched };
+                        let victims = if operation == "clear-cookies" {
+                            &all
+                        } else {
+                            &matched
+                        };
                         victims
                             .iter()
                             .try_for_each(|c| manager.DeleteCookie(c))
@@ -320,7 +345,11 @@ async fn mutate_cookies(
                                 .and_then(|_| manager.AddOrUpdateCookie(existing))
                                 .map_err(|e| format!("AddOrUpdateCookie failed: {e:?}"))
                         } else {
-                            let domain = if want_domain.is_empty() { host.as_str() } else { want_domain };
+                            let domain = if want_domain.is_empty() {
+                                host.as_str()
+                            } else {
+                                want_domain
+                            };
                             let path = if want_path.is_empty() { "/" } else { want_path };
                             manager
                                 .CreateCookie(
@@ -348,7 +377,8 @@ async fn mutate_cookies(
     })
     .map_err(|e| format!("with_webview error: {e}"))?;
 
-    rx.await.map_err(|_| "Cookie mutate channel closed".to_string())?
+    rx.await
+        .map_err(|_| "Cookie mutate channel closed".to_string())?
 }
 
 #[tauri::command]
@@ -439,11 +469,14 @@ pub async fn inspector_mutate(
     params: serde_json::Value,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    let wv = find_tab_webview(&app, &label)
-        .ok_or_else(|| format!("No webview for tab {}", tab_id))?;
+    let wv =
+        find_tab_webview(&app, &label).ok_or_else(|| format!("No webview for tab {}", tab_id))?;
 
     #[cfg(target_os = "windows")]
-    if matches!(operation.as_str(), "set-cookie" | "delete-cookie" | "clear-cookies") {
+    if matches!(
+        operation.as_str(),
+        "set-cookie" | "delete-cookie" | "clear-cookies"
+    ) {
         return mutate_cookies(&wv, operation, params).await;
     }
 

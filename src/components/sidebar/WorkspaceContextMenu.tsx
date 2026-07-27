@@ -90,6 +90,6 @@ export function WorkspaceContextMenu({
         Delete Workspace
       </ConfirmButton>
     </div>,
-    document.body
+    document.body,
   );
 }
