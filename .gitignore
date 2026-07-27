@@ -15,8 +15,18 @@ dist
 dist-ssr
 *.local
 
-# Rust / Tauri build artifacts  ← THIS WAS MISSING
+# Rust / Tauri build artifacts
 src-tauri/target/
+src-tauri/gen/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Vite cache
+.vite/
 
 # Environment and secrets
 .env
@@ -28,11 +38,23 @@ src-tauri/target/
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.msi
+*.exe
+
+# Claude Code local config (may contain machine paths/permissions) — launch.json is shared
+.claude/*
+!.claude/launch.json
+
+# Local working notes, kept out of the public repo
+notes/
 
 # opencode dev config (local plugin hooks — not part of the project)
 .opencode/
