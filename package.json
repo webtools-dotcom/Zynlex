@@ -2,6 +2,7 @@
   "name": "xevo",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@11.13.1",
   "description": "A lightweight desktop browser built for web developers",
   "repository": {
     "type": "git",
