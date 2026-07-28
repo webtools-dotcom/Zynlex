@@ -1,9 +1,18 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useNetworkStore, type NetworkLogEntry, formatSize, formatDuration, resourceTypeLabel, entryIsError, entryIsSlow, entryIsApi } from "@/stores/network";
+import {
+  useNetworkStore,
+  type NetworkLogEntry,
+  formatDuration,
+  resourceTypeLabel,
+} from "@/stores/network";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
-import { entryToCurl, entryToCurlCompact, entryToFetch, copyToClipboard } from "@/lib/networkCopy";
+import { entryToCurl, entryToFetch } from "@/lib/networkCopy";
+import { copyToClipboard } from "@/lib/clipboard";
+import { formatBytes } from "@/lib/format";
+import { hostOf } from "@/lib/url";
+import { useCopy } from "@/hooks/useCopy";
 import { setNetworkCapture } from "@/services/browser";
 
 const METHOD_COLORS: Record<string, string> = {
@@ -47,6 +56,20 @@ function statusColor(code: number): string {
   return "text-[var(--color-text-disabled)]";
 }
 
+const SLOW_THRESHOLD_MS = 1000;
+
+function entryIsError(e: NetworkLogEntry): boolean {
+  return e.statusCode >= 400;
+}
+
+function entryIsSlow(e: NetworkLogEntry): boolean {
+  return e.durationMs > SLOW_THRESHOLD_MS;
+}
+
+function entryIsApi(e: NetworkLogEntry): boolean {
+  return e.resourceType === "xhr" || e.resourceType === "fetch";
+}
+
 const BODY_PREVIEW_MAX = 500;
 
 function bodyPreview(body: string): string {
@@ -68,9 +91,22 @@ const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 /** Same 17 types Rust classifies, in the order they matter for triage. */
 const RESOURCE_TYPES = [
-  "document", "stylesheet", "script", "xhr", "fetch", "image", "media",
-  "font", "websocket", "manifest", "ping", "eventsource", "texttrack",
-  "signedexchange", "cspviolationreport", "other",
+  "document",
+  "stylesheet",
+  "script",
+  "xhr",
+  "fetch",
+  "image",
+  "media",
+  "font",
+  "websocket",
+  "manifest",
+  "ping",
+  "eventsource",
+  "texttrack",
+  "signedexchange",
+  "cspviolationreport",
+  "other",
 ];
 
 const STATUS_RANGES = [
@@ -80,27 +116,12 @@ const STATUS_RANGES = [
   { id: "5xx", label: "5xx", test: (c: number) => c >= 500 },
 ];
 
-function hostOnly(url: string): string {
-  if (!url) return "—";
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
-
 const SELECT_CLASS =
   "text-micro bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded outline-none border border-[var(--color-border)] px-1 py-0.5";
 
 function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () => void }) {
   const [tab, setTab] = useState<"headers" | "body" | "copy">("headers");
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const handleCopy = async (label: string, text: string) => {
-    await copyToClipboard(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 1500);
-  };
+  const { copiedLabel: copied, copy: handleCopy } = useCopy();
 
   return (
     <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] text-micro font-mono">
@@ -116,7 +137,12 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
             </button>
           ))}
         </div>
-        <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-sm leading-none px-1">&times;</button>
+        <button
+          onClick={onClose}
+          className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-sm leading-none px-1"
+        >
+          &times;
+        </button>
       </div>
       <div className="max-h-48 overflow-y-auto p-3">
         {tab === "headers" && (
@@ -127,7 +153,9 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
             </div>
             <div className="flex gap-3">
               <span className="text-[var(--color-text-muted)]">Status:</span>
-              <span className={statusColor(entry.statusCode)}>{entry.statusCode} {entry.reasonPhrase}</span>
+              <span className={statusColor(entry.statusCode)}>
+                {entry.statusCode} {entry.reasonPhrase}
+              </span>
             </div>
             <div className="flex gap-3">
               <span className="text-[var(--color-text-muted)]">Type:</span>
@@ -135,7 +163,7 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
             </div>
             <div className="flex gap-3">
               <span className="text-[var(--color-text-muted)]">Size:</span>
-              <span>{formatSize(entry.contentLength)}</span>
+              <span>{formatBytes(entry.contentLength)}</span>
             </div>
             <div className="flex gap-3">
               <span className="text-[var(--color-text-muted)]">Time:</span>
@@ -167,7 +195,9 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
         {tab === "body" && (
           <div>
             {entry.body ? (
-              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-40 overflow-y-auto">{bodyPreview(entry.body)}</pre>
+              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-40 overflow-y-auto">
+                {bodyPreview(entry.body)}
+              </pre>
             ) : (
               <div className="text-[var(--color-text-muted)] italic">(no response body)</div>
             )}
@@ -179,25 +209,29 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[var(--color-text-muted)]">cURL</span>
                 <button
-                  onClick={() => handleCopy("curl", entryToCurl(entry))}
+                  onClick={() => handleCopy(entryToCurl(entry), "curl")}
                   className="text-micro px-2 py-0.5 rounded bg-[var(--color-hover)] hover:bg-[var(--color-border)]"
                 >
                   {copied === "curl" ? "Copied!" : "Copy"}
                 </button>
               </div>
-              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-32 overflow-y-auto">{entryToCurl(entry)}</pre>
+              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-32 overflow-y-auto">
+                {entryToCurl(entry)}
+              </pre>
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[var(--color-text-muted)]">fetch()</span>
                 <button
-                  onClick={() => handleCopy("fetch", entryToFetch(entry))}
+                  onClick={() => handleCopy(entryToFetch(entry), "fetch")}
                   className="text-micro px-2 py-0.5 rounded bg-[var(--color-hover)] hover:bg-[var(--color-border)]"
                 >
                   {copied === "fetch" ? "Copied!" : "Copy"}
                 </button>
               </div>
-              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-32 overflow-y-auto">{entryToFetch(entry)}</pre>
+              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-32 overflow-y-auto">
+                {entryToFetch(entry)}
+              </pre>
             </div>
           </div>
         )}
@@ -206,10 +240,18 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
   );
 }
 
-function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSelected: boolean; onClick: () => void }) {
+function EntryRow({
+  entry,
+  isSelected,
+  onClick,
+}: {
+  entry: NetworkLogEntry;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
   const handleCopyCurl = (e: React.MouseEvent) => {
     e.stopPropagation();
-    copyToClipboard(entryToCurlCompact(entry));
+    copyToClipboard(entryToCurl(entry, true));
   };
 
   return (
@@ -217,29 +259,43 @@ function EntryRow({ entry, isSelected, onClick }: { entry: NetworkLogEntry; isSe
       role="button"
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{ gridTemplateColumns: GRID_COLS, minWidth: GRID_MIN_WIDTH }}
       className={`grid items-center gap-1.5 px-2 h-[var(--spacing-row-xs)] text-xs font-mono cursor-pointer group odd:bg-white/[0.014] hover:bg-[var(--color-hover)] ${isSelected ? "bg-[var(--color-accent-dim)] shadow-[inset_2px_0_0_var(--color-accent)]" : ""}`}
     >
-      <span className={`font-semibold ${METHOD_COLORS[entry.method] ?? "text-[var(--color-text-disabled)]"}`}>
+      <span
+        className={`font-semibold ${METHOD_COLORS[entry.method] ?? "text-[var(--color-text-disabled)]"}`}
+      >
         {entry.method}
       </span>
       <span className={`text-right tabular-nums ${statusColor(entry.statusCode)}`}>
         {entry.statusCode !== undefined ? entry.statusCode : "---"}
       </span>
-      <span className={`text-micro px-1 rounded-[var(--radius-sm)] justify-self-start truncate ${TYPE_COLORS[entry.resourceType] ?? "bg-gray-500/20 text-gray-400"}`}>
+      <span
+        className={`text-micro px-1 rounded-[var(--radius-sm)] justify-self-start truncate ${TYPE_COLORS[entry.resourceType] ?? "bg-gray-500/20 text-gray-400"}`}
+      >
         {resourceTypeLabel(entry.resourceType)}
       </span>
-      <span className="truncate text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]" title={entry.url}>
+      <span
+        className="truncate text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]"
+        title={entry.url}
+      >
         {entry.url}
       </span>
       <span className="truncate text-[var(--color-text-muted)]" title={entry.referrer || undefined}>
-        {hostOnly(entry.referrer)}
+        {hostOf(entry.referrer, entry.referrer || "—")}
       </span>
       <span className="text-right tabular-nums whitespace-nowrap text-[var(--color-text-muted)]">
-        {formatSize(entry.contentLength)}
+        {formatBytes(entry.contentLength)}
       </span>
-      <span className={`text-right tabular-nums whitespace-nowrap ${entry.durationMs > 1000 ? "text-[var(--color-warn)]" : "text-[var(--color-text-muted)]"}`}>
+      <span
+        className={`text-right tabular-nums whitespace-nowrap ${entry.durationMs > 1000 ? "text-[var(--color-warn)]" : "text-[var(--color-text-muted)]"}`}
+      >
         {formatDuration(entry.durationMs)}
       </span>
       <button
@@ -295,7 +351,7 @@ export function NetworkPanel() {
     let out = entries;
     if (filter === "errors") out = out.filter(entryIsError);
     else if (filter === "api") out = out.filter(entryIsApi);
-    else if (filter === "slow") out = out.filter((e) => entryIsSlow(e));
+    else if (filter === "slow") out = out.filter(entryIsSlow);
 
     if (methodFilter) out = out.filter((e) => e.method === methodFilter);
     if (typeFilter) out = out.filter((e) => e.resourceType === typeFilter);
@@ -318,7 +374,7 @@ export function NetworkPanel() {
   }, [entries]);
 
   const errorCount = useMemo(() => entries.filter(entryIsError).length, [entries]);
-  const slowCount = useMemo(() => entries.filter((e) => entryIsSlow(e)).length, [entries]);
+  const slowCount = useMemo(() => entries.filter(entryIsSlow).length, [entries]);
   const apiCount = useMemo(() => entries.filter(entryIsApi).length, [entries]);
 
   useEffect(() => {
@@ -340,7 +396,7 @@ export function NetworkPanel() {
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--color-border)]">
         <span className="text-micro font-medium text-[var(--color-text-muted)]">
           {filtered.length}/{entries.length} request{entries.length !== 1 ? "s" : ""}
-          {totalSize > 0 && <span className="ml-2 font-normal">({formatSize(totalSize)})</span>}
+          {totalSize > 0 && <span className="ml-2 font-normal">({formatBytes(totalSize)})</span>}
         </span>
         <div className="flex items-center gap-2 text-micro">
           {errorCount > 0 && <span className="text-[var(--color-dead)]">{errorCount} err</span>}
@@ -359,7 +415,11 @@ export function NetworkPanel() {
           </button>
           {entries.length > 0 && activeTabId && (
             <button
-              onClick={() => { clearTab(activeTabId); setSelectedId(null); prevLength.current = 0; }}
+              onClick={() => {
+                clearTab(activeTabId);
+                setSelectedId(null);
+                prevLength.current = 0;
+              }}
               className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] px-1.5 py-0.5 rounded hover:bg-[var(--color-hover)]"
             >
               Clear
@@ -384,7 +444,11 @@ export function NetworkPanel() {
           className={SELECT_CLASS}
         >
           <option value="">Method</option>
-          {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+          {METHODS.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
         </select>
         <select
           value={statusFilter}
@@ -393,7 +457,11 @@ export function NetworkPanel() {
           className={SELECT_CLASS}
         >
           <option value="">Status</option>
-          {STATUS_RANGES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          {STATUS_RANGES.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.label}
+            </option>
+          ))}
         </select>
         <select
           value={typeFilter}
@@ -403,7 +471,9 @@ export function NetworkPanel() {
         >
           <option value="">Type</option>
           {RESOURCE_TYPES.map((t) => (
-            <option key={t} value={t}>{resourceTypeLabel(t)}</option>
+            <option key={t} value={t}>
+              {resourceTypeLabel(t)}
+            </option>
           ))}
         </select>
         <label
@@ -430,14 +500,18 @@ export function NetworkPanel() {
           return (
             <button
               key={f.id}
-              onClick={() => { setFilter(f.id); setSelectedId(null); }}
+              onClick={() => {
+                setFilter(f.id);
+                setSelectedId(null);
+              }}
               className={`text-xs px-2.5 py-0.5 rounded-full transition-colors ${
                 filter === f.id
                   ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
                   : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]"
               }`}
             >
-              {f.label}{count > 0 ? ` (${count})` : ""}
+              {f.label}
+              {count > 0 ? ` (${count})` : ""}
             </button>
           );
         })}
@@ -460,7 +534,11 @@ export function NetworkPanel() {
           <span />
         </div>
 
-        <div ref={scrollRef} style={{ minWidth: GRID_MIN_WIDTH }} className="flex-1 overflow-y-auto">
+        <div
+          ref={scrollRef}
+          style={{ minWidth: GRID_MIN_WIDTH }}
+          className="flex-1 overflow-y-auto"
+        >
           {filtered.length === 0 ? (
             <div className="text-micro text-[var(--color-text-muted)] px-3 py-4 italic">
               {entries.length === 0

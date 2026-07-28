@@ -1,5 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, ArrowRight, RotateCw, X, MoreHorizontal, Star, Columns3, Camera, Lock, ShieldAlert, Wrench } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  RotateCw,
+  X,
+  MoreHorizontal,
+  Star,
+  Columns3,
+  Lock,
+  ShieldAlert,
+  Wrench,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
@@ -9,8 +20,6 @@ import { useBookmarksStore } from "@/stores/bookmarks";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { resolveInput } from "@/lib/url";
-import { takeScreenshot } from "@/services/browser";
-import { copyToClipboard } from "@/lib/screenshot";
 
 /**
  * Address-bar security indicator, derived purely from the URL scheme.
@@ -89,9 +98,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
   const isCurrentBookmarked =
     activeTab?.url != null &&
     activeTab.url !== "" &&
-    bookmarks.some(
-      (b) => b.workspaceId === activeWorkspaceId && b.url === activeTab.url,
-    );
+    bookmarks.some((b) => b.workspaceId === activeWorkspaceId && b.url === activeTab.url);
 
   const [draft, setDraft] = useState(activeTab?.url ?? "");
   const [focused, setFocused] = useState(false);
@@ -130,7 +137,9 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
         focusInput();
       }
     }
-    function onForwarded() { focusInput(); }
+    function onForwarded() {
+      focusInput();
+    }
     window.addEventListener("keydown", handler);
     window.addEventListener("xevo:focus-address-bar", onForwarded);
     return () => {
@@ -216,9 +225,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
               "pr-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]",
               !focused && activeTab?.url ? "pl-7" : "pl-3",
               "focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]",
-              focused
-                ? "font-[var(--font-ui)] text-sm"
-                : "font-[var(--font-mono)] text-sm",
+              focused ? "font-[var(--font-ui)] text-sm" : "font-[var(--font-mono)] text-sm",
             )}
             spellCheck={false}
             autoCorrect="off"
@@ -227,7 +234,10 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
 
           {focused && draft && (
             <button
-              onMouseDown={(e) => { e.preventDefault(); setDraft(""); }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setDraft("");
+              }}
               aria-label="Clear address bar"
               className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] transition-colors"
             >
@@ -268,29 +278,10 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
           "w-8 h-8 flex items-center justify-center rounded-[4px] transition-colors",
           viewportMode
             ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
-            : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
+            : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]",
         )}
       >
         <Columns3 size={15} />
-      </button>
-
-      {/* Screenshot button — saves to disk + copies to clipboard */}
-      <button
-        onClick={() => {
-          takeScreenshot()
-            .then(({ bytes }) => copyToClipboard(bytes))
-            .catch((error) => {
-              useUIStore.getState().pushToast(
-                `Screenshot failed: ${String(error)}`,
-                "danger"
-              );
-            });
-        }}
-        title="Take screenshot (Ctrl+Shift+S)"
-        aria-label="Take screenshot"
-        className="w-8 h-8 flex items-center justify-center rounded-[4px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
-      >
-        <Camera size={15} />
       </button>
 
       {/* Right-side actions */}

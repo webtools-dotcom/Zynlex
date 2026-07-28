@@ -40,11 +40,7 @@ pub async fn api_fetch(req: ApiFetchRequest) -> Result<ApiFetchResponse, String>
     let duration_ms = started.elapsed().as_millis() as u64;
 
     let status = resp.status().as_u16();
-    let status_text = resp
-        .status()
-        .canonical_reason()
-        .unwrap_or("")
-        .to_string();
+    let status_text = resp.status().canonical_reason().unwrap_or("").to_string();
     let headers = resp
         .headers()
         .iter()

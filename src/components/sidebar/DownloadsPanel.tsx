@@ -3,14 +3,7 @@ import { useDownloadsStore } from "@/stores/downloads";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { openDownload } from "@/services/browser";
 import { useUIStore } from "@/stores/ui";
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
+import { hostOf } from "@/lib/url";
 
 export function DownloadsPanel() {
   const items = useDownloadsStore((s) => s.items);
@@ -18,7 +11,7 @@ export function DownloadsPanel() {
 
   function reveal(path: string, inFolder: boolean) {
     openDownload(path, inFolder).catch((err) =>
-      useUIStore.getState().pushToast(String(err), "danger")
+      useUIStore.getState().pushToast(String(err), "danger"),
     );
   }
 
@@ -42,7 +35,10 @@ export function DownloadsPanel() {
       {items.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center py-4">
-            <Download size={22} className="mx-auto mb-1.5 text-[var(--color-text-disabled)] opacity-40" />
+            <Download
+              size={22}
+              className="mx-auto mb-1.5 text-[var(--color-text-disabled)] opacity-40"
+            />
             <p className="text-sm text-[var(--color-text-muted)]">No downloads yet</p>
             <p className="text-xs text-[var(--color-text-disabled)] mt-0.5">
               Files you download will appear here
@@ -57,7 +53,10 @@ export function DownloadsPanel() {
               className="group flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--color-hover)] transition-colors"
             >
               {d.status === "active" ? (
-                <Loader2 size={12} className="animate-spin text-[var(--color-accent)] flex-shrink-0" />
+                <Loader2
+                  size={12}
+                  className="animate-spin text-[var(--color-accent)] flex-shrink-0"
+                />
               ) : (
                 <FileText
                   size={12}
@@ -77,7 +76,7 @@ export function DownloadsPanel() {
                     ? "Downloading…"
                     : d.status === "failed"
                       ? "Failed"
-                      : hostOf(d.url)}
+                      : hostOf(d.url, d.url)}
                 </p>
               </div>
               {d.status === "done" && (

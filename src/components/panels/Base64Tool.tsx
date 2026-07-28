@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useCopy } from "@/hooks/useCopy";
 
 function b64Encode(text: string, urlSafe: boolean): string {
   const bytes = new TextEncoder().encode(text);
@@ -28,7 +29,7 @@ export function Base64Tool() {
   const [mode, setMode] = useState<"encode" | "decode">("encode");
   const [urlSafe, setUrlSafe] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copiedLabel: copied, copy } = useCopy(2000);
 
   useEffect(() => {
     if (!input) {
@@ -53,11 +54,8 @@ export function Base64Tool() {
 
   const handleCopy = useCallback(() => {
     if (!output) return;
-    navigator.clipboard.writeText(output).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [output]);
+    copy(output);
+  }, [output, copy]);
 
   const textareaStyle = {
     background: "var(--color-base)",
@@ -75,9 +73,15 @@ export function Base64Tool() {
             onClick={() => setMode(m)}
             className="flex-1 h-8 text-sm border rounded-[4px] capitalize transition-colors"
             style={{
-              background: mode === m ? "color-mix(in srgb, var(--color-accent) 20%, transparent)" : "transparent",
+              background:
+                mode === m
+                  ? "color-mix(in srgb, var(--color-accent) 20%, transparent)"
+                  : "transparent",
               color: mode === m ? "var(--color-accent)" : "var(--color-text-muted)",
-              borderColor: mode === m ? "color-mix(in srgb, var(--color-accent) 40%, transparent)" : "var(--color-border)",
+              borderColor:
+                mode === m
+                  ? "color-mix(in srgb, var(--color-accent) 40%, transparent)"
+                  : "var(--color-border)",
             }}
           >
             {m}
@@ -100,7 +104,10 @@ export function Base64Tool() {
 
       {/* Input label */}
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
+        <span
+          className="text-xs uppercase tracking-widest"
+          style={{ color: "var(--color-text-muted)" }}
+        >
           Input
         </span>
         <span className="text-xs" style={{ color: "var(--color-text-disabled)" }}>
@@ -119,7 +126,10 @@ export function Base64Tool() {
 
       {/* Output label */}
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>
+        <span
+          className="text-xs uppercase tracking-widest"
+          style={{ color: "var(--color-text-muted)" }}
+        >
           Output
         </span>
         <span className="text-xs" style={{ color: "var(--color-text-disabled)" }}>

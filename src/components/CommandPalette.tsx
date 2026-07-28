@@ -1,15 +1,24 @@
 /**
  * CommandPalette — VS Code-style Ctrl+K overlay.
  *
- * Centered modal with a search input that fuzzy-filters across
- * (1) open tabs in the active workspace and
- * (2) built-in commands (New Tab, Open Settings, Close Current Tab).
- *
- * Keyboard: ArrowUp/Down to move, Enter to run, Escape to close.
- * Mouse: click on a row to run it, click on backdrop to close.
+ * Centered modal with a search input that fuzzy-filters across tabs,
+ * bookmarks, history, workspaces, servers, saved API requests, and built-in
+ * commands — see PaletteType below for the full set. Keyboard: ArrowUp/Down
+ * to move, Enter to run, Escape to close.
  */
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Search, Globe, Plus, Settings, X, Code2, Bookmark, Clock, Server, Layers } from "lucide-react";
+import {
+  Search,
+  Globe,
+  Plus,
+  Settings,
+  X,
+  Code2,
+  Bookmark,
+  Clock,
+  Server,
+  Layers,
+} from "lucide-react";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useUIStore } from "@/stores/ui";
@@ -19,19 +28,9 @@ import { useServersStore } from "@/stores/servers";
 import { useApiCollectionsStore } from "@/stores/apiCollections";
 import { LOAD_REQUEST_EVENT } from "@/components/panels/ApiTester";
 import { closeTabWebview } from "@/services/browser";
-import {
-  getLiveWorkspaceActiveTabId,
-  getLiveWorkspaceTabIds,
-} from "@/lib/workspaceTabs";
+import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 
-type PaletteType =
-  | "tab"
-  | "command"
-  | "bookmark"
-  | "history"
-  | "workspace"
-  | "server"
-  | "request";
+type PaletteType = "tab" | "command" | "bookmark" | "history" | "workspace" | "server" | "request";
 
 type PaletteItem = {
   id: string;
@@ -54,7 +53,13 @@ const GROUP_LABELS: Record<PaletteType, string> = {
 
 /** Fixed group order, so results never reshuffle between keystrokes. */
 const GROUP_ORDER: PaletteType[] = [
-  "tab", "command", "bookmark", "request", "server", "workspace", "history",
+  "tab",
+  "command",
+  "bookmark",
+  "request",
+  "server",
+  "workspace",
+  "history",
 ];
 
 export function CommandPalette() {
@@ -84,9 +89,7 @@ export function CommandPalette() {
         label: tab?.title || tab?.url || "New Tab",
         sublabel: tab?.url || "",
         action: () => {
-          useWorkspacesStore
-            .getState()
-            .setActiveTab(activeWorkspaceId, tabId);
+          useWorkspacesStore.getState().setActiveTab(activeWorkspaceId, tabId);
           useUIStore.getState().closeCommandPalette();
         },
       };
@@ -239,14 +242,19 @@ export function CommandPalette() {
         useUIStore.getState().closeCommandPalette();
         setTimeout(
           () => window.dispatchEvent(new CustomEvent(LOAD_REQUEST_EVENT, { detail: r })),
-          0
+          0,
         );
       },
     }));
 
     const allItems = [
-      ...tabItems, ...commandItems, ...bookmarkItems,
-      ...requestItems, ...serverItems, ...workspaceItems, ...historyItems,
+      ...tabItems,
+      ...commandItems,
+      ...bookmarkItems,
+      ...requestItems,
+      ...serverItems,
+      ...workspaceItems,
+      ...historyItems,
     ];
 
     const q = query.trim().toLowerCase();
@@ -254,14 +262,12 @@ export function CommandPalette() {
       ? allItems.filter(
           (item) =>
             item.label.toLowerCase().includes(q) ||
-            (item.sublabel?.toLowerCase().includes(q) ?? false)
+            (item.sublabel?.toLowerCase().includes(q) ?? false),
         )
       : allItems;
 
     // Group in a fixed order, and float recently-used entries to the very top.
-    const byGroup = GROUP_ORDER.flatMap((type) =>
-      matched.filter((i) => i.type === type)
-    );
+    const byGroup = GROUP_ORDER.flatMap((type) => matched.filter((i) => i.type === type));
     const recent = recentPaletteIds
       .map((id) => byGroup.find((i) => i.id === id))
       .filter((i): i is PaletteItem => !!i);
@@ -269,8 +275,16 @@ export function CommandPalette() {
 
     return [...recent, ...rest].slice(0, q ? 30 : 12);
   }, [
-    query, tabs, workspaces, workspaceOrder, activeWorkspaceId,
-    bookmarks, historyEntries, servers, collections, recentPaletteIds,
+    query,
+    tabs,
+    workspaces,
+    workspaceOrder,
+    activeWorkspaceId,
+    bookmarks,
+    historyEntries,
+    servers,
+    collections,
+    recentPaletteIds,
   ]);
 
   function run(item: PaletteItem) {
@@ -299,7 +313,6 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", handler);
   }, [results, selectedIndex]);
 
-  // Reset selection when query changes
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
@@ -392,7 +405,9 @@ export function CommandPalette() {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-[var(--color-text-primary)] truncate">{item.label}</div>
+                      <div className="text-sm text-[var(--color-text-primary)] truncate">
+                        {item.label}
+                      </div>
                     </div>
 
                     <span className="text-micro text-[var(--color-text-disabled)] shrink-0 max-w-[45%] truncate">
@@ -408,5 +423,3 @@ export function CommandPalette() {
     </div>
   );
 }
-
-export default CommandPalette;

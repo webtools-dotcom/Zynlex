@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useCopy } from "@/hooks/useCopy";
 import {
   Globe,
   RotateCw,
@@ -12,6 +13,7 @@ import {
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useInspectorStore } from "@/stores/inspector";
+import { formatBytes } from "@/lib/format";
 import { evalInspector, inspectorMutate, apiFetch } from "@/services/browser";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { SocialPreviewCard } from "@/components/panels/SocialPreview";
@@ -21,20 +23,14 @@ import type { InspectorSubTab } from "@/stores/inspector";
 import type { CookieEntry } from "@/types";
 
 function CopyIcon({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }, [text]);
+  const { copiedLabel, copy } = useCopy();
   return (
     <button
-      onClick={handleCopy}
+      onClick={() => copy(text)}
       className="opacity-0 group-hover:opacity-100 p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer transition-all"
       title="Copy"
     >
-      {copied ? (
+      {copiedLabel ? (
         <ClipboardCheck size={12} className="text-[var(--color-live)]" />
       ) : (
         <span className="text-micro">copy</span>
@@ -69,14 +65,16 @@ function MetaSubTab() {
   const errCount = validations.filter((v) => v.status === "error").length;
 
   const seoGroup = meta.metas.filter((m) =>
-    ["description", "keywords", "robots", "googlebot", "author"].includes(m.name)
+    ["description", "keywords", "robots", "googlebot", "author"].includes(m.name),
   );
   const ogGroup = meta.metas.filter(
-    (m) => m.name.startsWith("og:") || (m as unknown as Record<string, string>).property?.startsWith("og:")
+    (m) =>
+      m.name.startsWith("og:") ||
+      (m as unknown as Record<string, string>).property?.startsWith("og:"),
   );
   const twitterGroup = meta.metas.filter((m) => m.name.startsWith("twitter:"));
   const otherGroup = meta.metas.filter(
-    (m) => !seoGroup.includes(m) && !ogGroup.includes(m) && !twitterGroup.includes(m)
+    (m) => !seoGroup.includes(m) && !ogGroup.includes(m) && !twitterGroup.includes(m),
   );
 
   const groups = [
@@ -115,12 +113,16 @@ function MetaSubTab() {
       let sizeKB: number | undefined;
       try {
         const resp = await apiFetch({ method: "HEAD", url, headers: {} });
-        const ct = Object.entries(resp.headers).find(([k]) => k.toLowerCase() === "content-type")?.[1];
+        const ct = Object.entries(resp.headers).find(
+          ([k]) => k.toLowerCase() === "content-type",
+        )?.[1];
         if (ct && !ct.startsWith("image/")) {
           setDiagResult({ status: "error", message: `Not an image (${ct})` });
           return;
         }
-        const len = Object.entries(resp.headers).find(([k]) => k.toLowerCase() === "content-length")?.[1];
+        const len = Object.entries(resp.headers).find(
+          ([k]) => k.toLowerCase() === "content-length",
+        )?.[1];
         if (len) sizeKB = parseInt(len, 10) / 1024;
       } catch {
         // HEAD failed — still report dimensions below
@@ -142,10 +144,10 @@ function MetaSubTab() {
       }
       const declW = record["og:image:width"];
       const declH = record["og:image:height"];
-      if (declW && parseInt(declW) !== width) {
+      if (declW && parseInt(declW, 10) !== width) {
         issues.push(`Declared width ${declW}px but actual is ${width}px`);
       }
-      if (declH && parseInt(declH) !== height) {
+      if (declH && parseInt(declH, 10) !== height) {
         issues.push(`Declared height ${declH}px but actual is ${height}px`);
       }
       const sizePart = sizeKB !== undefined ? `, ${Math.round(sizeKB)}KB` : "";
@@ -181,9 +183,7 @@ function MetaSubTab() {
             ) : (
               <XCircle size={11} className="text-[var(--color-dead)] shrink-0 mt-0.5" />
             )}
-            <span className="text-xs text-[var(--color-text-primary)]">
-              {v.field}
-            </span>
+            <span className="text-xs text-[var(--color-text-primary)]">{v.field}</span>
             <span className="text-micro text-[var(--color-text-disabled)] ml-auto shrink-0">
               {v.message}
             </span>
@@ -222,7 +222,15 @@ function MetaSubTab() {
               {diagResult?.status === "loading" ? "Checking…" : "Run diagnostics"}
             </button>
             {diagResult && diagResult.status !== "loading" && (
-              <span className={diagResult.status === "valid" ? "text-[#22c55e]" : diagResult.status === "warning" ? "text-[var(--color-warn)]" : "text-[#ef4444]"}>
+              <span
+                className={
+                  diagResult.status === "valid"
+                    ? "text-[#22c55e]"
+                    : diagResult.status === "warning"
+                      ? "text-[var(--color-warn)]"
+                      : "text-[#ef4444]"
+                }
+              >
                 <span className="text-micro">{diagResult.message}</span>
               </span>
             )}
@@ -256,12 +264,14 @@ function MetaSubTab() {
       {meta.ldJson && meta.ldJson.length > 0 && (
         <div className="mb-2">
           <button
-            onClick={() => setCollapsedGroups((prev) => {
-              const next = new Set(prev);
-              if (next.has("ldjson")) next.delete("ldjson");
-              else next.add("ldjson");
-              return next;
-            })}
+            onClick={() =>
+              setCollapsedGroups((prev) => {
+                const next = new Set(prev);
+                if (next.has("ldjson")) next.delete("ldjson");
+                else next.add("ldjson");
+                return next;
+              })
+            }
             className="flex items-center gap-1 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)] cursor-pointer w-full text-left py-0.5"
           >
             <Code size={12} />
@@ -298,10 +308,17 @@ function MetaSubTab() {
           {!collapsedGroups.has(group.key) && (
             <div className="ml-2">
               {group.items.map((item, i) => {
-                const name = item.name || (item as unknown as Record<string, string>).property || "";
+                const name =
+                  item.name || (item as unknown as Record<string, string>).property || "";
                 return (
-                  <div key={`${group.key}-${i}`} className="group flex items-start gap-2 py-1 rounded-[var(--radius-sm)] hover:bg-[var(--color-hover)]">
-                    <span className="w-[9.5rem] shrink-0 text-xs font-mono text-[var(--color-text-disabled)] truncate" title={name}>
+                  <div
+                    key={`${group.key}-${i}`}
+                    className="group flex items-start gap-2 py-1 rounded-[var(--radius-sm)] hover:bg-[var(--color-hover)]"
+                  >
+                    <span
+                      className="w-[9.5rem] shrink-0 text-xs font-mono text-[var(--color-text-disabled)] truncate"
+                      title={name}
+                    >
                       {name}
                     </span>
                     <span className="flex-1 min-w-0 text-xs font-mono text-[var(--color-text-primary)] break-all line-clamp-3">
@@ -341,11 +358,13 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
         name: cookie.name,
         domain: cookie.domain,
         path: cookie.path,
-      }).then(() => {
-        setTimeout(doRefresh, 300);
-      }).catch(() => {});
+      })
+        .then(() => {
+          setTimeout(doRefresh, 300);
+        })
+        .catch(() => {});
     },
-    [tabId, doRefresh]
+    [tabId, doRefresh],
   );
 
   const handleSave = useCallback(
@@ -355,12 +374,14 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
         value,
         domain: cookie.domain,
         path: cookie.path,
-      }).then(() => {
-        setTimeout(doRefresh, 300);
-        setExpandedIdx(null);
-      }).catch(() => {});
+      })
+        .then(() => {
+          setTimeout(doRefresh, 300);
+          setExpandedIdx(null);
+        })
+        .catch(() => {});
     },
-    [tabId, doRefresh]
+    [tabId, doRefresh],
   );
 
   const handleAdd = useCallback(() => {
@@ -368,18 +389,22 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
     inspectorMutate(tabId, "set-cookie", {
       name: addName,
       value: addValue,
-    }).then(() => {
-      setTimeout(doRefresh, 300);
-      setAddName("");
-      setAddValue("");
-      setShowAdd(false);
-    }).catch(() => {});
+    })
+      .then(() => {
+        setTimeout(doRefresh, 300);
+        setAddName("");
+        setAddValue("");
+        setShowAdd(false);
+      })
+      .catch(() => {});
   }, [tabId, addName, addValue, doRefresh]);
 
   const handleClearAll = useCallback(() => {
-    inspectorMutate(tabId, "clear-cookies", {}).then(() => {
-      setTimeout(doRefresh, 300);
-    }).catch(() => {});
+    inspectorMutate(tabId, "clear-cookies", {})
+      .then(() => {
+        setTimeout(doRefresh, 300);
+      })
+      .catch(() => {});
   }, [tabId, doRefresh]);
 
   return (
@@ -423,12 +448,18 @@ function CookiesSubTab({ tabId }: { tabId: string }) {
                 {cookie.name}
               </span>
               {cookie.httpOnly && (
-                <span className="text-micro px-1 rounded bg-[var(--color-warn)]/15 text-[var(--color-warn)]" title="HttpOnly">
+                <span
+                  className="text-micro px-1 rounded bg-[var(--color-warn)]/15 text-[var(--color-warn)]"
+                  title="HttpOnly"
+                >
                   HTTP
                 </span>
               )}
               {cookie.secure && (
-                <span className="text-micro px-1 rounded bg-[#22c55e]/15 text-[#22c55e]" title="Secure">
+                <span
+                  className="text-micro px-1 rounded bg-[#22c55e]/15 text-[#22c55e]"
+                  title="Secure"
+                >
                   SEC
                 </span>
               )}
@@ -551,18 +582,9 @@ function StorageSubTab({
   const [addKey, setAddKey] = useState("");
   const [addValue, setAddValue] = useState("");
 
-  const items =
-    storageSubTab === "localStorage" ? localStorageItems : sessionStorageItems;
+  const items = storageSubTab === "localStorage" ? localStorageItems : sessionStorageItems;
 
-  const totalSize = items.reduce(
-    (sum, item) => sum + item.key.length + item.value.length,
-    0
-  );
-
-  const formatBytes = (chars: number) => {
-    if (chars < 1024) return `${chars} B`;
-    return `${(chars / 1024).toFixed(1)} KB`;
-  };
+  const totalSize = items.reduce((sum, item) => sum + item.key.length + item.value.length, 0);
 
   const doRefresh = useCallback(() => {
     evalInspector(tabId, storageSubTab).catch(() => {});
@@ -573,11 +595,13 @@ function StorageSubTab({
       inspectorMutate(tabId, "delete-storage", {
         storeType: storageSubTab,
         key,
-      }).then(() => {
-        setTimeout(doRefresh, 300);
-      }).catch(() => {});
+      })
+        .then(() => {
+          setTimeout(doRefresh, 300);
+        })
+        .catch(() => {});
     },
-    [tabId, storageSubTab, doRefresh]
+    [tabId, storageSubTab, doRefresh],
   );
 
   const handleSave = useCallback(
@@ -586,12 +610,14 @@ function StorageSubTab({
         storeType: storageSubTab,
         key,
         value,
-      }).then(() => {
-        setTimeout(doRefresh, 300);
-        setExpandedIdx(null);
-      }).catch(() => {});
+      })
+        .then(() => {
+          setTimeout(doRefresh, 300);
+          setExpandedIdx(null);
+        })
+        .catch(() => {});
     },
-    [tabId, storageSubTab, doRefresh]
+    [tabId, storageSubTab, doRefresh],
   );
 
   const handleAdd = useCallback(() => {
@@ -600,20 +626,24 @@ function StorageSubTab({
       storeType: storageSubTab,
       key: addKey,
       value: addValue,
-    }).then(() => {
-      setTimeout(doRefresh, 300);
-      setAddKey("");
-      setAddValue("");
-      setShowAdd(false);
-    }).catch(() => {});
+    })
+      .then(() => {
+        setTimeout(doRefresh, 300);
+        setAddKey("");
+        setAddValue("");
+        setShowAdd(false);
+      })
+      .catch(() => {});
   }, [tabId, storageSubTab, addKey, addValue, doRefresh]);
 
   const handleClear = useCallback(() => {
     inspectorMutate(tabId, "clear-storage", {
       storeType: storageSubTab,
-    }).then(() => {
-      setTimeout(doRefresh, 300);
-    }).catch(() => {});
+    })
+      .then(() => {
+        setTimeout(doRefresh, 300);
+      })
+      .catch(() => {});
   }, [tabId, storageSubTab, doRefresh]);
 
   const formatValue = (val: string) => {
@@ -798,28 +828,26 @@ export function InspectorPanel() {
   const cookies = useInspectorStore((s) => s.cookies);
   const localStorageItems = useInspectorStore((s) => s.localStorageItems);
 
-  const [storageSubTab, setStorageSubTab] = useState<
-    "localStorage" | "sessionStorage"
-  >("localStorage");
+  const [storageSubTab, setStorageSubTab] = useState<"localStorage" | "sessionStorage">(
+    "localStorage",
+  );
 
   const refresh = useCallback(
     (subTab: InspectorSubTab) => {
       if (!activeTabId) return;
       const store = useInspectorStore.getState();
-      const type =
-        subTab === "storage"
-          ? storageSubTab
-          : subTab;
+      const type = subTab === "storage" ? storageSubTab : subTab;
       store.setIsLoading(true);
-      evalInspector(activeTabId, type as "meta" | "cookies" | "localStorage" | "sessionStorage").catch(
-        (e) => {
-          const s = useInspectorStore.getState();
-          s.setError(String(e));
-          s.setIsLoading(false);
-        }
-      );
+      evalInspector(
+        activeTabId,
+        type as "meta" | "cookies" | "localStorage" | "sessionStorage",
+      ).catch((e) => {
+        const s = useInspectorStore.getState();
+        s.setError(String(e));
+        s.setIsLoading(false);
+      });
     },
-    [activeTabId, storageSubTab]
+    [activeTabId, storageSubTab],
   );
 
   // Refresh on active tab or subtab change — clear stale data on tab switch
@@ -832,7 +860,6 @@ export function InspectorPanel() {
       store.setLastTabId(activeTabId);
     }
     refresh(activeSubTab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, activeSubTab, storageSubTab]);
 
   // Auto-refresh every 3 seconds
@@ -842,7 +869,6 @@ export function InspectorPanel() {
       refresh(activeSubTab);
     }, 3000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, activeTab?.url, activeSubTab, storageSubTab]);
 
   // Safety net: force isLoading false after 5 seconds if stuck
@@ -862,10 +888,7 @@ export function InspectorPanel() {
     return (
       <div className="flex items-center justify-center h-full px-4">
         <div className="text-center">
-          <Globe
-            size={28}
-            className="mx-auto mb-2 text-[var(--color-text-disabled)]"
-          />
+          <Globe size={28} className="mx-auto mb-2 text-[var(--color-text-disabled)]" />
           <p className="text-xs text-[var(--color-text-muted)]">
             Navigate to a page to use the Inspector.
           </p>
@@ -904,17 +927,14 @@ export function InspectorPanel() {
           title="Refresh inspector data"
           className="px-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] cursor-pointer transition-colors"
         >
-          <RotateCw
-            size={12}
-            className={isLoading ? "animate-spin" : ""}
-          />
+          <RotateCw size={12} className={isLoading ? "animate-spin" : ""} />
         </button>
       </div>
 
       {/* Error banner */}
       {error && (
         <div className="px-2 py-1 text-xs text-[var(--color-warn)] bg-[var(--color-warn)]/10 border-b border-[var(--color-warn)]/30 flex items-center gap-2">
-          <span className="shrink-0">⚠</span>
+          <AlertTriangle size={12} className="shrink-0" />
           <span className="flex-1 truncate">{error}</span>
           <button
             onClick={() => refresh(activeSubTab)}
@@ -928,25 +948,17 @@ export function InspectorPanel() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {/* Loading state (first load) */}
-        {isLoading &&
-          !meta &&
-          cookies.length === 0 &&
-          localStorageItems.length === 0 && (
-            <div className="flex items-center justify-center h-full">
-              <RotateCw
-                size={20}
-                className="animate-spin text-[var(--color-accent)]"
-              />
-            </div>
-          )}
+        {isLoading && !meta && cookies.length === 0 && localStorageItems.length === 0 && (
+          <div className="flex items-center justify-center h-full">
+            <RotateCw size={20} className="animate-spin text-[var(--color-accent)]" />
+          </div>
+        )}
 
         {/* Meta sub-tab */}
         {activeSubTab === "meta" && <MetaSubTab />}
 
         {/* Cookies sub-tab */}
-        {activeSubTab === "cookies" && (
-          <CookiesSubTab tabId={activeTabId} />
-        )}
+        {activeSubTab === "cookies" && <CookiesSubTab tabId={activeTabId} />}
 
         {/* Storage sub-tab */}
         {activeSubTab === "storage" && (

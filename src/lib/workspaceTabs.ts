@@ -2,7 +2,7 @@ import type { Tab, Workspace } from "@/types";
 
 export function getLiveWorkspaceTabIds(
   workspace: Workspace | null | undefined,
-  tabs: Record<string, Tab>
+  tabs: Record<string, Tab>,
 ): string[] {
   if (!workspace) return [];
 
@@ -11,14 +11,17 @@ export function getLiveWorkspaceTabIds(
   let dups = 0;
 
   for (const tabId of workspace.tabIds) {
-    if (seen.has(tabId)) { dups++; continue; }
+    if (seen.has(tabId)) {
+      dups++;
+      continue;
+    }
     if (!tabs[tabId]) continue;
     seen.add(tabId);
     liveTabIds.push(tabId);
   }
 
   if (dups > 0 && import.meta.env.DEV) {
-    console.warn(`[workspaceTabs] ${dups} duplicate tabId(s) in workspace; ignored`);
+    console.warn(`[xevo] ${dups} duplicate tabId(s) in workspace; ignored`);
   }
 
   return liveTabIds;
@@ -26,7 +29,7 @@ export function getLiveWorkspaceTabIds(
 
 export function getLiveWorkspaceActiveTabId(
   workspace: Workspace | null | undefined,
-  tabs: Record<string, Tab>
+  tabs: Record<string, Tab>,
 ): string | null {
   if (!workspace) return null;
 
@@ -40,8 +43,8 @@ export function getLiveWorkspaceActiveTabId(
 
 export function getLiveWorkspaceActiveTab(
   workspace: Workspace | null | undefined,
-  tabs: Record<string, Tab>
+  tabs: Record<string, Tab>,
 ): Tab | null {
   const activeTabId = getLiveWorkspaceActiveTabId(workspace, tabs);
-  return activeTabId ? tabs[activeTabId] ?? null : null;
+  return activeTabId ? (tabs[activeTabId] ?? null) : null;
 }

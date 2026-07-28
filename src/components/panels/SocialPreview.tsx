@@ -1,16 +1,9 @@
 import { Globe } from "lucide-react";
+import { hostOf } from "@/lib/url";
 
 interface SocialPreviewCardProps {
   platform: "facebook" | "twitter" | "linkedin" | "discord";
   meta: Record<string, string>;
-}
-
-function getHost(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url || "example.com";
-  }
 }
 
 export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
@@ -18,7 +11,7 @@ export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
   const description = meta["og:description"] || meta.description || "";
   const image = meta["twitter:image"] || meta["og:image"] || "";
   const url = meta["og:url"] || meta.canonical || "";
-  const domain = getHost(url);
+  const domain = hostOf(url, "example.com");
 
   const platformColors: Record<string, string> = {
     facebook: "#1877F2",
@@ -47,7 +40,14 @@ export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
 
       {/* Image */}
       {image && (
-        <div className="w-full" style={{ aspectRatio: "1.91 / 1", overflow: "hidden", background: "var(--color-elevated)" }}>
+        <div
+          className="w-full"
+          style={{
+            aspectRatio: "1.91 / 1",
+            overflow: "hidden",
+            background: "var(--color-elevated)",
+          }}
+        >
           <img
             src={image}
             alt=""
@@ -68,7 +68,12 @@ export function SocialPreviewCard({ platform, meta }: SocialPreviewCardProps) {
         )}
         <h3
           className="text-sm font-semibold leading-tight mt-0.5 line-clamp-2"
-          style={{ color: platform === "twitter" || platform === "discord" ? "var(--color-text-primary)" : "#1a1a2e" }}
+          style={{
+            color:
+              platform === "twitter" || platform === "discord"
+                ? "var(--color-text-primary)"
+                : "#1a1a2e",
+          }}
         >
           {platform === "twitter"
             ? title.slice(0, 70)

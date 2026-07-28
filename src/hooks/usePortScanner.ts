@@ -3,19 +3,33 @@ import { useServersStore } from "@/stores/servers";
 import { useSettingsStore } from "@/stores/settings";
 import { scanPorts } from "@/services/browser";
 
-const IS_TAURI =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 // The standard list of dev server ports to scan
 const DEFAULT_SCAN_PORTS: number[] = [
-  1313,  // Hugo
-  3000, 3001, 3002, 3333,
-  4000, 4200, 4321, 4444,  // Angular:4200, Astro:4321
-  5000, 5001, 5173, 5174,  // Vite:5173
-  6006,  // Storybook
-  7000, 7001,
-  8000, 8080, 8081, 8787, 8888,  // Jupyter:8888, CF Workers:8787
-  9000, 9229,  // Node debug:9229
+  1313, // Hugo
+  3000,
+  3001,
+  3002,
+  3333,
+  4000,
+  4200,
+  4321,
+  4444, // Angular:4200, Astro:4321
+  5000,
+  5001,
+  5173,
+  5174, // Vite:5173
+  6006, // Storybook
+  7000,
+  7001,
+  8000,
+  8080,
+  8081,
+  8787,
+  8888, // Jupyter:8888, CF Workers:8787
+  9000,
+  9229, // Node debug:9229
 ];
 
 // usePortScanner is mounted in two places (RootLayout's PortScannerMount for the
@@ -39,9 +53,7 @@ export function usePortScanner() {
 
     try {
       // Merge default ports with any user-added custom ports
-      const allPorts = [
-        ...new Set([...DEFAULT_SCAN_PORTS, ...settings.customPorts]),
-      ];
+      const allPorts = [...new Set([...DEFAULT_SCAN_PORTS, ...settings.customPorts])];
       const results = await scanPorts(allPorts);
 
       // Skip store update if nothing actually changed — prevents
@@ -87,7 +99,6 @@ export function usePortScanner() {
     return () => {
       if (isPrimaryRef.current) primaryMounted = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only on mount
 
   // Periodic scan on interval — only the primary instance runs this.
