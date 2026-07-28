@@ -24,7 +24,7 @@ function getHost(url: string): string {
   }
 }
 
-export function BookmarksPanel() {
+function BookmarksPanel() {
   const bookmarks = useBookmarksStore((s) => s.bookmarks);
   const lastAddedId = useBookmarksStore((s) => s.lastAddedId);
   const removeBookmark = useBookmarksStore((s) => s.removeBookmark);
@@ -65,7 +65,7 @@ export function BookmarksPanel() {
 
   const wsFolders = useMemo(
     () => folders.filter((f) => f.workspaceId === activeWorkspaceId),
-    [folders, activeWorkspaceId]
+    [folders, activeWorkspaceId],
   );
 
   /** Root bookmarks first, then one header + its children per folder. */
@@ -101,7 +101,7 @@ export function BookmarksPanel() {
       const count = importWorkspace(activeWorkspaceId, JSON.parse(await file.text()));
       pushToast(
         count > 0 ? `Imported ${count} bookmark${count === 1 ? "" : "s"}` : "Nothing to import",
-        count > 0 ? "info" : "danger"
+        count > 0 ? "info" : "danger",
       );
     } catch {
       pushToast("Import failed: not valid bookmark JSON", "danger");
@@ -205,15 +205,14 @@ export function BookmarksPanel() {
       {/* Bookmark list */}
       {wsBookmarks.length === 0 && wsFolders.length === 0 ? (
         <div className="text-center py-6">
-          <Bookmark
-            size={22}
-            className="text-[var(--color-text-disabled)] mx-auto mb-2"
-          />
-          <p className="text-sm text-[var(--color-text-disabled)]">
-            No bookmarks yet
-          </p>
+          <Bookmark size={22} className="text-[var(--color-text-disabled)] mx-auto mb-2" />
+          <p className="text-sm text-[var(--color-text-disabled)]">No bookmarks yet</p>
           <p className="text-xs text-[var(--color-text-disabled)] mt-1">
-            Press <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-primary)] rounded text-micro font-mono">Ctrl+D</kbd> on a tab to save it
+            Press{" "}
+            <kbd className="px-1 py-0.5 bg-[var(--color-elevated)] text-[var(--color-text-primary)] rounded text-micro font-mono">
+              Ctrl+D
+            </kbd>{" "}
+            on a tab to save it
           </p>
         </div>
       ) : (
@@ -247,7 +246,7 @@ export function BookmarksPanel() {
                   key={item.id}
                   className={cn(
                     "group flex items-center gap-1.5 px-2 py-1.5 rounded hover:bg-[var(--color-hover)] transition-colors mb-0.5",
-                    isJustAdded && "ring-2 ring-[var(--color-live)] bg-[var(--color-live)]/10"
+                    isJustAdded && "ring-2 ring-[var(--color-live)] bg-[var(--color-live)]/10",
                   )}
                 >
                   {renamingId === item.id ? (
@@ -268,9 +267,7 @@ export function BookmarksPanel() {
                   ) : (
                     <button
                       onClick={() => openBookmark(item.url)}
-                      onDoubleClick={() =>
-                        startRename(item.id, item.title)
-                      }
+                      onDoubleClick={() => startRename(item.id, item.title)}
                       title={`${item.title}\n${item.url}\n\nClick to open · Double-click to rename`}
                       className="flex-1 min-w-0 text-left"
                     >
@@ -304,7 +301,7 @@ export function BookmarksPanel() {
                     className={cn(
                       "w-6 h-6 flex items-center justify-center rounded",
                       "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-border)]",
-                      "opacity-0 group-hover:opacity-100 transition-opacity"
+                      "opacity-0 group-hover:opacity-100 transition-opacity",
                     )}
                   >
                     <ExternalLink size={12} />
@@ -316,7 +313,7 @@ export function BookmarksPanel() {
                     className={cn(
                       "w-6 h-6 flex items-center justify-center rounded",
                       "text-[var(--color-text-disabled)] hover:text-[var(--color-dead)] hover:bg-[var(--color-border)]",
-                      "opacity-0 group-hover:opacity-100 transition-opacity"
+                      "opacity-0 group-hover:opacity-100 transition-opacity",
                     )}
                   >
                     <Trash2 size={12} />

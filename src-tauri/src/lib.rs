@@ -11,9 +11,9 @@ macro_rules! xevo_log {
     };
 }
 
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 /// Tracks which browser webview is currently visible.
 /// Each tab gets a child Webview (via `Window::add_child`) inside the main
@@ -64,7 +64,12 @@ pub struct BrowserState {
 /// correct. Setting height-1 then the real height once (settle timer only, never
 /// per frame) forces the surface to re-render.
 #[cfg(target_os = "windows")]
-pub(crate) fn apply_active_child_bounds(app: &tauri::AppHandle, win_w: f64, win_h: f64, nudge: bool) {
+pub(crate) fn apply_active_child_bounds(
+    app: &tauri::AppHandle,
+    win_w: f64,
+    win_h: f64,
+    nudge: bool,
+) {
     use tauri::Manager;
     let state = app.state::<BrowserState>();
     let fullscreen = state
@@ -84,12 +89,19 @@ pub(crate) fn apply_active_child_bounds(app: &tauri::AppHandle, win_w: f64, win_
     let (x, y, w, h) = if fullscreen {
         (0.0, 0.0, win_w.max(1.0), win_h.max(1.0))
     } else {
-        let Some((left, top, right, bottom)) =
-            *state.content_insets.lock().unwrap_or_else(|e| e.into_inner())
+        let Some((left, top, right, bottom)) = *state
+            .content_insets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
         else {
             return;
         };
-        (left, top, (win_w - left - right).max(1.0), (win_h - top - bottom).max(1.0))
+        (
+            left,
+            top,
+            (win_w - left - right).max(1.0),
+            (win_h - top - bottom).max(1.0),
+        )
     };
 
     let label = state
@@ -98,13 +110,18 @@ pub(crate) fn apply_active_child_bounds(app: &tauri::AppHandle, win_w: f64, win_
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let Some(label) = label else { return };
-    let Some(wv) = commands::browser::find_tab_webview(app, &label) else { return };
+    let Some(wv) = commands::browser::find_tab_webview(app, &label) else {
+        return;
+    };
 
     // The recomposite nudge is for the animated-maximize freeze only. Skip it
     // while fullscreen — a height-1→height flash mid fullscreen transition is
     // exactly the "webview freezes for ~0.5s" jitter.
     if nudge && !fullscreen {
-        let _ = wv.set_size(tauri::Size::Logical(tauri::LogicalSize::new(w, (h - 1.0).max(1.0))));
+        let _ = wv.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
+            w,
+            (h - 1.0).max(1.0),
+        )));
     }
     let bounds = tauri::Rect {
         position: tauri::Position::Logical(tauri::LogicalPosition::new(x, y)),
@@ -121,7 +138,6 @@ pub fn run() {
                 .open_js_links_on_click(false)
                 .build(),
         )
-        .plugin(tauri_plugin_os::init())
         .setup(|_app| {
             // The minimize/restore/orphan-recovery apparatus that used to live
             // here is gone. It existed because each tab was a top-level *owner*
@@ -171,7 +187,9 @@ pub fn run() {
                         if let tauri::WindowEvent::Resized(physical_size) = event {
                             // Synchronous re-apply from THIS event's size — keeps
                             // the child tracking the window smoothly during a drag.
-                            let Some(win) = app_handle.get_window("main") else { return };
+                            let Some(win) = app_handle.get_window("main") else {
+                                return;
+                            };
                             let scale = win.scale_factor().unwrap_or(1.0);
                             let win_w = physical_size.width as f64 / scale;
                             let win_h = physical_size.height as f64 / scale;
@@ -196,8 +214,17 @@ pub fn run() {
                                         // resize handler (monitor-sized); a settle
                                         // re-apply here just adds a mid-transition
                                         // jump.
-                                        if st.fullscreen_tab.lock().unwrap_or_else(|e| e.into_inner()).is_some() { return; }
-                                        let Some(win) = app3.get_window("main") else { return };
+                                        if st
+                                            .fullscreen_tab
+                                            .lock()
+                                            .unwrap_or_else(|e| e.into_inner())
+                                            .is_some()
+                                        {
+                                            return;
+                                        }
+                                        let Some(win) = app3.get_window("main") else {
+                                            return;
+                                        };
                                         let Ok(sz) = win.inner_size() else { return };
                                         let scale = win.scale_factor().unwrap_or(1.0);
                                         let maximized = win.is_maximized().unwrap_or(false);
@@ -237,10 +264,7 @@ pub fn run() {
             commands::browser::browser_set_zoom,
             commands::browser::browser_hard_reload,
             commands::browser::browser_bookmark_request,
-            commands::browser::forward_shortcut,
-            commands::browser::open_external_url,
             commands::browser::open_download,
-            commands::browser::update_tab_info,
             commands::browser::browser_find,
             commands::browser::browser_find_next,
             commands::browser::browser_stop_find,
@@ -259,8 +283,6 @@ pub fn run() {
             commands::browser::probe_viewport,
             commands::browser::resize_viewport,
             commands::browser::show_viewport,
-            commands::browser::hide_viewport,
-            commands::browser::browser_screenshot,
             commands::browser::browser_save_tab_state,
             commands::browser::browser_tab_state_saved,
             commands::browser::browser_restore_tab_state,

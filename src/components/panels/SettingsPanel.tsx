@@ -71,13 +71,7 @@ function SearchEngineButton({
   );
 }
 
-function CompactToggle({
-  value,
-  onToggle,
-}: {
-  value: boolean;
-  onToggle: () => void;
-}) {
+function CompactToggle({ value, onToggle }: { value: boolean; onToggle: () => void }) {
   return (
     <button
       onClick={onToggle}
@@ -100,11 +94,7 @@ function CompactToggle({
 
 export function SettingsPanel() {
   const settings = useSettingsStore((s) => s.settings);
-  const setTheme = useSettingsStore((s) => s.setTheme);
-  const setSearchEngine = useSettingsStore((s) => s.setSearchEngine);
-  const setCustomSearchUrl = useSettingsStore((s) => s.setCustomSearchUrl);
   const setPortScanInterval = useSettingsStore((s) => s.setPortScanInterval);
-  const setCompactMode = useSettingsStore((s) => s.setCompactMode);
   const update = useSettingsStore((s) => s.update);
   const toggleSettingsPanel = useUIStore((s) => s.toggleSettingsPanel);
 
@@ -149,37 +139,41 @@ export function SettingsPanel() {
           label="Dark"
           value="dark"
           current={settings.theme}
-          onSelect={setTheme}
+          onSelect={(theme) => update({ theme })}
         />
         <ThemeButton
           label="Light"
           value="light"
           current={settings.theme}
-          onSelect={setTheme}
+          onSelect={(theme) => update({ theme })}
         />
         <ThemeButton
           label="System"
           value="system"
           current={settings.theme}
-          onSelect={setTheme}
+          onSelect={(theme) => update({ theme })}
         />
       </div>
 
       <div className="flex justify-between items-center mt-3">
         <div>
           <span className="text-sm text-[var(--color-text-muted)] block">Compact Mode</span>
-          <span className="text-xs text-[var(--color-text-disabled)] block">Reduce UI chrome size</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Reduce UI chrome size
+          </span>
         </div>
         <CompactToggle
           value={settings.compactMode}
-          onToggle={() => setCompactMode(!settings.compactMode)}
+          onToggle={() => update({ compactMode: !settings.compactMode })}
         />
       </div>
 
       <div className="flex justify-between items-center mt-3">
         <div>
           <span className="text-sm text-[var(--color-text-muted)] block">Bookmark Bar</span>
-          <span className="text-xs text-[var(--color-text-disabled)] block">Strip under the toolbar</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Strip under the toolbar
+          </span>
         </div>
         <CompactToggle
           value={settings.bookmarkBarVisible}
@@ -190,7 +184,9 @@ export function SettingsPanel() {
       <div className="flex justify-between items-center mt-3">
         <div>
           <span className="text-sm text-[var(--color-text-muted)] block">Vertical Tabs</span>
-          <span className="text-xs text-[var(--color-text-disabled)] block">Tab list as a left column</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Tab list as a left column
+          </span>
         </div>
         <CompactToggle
           value={settings.tabBarPosition === "left"}
@@ -208,25 +204,25 @@ export function SettingsPanel() {
           label="Google"
           value="google"
           current={settings.searchEngine}
-          onSelect={setSearchEngine}
+          onSelect={(searchEngine) => update({ searchEngine })}
         />
         <SearchEngineButton
           label="DuckDuckGo"
           value="duckduckgo"
           current={settings.searchEngine}
-          onSelect={setSearchEngine}
+          onSelect={(searchEngine) => update({ searchEngine })}
         />
         <SearchEngineButton
           label="Bing"
           value="bing"
           current={settings.searchEngine}
-          onSelect={setSearchEngine}
+          onSelect={(searchEngine) => update({ searchEngine })}
         />
         <SearchEngineButton
           label="Custom"
           value="custom"
           current={settings.searchEngine}
-          onSelect={setSearchEngine}
+          onSelect={(searchEngine) => update({ searchEngine })}
         />
       </div>
 
@@ -235,11 +231,11 @@ export function SettingsPanel() {
           type="text"
           placeholder="https://search.example.com?q=%s"
           value={settings.customSearchUrl}
-          onChange={(e) => setCustomSearchUrl(e.target.value)}
+          onChange={(e) => update({ customSearchUrl: e.target.value })}
           className="w-full mt-1 px-2 py-1 text-xs border rounded text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] outline-none focus:border-[var(--color-accent)]"
           style={{
             background: "var(--color-elevated)",
-        borderColor: "var(--color-border)",
+            borderColor: "var(--color-border)",
           }}
         />
       )}
@@ -274,9 +270,7 @@ export function SettingsPanel() {
           {settings.customPorts.map((p) => (
             <button
               key={p}
-              onClick={() =>
-                update({ customPorts: settings.customPorts.filter((x) => x !== p) })
-              }
+              onClick={() => update({ customPorts: settings.customPorts.filter((x) => x !== p) })}
               title={`Remove port ${p}`}
               className="px-1.5 py-0.5 text-xs rounded font-mono bg-[var(--color-elevated)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-[var(--color-dead)] hover:border-[var(--color-dead)]"
             >
@@ -326,5 +320,3 @@ export function SettingsPanel() {
     </div>
   );
 }
-
-export default SettingsPanel;

@@ -1,50 +1,23 @@
 /**
  * useKeyboardShortcuts — global keyboard shortcuts for the browser.
  *
- * Two complementary mechanisms:
- *   1. Main-window keydown listener — works when the user is focused on
- *      the React UI (address bar, sidebar, etc.). Handles input/textarea
- *      guards so shortcuts don't fire while typing.
-  *   2. Browser-focus shortcut bridge via xevo://shortcut � the browser
- *      webview injects a keydown listener that forwards shortcuts to Rust,
- *      which re-emits them back to this hook.
+ * Two complementary mechanisms feed the same handleShortcut(): a main-window
+ * keydown listener (input/textarea guarded) for when focus is on the React
+ * UI, and a bridge for when focus is inside a tab's webview — its injected
+ * script forwards the keypress to Rust, which re-emits it back here. Both
+ * paths are idempotent, so double-handling when they overlap is harmless.
  *
- * Both mechanisms call the same shared handleShortcut() function.
- * All actions are idempotent, so double-handling (when both fire
- * simultaneously) is harmless.
- *
- * Handled shortcuts:
- *   Ctrl/Cmd+K             → open command palette
- *   Ctrl/Cmd+Shift+?       → open keyboard shortcut help
- *   Ctrl/Cmd+F             → open find in page
- *   Ctrl/Cmd+D             → bookmark current tab
- *   Ctrl/Cmd+B             → toggle sidebar
- *   Ctrl/Cmd+,             → toggle settings panel
- *   Ctrl/Cmd+R             → reload
- *   Ctrl/Cmd+T             → new tab
- *   Ctrl/Cmd+W             → close tab
- *   Ctrl/Cmd+Shift+T       → reopen last closed tab
- *   Ctrl/Cmd+Shift+S       → take screenshot
- *   Ctrl/Cmd+L             → focus address bar
- *   Alt+ArrowLeft          → back
- *   Alt+ArrowRight         → forward
- *   Escape                 → close find / stop loading
- *   Ctrl+Tab               → next tab
- *   Ctrl+Shift+Tab         → previous tab
- *   Ctrl/Cmd+1..9          → switch to tab N
+ * Full shortcut list: see ShortcutHelp.tsx, the single source of truth shown
+ * to users (Ctrl/Cmd+?).
  */
 import { useEffect, useRef } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useUIStore } from "@/stores/ui";
 import { useTabsStore } from "@/stores/tabs";
-import {
-  getLiveWorkspaceActiveTabId,
-  getLiveWorkspaceTabIds,
-} from "@/lib/workspaceTabs";
+import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
-import { closeTabWebview, takeScreenshot, setTabZoom, hardReload } from "@/services/browser";
-import { copyToClipboard } from "@/lib/screenshot";
+import { closeTabWebview, setTabZoom, hardReload } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
@@ -56,7 +29,7 @@ function hardReloadActiveTab() {
   const wsState = useWorkspacesStore.getState();
   const tabId = getLiveWorkspaceActiveTabId(
     wsState.workspaces[wsState.activeWorkspaceId],
-    useTabsStore.getState().tabs
+    useTabsStore.getState().tabs,
   );
   if (tabId) hardReload(tabId).catch(() => {});
 }
@@ -71,10 +44,7 @@ function switchWorkspace(index: number) {
 function applyZoom(dir: -1 | 0 | 1) {
   const wsState = useWorkspacesStore.getState();
   const wsId = wsState.activeWorkspaceId;
-  const tabId = getLiveWorkspaceActiveTabId(
-    wsState.workspaces[wsId],
-    useTabsStore.getState().tabs
-  );
+  const tabId = getLiveWorkspaceActiveTabId(wsState.workspaces[wsId], useTabsStore.getState().tabs);
   if (!tabId) return;
 
   let next = 1;
@@ -153,18 +123,6 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     return;
   }
 
-  if (shortcut === "ctrl+shift+s") {
-    takeScreenshot()
-      .then(({ bytes }) => copyToClipboard(bytes))
-      .catch((error) => {
-        useUIStore.getState().pushToast(
-          `Screenshot failed: ${String(error)}`,
-          "danger"
-        );
-      });
-    return;
-  }
-
   if (shortcut === "ctrl+?" || shortcut === "ctrl+shift+/") {
     useUIStore.getState().openShortcutHelp();
     return;
@@ -195,7 +153,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
       const wsId = wsState.activeWorkspaceId;
       const tabId = getLiveWorkspaceActiveTabId(
         wsState.workspaces[wsId],
-        useTabsStore.getState().tabs
+        useTabsStore.getState().tabs,
       );
       if (tabId) {
         const tab = useTabsStore.getState().tabs[tabId];
@@ -269,10 +227,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     if (!workspace) return;
     const tabIds = getLiveWorkspaceTabIds(workspace, useTabsStore.getState().tabs);
     if (tabIds.length === 0) return;
-    const currentTabId = getLiveWorkspaceActiveTabId(
-      workspace,
-      useTabsStore.getState().tabs
-    );
+    const currentTabId = getLiveWorkspaceActiveTabId(workspace, useTabsStore.getState().tabs);
     const currentIndex = tabIds.indexOf(currentTabId ?? "");
     const nextIndex = (currentIndex + 1) % tabIds.length;
     const nextTabId = tabIds[nextIndex];
@@ -289,10 +244,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     if (!workspace) return;
     const tabIds = getLiveWorkspaceTabIds(workspace, useTabsStore.getState().tabs);
     if (tabIds.length === 0) return;
-    const currentTabId = getLiveWorkspaceActiveTabId(
-      workspace,
-      useTabsStore.getState().tabs
-    );
+    const currentTabId = getLiveWorkspaceActiveTabId(workspace, useTabsStore.getState().tabs);
     const currentIndex = tabIds.indexOf(currentTabId ?? "");
     const prevIndex = (currentIndex - 1 + tabIds.length) % tabIds.length;
     const prevTabId = tabIds[prevIndex];
@@ -325,7 +277,7 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
           const wsId = wsState.activeWorkspaceId;
           const tabId = getLiveWorkspaceActiveTabId(
             wsState.workspaces[wsId],
-            useTabsStore.getState().tabs
+            useTabsStore.getState().tabs,
           );
           if (tabId) {
             const tab = useTabsStore.getState().tabs[tabId];
@@ -481,10 +433,7 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         if (!workspace) return;
         const tabIds = getLiveWorkspaceTabIds(workspace, useTabsStore.getState().tabs);
         if (tabIds.length === 0) return;
-        const currentTabId = getLiveWorkspaceActiveTabId(
-          workspace,
-          useTabsStore.getState().tabs
-        );
+        const currentTabId = getLiveWorkspaceActiveTabId(workspace, useTabsStore.getState().tabs);
         const currentIndex = tabIds.indexOf(currentTabId ?? "");
         const nextIndex = (currentIndex + 1) % tabIds.length;
         const nextTabId = tabIds[nextIndex];
@@ -503,13 +452,9 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         if (!workspace) return;
         const tabIds = getLiveWorkspaceTabIds(workspace, useTabsStore.getState().tabs);
         if (tabIds.length === 0) return;
-        const currentTabId = getLiveWorkspaceActiveTabId(
-          workspace,
-          useTabsStore.getState().tabs
-        );
+        const currentTabId = getLiveWorkspaceActiveTabId(workspace, useTabsStore.getState().tabs);
         const currentIndex = tabIds.indexOf(currentTabId ?? "");
-        const prevIndex =
-          (currentIndex - 1 + tabIds.length) % tabIds.length;
+        const prevIndex = (currentIndex - 1 + tabIds.length) % tabIds.length;
         const prevTabId = tabIds[prevIndex];
         if (prevTabId) {
           useWorkspacesStore.getState().setActiveTab(wsId, prevTabId);
@@ -537,19 +482,6 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         return;
       }
 
-      // ── Ctrl+Shift+S → take screenshot ─────────────────────────────
-      if (mod && e.shiftKey && !e.altKey && e.key === "S") {
-        e.preventDefault();
-        takeScreenshot()
-          .then(({ bytes }) => copyToClipboard(bytes))
-          .catch((error) => {
-            useUIStore.getState().pushToast(
-              `Screenshot failed: ${String(error)}`,
-              "danger"
-            );
-          });
-        return;
-      }
     }
 
     window.addEventListener("keydown", onKey);
@@ -582,4 +514,3 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
     };
   }, []);
 }
-

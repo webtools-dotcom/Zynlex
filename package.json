@@ -2,40 +2,52 @@
   "name": "xevo",
   "private": true,
   "version": "0.1.0",
+  "description": "A lightweight desktop browser built for web developers",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/webtools-dotcom/Xevo"
+  },
+  "homepage": "https://github.com/webtools-dotcom/Xevo",
+  "bugs": "https://github.com/webtools-dotcom/Xevo/issues",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "typecheck": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "lint": "biome lint ./src",
+    "lint:fix": "biome lint --write ./src",
+    "format": "biome format --write ./src",
+    "format:check": "biome format ./src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "knip": "knip"
   },
   "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/space-grotesk": "^5.3.0",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2",
-    "@tauri-apps/plugin-os": "^2.3.2",
-    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cmdk": "^1.1.1",
     "immer": "^11.1.8",
     "lucide-react": "^1.17.0",
-    "radix-ui": "^1.4.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-resizable-panels": "^4.11.2",
     "react-window": "^2.2.7",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.5",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
-    "@types/react-window": "^2.0.0",
     "@vitejs/plugin-react": "^4.6.0",
+    "knip": "^6.29.0",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^4.1.10"
   }
 }

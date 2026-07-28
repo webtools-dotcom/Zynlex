@@ -1,16 +1,9 @@
 /**
- * useWebviewBridge - manages per-tab browser WebviewWindow bridge.
- *
- * Architecture: each tab gets its own WebviewWindow (label "browser-{tabId}").
- * Tab switching = hide old webview + show new (no reload, state preserved).
- *
- * Responsibilities:
- * - Creates webviews lazily on first navigation
- * - Activates (hide/show) on tab switch
- * - Closes webviews on tab close
- * - Keeps active tab's webview bounds in sync with the content area
- * - Subscribes to per-tab events from Rust and updates Zustand
- * - Exposes navigate / goBack / goForward / reload actions
+ * useWebviewBridge — manages the per-tab child webview bridge (see
+ * docs/architecture.md for the process model). Creates webviews lazily on
+ * first navigation, hides/shows on tab switch (no reload, state preserved),
+ * closes on tab close, keeps bounds synced with the content area, subscribes
+ * to per-tab events from Rust, and exposes navigate/goBack/goForward/reload.
  */
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
@@ -49,19 +42,16 @@ import { useSettingsStore } from "@/stores/settings";
 import { useHistoryStore } from "@/stores/history";
 import { useInspectorStore } from "@/stores/inspector";
 import type { MetaInfo, CookieEntry, StorageEntry } from "@/types";
-import {
-  getLiveWorkspaceActiveTab,
-  getLiveWorkspaceActiveTabId,
-} from "@/lib/workspaceTabs";
+import { getLiveWorkspaceActiveTab, getLiveWorkspaceActiveTabId } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { useNetworkStore } from "@/stores/network";
 import { useHeadersStore } from "@/stores/headers";
 import { setHeaderRules } from "@/services/browser";
+import { titleFromUrl } from "@/lib/url";
 
 let _netEntryId = 0;
 
-const IS_TAURI =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /**
  * Computes the webview's bounds from the content area's DOMRect.
@@ -94,7 +84,7 @@ function computeWebviewBounds(rect: DOMRect, overlayH: number): BrowserBounds {
  * measure (matches every call site's existing early-return threshold).
  */
 function getActiveBounds(
-  contentAreaRef: React.RefObject<HTMLDivElement | null>
+  contentAreaRef: React.RefObject<HTMLDivElement | null>,
 ): BrowserBounds | null {
   const el = contentAreaRef.current;
   if (!el) return null;
@@ -117,9 +107,7 @@ function isChromeOverlayOpen(): boolean {
   );
 }
 
-export function useWebviewBridge(
-  contentAreaRef: React.RefObject<HTMLDivElement | null>
-) {
+export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement | null>) {
   const workspaces = useWorkspacesStore((s) => s.workspaces);
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const tabs = useTabsStore((s) => s.tabs);
@@ -134,7 +122,6 @@ export function useWebviewBridge(
   const lastBoundsRef = useRef<BrowserBounds | null>(null);
   // Track when loading started so we can report load time on completion.
   const loadStartRef = useRef<number | null>(null);
-  // Track which tabs have been created (have a webview).
   const createdTabsRef = useRef<Set<string>>(new Set());
   const prevActiveTabIdRef = useRef<string | null>(null);
   // Bumped on every tab-switch attempt. An async show/create that resolves after
@@ -147,9 +134,9 @@ export function useWebviewBridge(
   syncBoundsRef.current = () => {
     if (!IS_TAURI) return;
     if (useUIStore.getState().viewportMode) return;
-    const tabId = useWorkspacesStore.getState().workspaces[
-      useWorkspacesStore.getState().activeWorkspaceId
-    ]?.activeTabId;
+    const tabId =
+      useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId]
+        ?.activeTabId;
     if (!tabId) return;
     const bounds = getActiveBounds(contentAreaRef);
     if (!bounds) return;
@@ -165,7 +152,7 @@ export function useWebviewBridge(
     }
     lastBoundsRef.current = bounds;
     setWebviewBounds(tabId, bounds).catch((err) => {
-      console.error("[XEVO-BOUNDS] Rust setWebviewBounds ERROR:", err, "for bounds:", bounds);
+      console.error("[xevo] setWebviewBounds failed:", err);
     });
   };
 
@@ -176,9 +163,9 @@ export function useWebviewBridge(
     (attempt = 0) => {
       if (useUIStore.getState().viewportMode) return;
       if (isChromeOverlayOpen()) return;
-      const tabId = useWorkspacesStore.getState().workspaces[
-        useWorkspacesStore.getState().activeWorkspaceId
-      ]?.activeTabId;
+      const tabId =
+        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId]
+          ?.activeTabId;
       if (!tabId) return;
       // Guard: don't try to show a webview that hasn't been created yet.
       // The browser_create_tab command is called lazily on first navigation.
@@ -193,9 +180,11 @@ export function useWebviewBridge(
         }
         return;
       }
-      showTabWebview(tabId, bounds).catch(() => {});
+      showTabWebview(tabId, bounds).catch((err) => {
+        console.error("[xevo] showTabWebview failed:", err);
+      });
     },
-    [contentAreaRef]
+    [contentAreaRef],
   );
 
   useEffect(() => {
@@ -222,9 +211,7 @@ export function useWebviewBridge(
       }
       const bounds = getActiveBounds(contentAreaRef);
       if (!bounds) return;
-      const displayTitle = url
-        .replace(/^https?:\/\/(www\.)?/, "")
-        .split("/")[0];
+      const displayTitle = titleFromUrl(url);
       let reservedNewSlot = false;
       try {
         if (activeTabId) {
@@ -265,45 +252,57 @@ export function useWebviewBridge(
         }
       }
     },
-    [activeTabId, updateTab, contentAreaRef]
+    [activeTabId, updateTab, contentAreaRef],
   );
 
   const goBack = useCallback(async () => {
     if (!IS_TAURI) return;
-    const tabId = activeTabId ?? getLiveWorkspaceActiveTabId(
-      useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
-      useTabsStore.getState().tabs
-    );
+    const tabId =
+      activeTabId ??
+      getLiveWorkspaceActiveTabId(
+        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
+        useTabsStore.getState().tabs,
+      );
     if (!tabId) return;
     await webviewGoBack(tabId);
   }, [activeTabId]);
 
   const goForward = useCallback(async () => {
     if (!IS_TAURI) return;
-    const tabId = activeTabId ?? getLiveWorkspaceActiveTabId(
-      useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
-      useTabsStore.getState().tabs
-    );
+    const tabId =
+      activeTabId ??
+      getLiveWorkspaceActiveTabId(
+        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
+        useTabsStore.getState().tabs,
+      );
     if (!tabId) return;
     await webviewGoForward(tabId);
   }, [activeTabId]);
 
-  const reload = useCallback(async (overrideTabId?: string) => {
-    if (!IS_TAURI) return;
-    const tabId = overrideTabId ?? activeTabId ?? getLiveWorkspaceActiveTabId(
-      useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
-      useTabsStore.getState().tabs
-    );
-    if (!tabId) return;
-    await webviewReload(tabId);
-  }, [activeTabId]);
+  const reload = useCallback(
+    async (overrideTabId?: string) => {
+      if (!IS_TAURI) return;
+      const tabId =
+        overrideTabId ??
+        activeTabId ??
+        getLiveWorkspaceActiveTabId(
+          useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
+          useTabsStore.getState().tabs,
+        );
+      if (!tabId) return;
+      await webviewReload(tabId);
+    },
+    [activeTabId],
+  );
 
   const stopLoadingAction = useCallback(async () => {
     if (!IS_TAURI) return;
-    const tabId = activeTabId ?? getLiveWorkspaceActiveTabId(
-      useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
-      useTabsStore.getState().tabs
-    );
+    const tabId =
+      activeTabId ??
+      getLiveWorkspaceActiveTabId(
+        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
+        useTabsStore.getState().tabs,
+      );
     if (!tabId) return;
     await stopLoading(tabId);
   }, [activeTabId]);
@@ -322,7 +321,10 @@ export function useWebviewBridge(
     onBookmarkRequest(() => {
       toggleBookmarkForActiveTab();
     }).then((fn) => {
-      if (cancelled) { fn(); return; }
+      if (cancelled) {
+        fn();
+        return;
+      }
       unBookmark = fn;
     });
 
@@ -333,7 +335,10 @@ export function useWebviewBridge(
       useWorkspacesStore.getState().addTabToWorkspace(wsId, tabId);
       useWorkspacesStore.getState().setActiveTab(wsId, tabId);
     }).then((fn) => {
-      if (cancelled) { fn(); return; }
+      if (cancelled) {
+        fn();
+        return;
+      }
       unNewTab = fn;
     });
 
@@ -350,13 +355,16 @@ export function useWebviewBridge(
       const wsId = tab?.workspaceId ?? wsState.activeWorkspaceId;
       useHistoryStore.getState().addEntry({
         url,
-        title: url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0],
+        title: titleFromUrl(url),
         favicon: null,
         timestamp: Date.now(),
         workspaceId: wsId,
       });
     }).then((fn) => {
-      if (cancelled) { fn(); return; }
+      if (cancelled) {
+        fn();
+        return;
+      }
       unUrl = fn;
     });
 
@@ -371,18 +379,18 @@ export function useWebviewBridge(
           useNetworkStore.getState().clearTab(tabId);
         }
       } else {
-        const elapsed = loadStartRef.current !== null
-          ? Date.now() - loadStartRef.current
-          : null;
+        const elapsed = loadStartRef.current !== null ? Date.now() - loadStartRef.current : null;
         loadStartRef.current = null;
         useTabsStore.getState().updateTab(tabId, {
           isLoading: false,
           loadTime: elapsed,
         });
-
       }
     }).then((fn) => {
-      if (cancelled) { fn(); return; }
+      if (cancelled) {
+        fn();
+        return;
+      }
       unLoading = fn;
     });
 
@@ -394,7 +402,10 @@ export function useWebviewBridge(
         useTabsStore.getState().updateTab(tabId, { url: info.url });
       }
     }).then((fn) => {
-      if (cancelled) { fn(); return; }
+      if (cancelled) {
+        fn();
+        return;
+      }
       unTabInfo = fn;
     });
 
@@ -407,7 +418,7 @@ export function useWebviewBridge(
       const wsState = useWorkspacesStore.getState();
       const activeTabId = getLiveWorkspaceActiveTabId(
         wsState.workspaces[wsState.activeWorkspaceId],
-        useTabsStore.getState().tabs
+        useTabsStore.getState().tabs,
       );
       if (event.tabId !== activeTabId) return;
 
@@ -435,11 +446,12 @@ export function useWebviewBridge(
           break;
       }
     }).then((fn) => {
-      if (cancelled) { fn(); return; }
+      if (cancelled) {
+        fn();
+        return;
+      }
       unInspectorData = fn;
     });
-
-
 
     return () => {
       cancelled = true;
@@ -551,7 +563,6 @@ export function useWebviewBridge(
             if (updatedTab?.savedFormState) {
               restoreTabState(activeTabId, updatedTab.savedFormState)
                 .then(() => {
-                  // Clear saved state after successful restore
                   useTabsStore.getState().saveTabState(activeTabId, null);
                 })
                 .catch(() => {});
@@ -585,8 +596,6 @@ export function useWebviewBridge(
     return () => {
       if (retryTimer) clearTimeout(retryTimer);
     };
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, viewportMode]);
 
   // ── TAB DISCARD TIMER: discard inactive tabs after 10 minutes ─────
@@ -599,9 +608,9 @@ export function useWebviewBridge(
     const interval = setInterval(() => {
       const now = Date.now();
       const tabsState = useTabsStore.getState().tabs;
-      const currentActiveTabId = useWorkspacesStore.getState().workspaces[
-        useWorkspacesStore.getState().activeWorkspaceId
-      ]?.activeTabId;
+      const currentActiveTabId =
+        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId]
+          ?.activeTabId;
 
       for (const [tabId, tab] of Object.entries(tabsState)) {
         // Skip: active tab, already discarded, pinned, no URL, still loading
@@ -615,11 +624,8 @@ export function useWebviewBridge(
           continue;
         }
 
-        // Check if this tab has been inactive for longer than the timeout
         if (now - tab.lastActiveAt > DISCARD_TIMEOUT_MS) {
-          // Save tab state (scroll + form data) before destroying the webview
           saveTabState(tabId).catch(() => {});
-          // Discard: close the webview, mark as discarded, remove from createdTabsRef
           closeTabWebview(tabId)
             .then(() => {
               useTabsStore.getState().discardTab(tabId);
@@ -640,7 +646,9 @@ export function useWebviewBridge(
     const recreateForUserAgent = () => {
       const wsState = useWorkspacesStore.getState();
       const ws = wsState.workspaces[wsState.activeWorkspaceId];
-      const activeTabId = ws ? getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs)?.id : null;
+      const activeTabId = ws
+        ? getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs)?.id
+        : null;
 
       const createdIds = Array.from(createdTabsRef.current);
       createdTabsRef.current.clear();
@@ -649,7 +657,6 @@ export function useWebviewBridge(
       const tabsState = useTabsStore.getState().tabs;
       for (const id of createdIds) {
         if (id !== activeTabId && tabsState[id]) {
-          // Save tab state before discarding
           saveTabState(id).catch(() => {});
           useTabsStore.getState().discardTab(id);
         }
@@ -660,15 +667,12 @@ export function useWebviewBridge(
           () =>
             new Promise<void>((resolve) => {
               setTimeout(resolve, 50);
-            })
+            }),
         )
         .then(() => {
           const wsState2 = useWorkspacesStore.getState();
           const ws2 = wsState2.workspaces[wsState2.activeWorkspaceId];
-          const tab = getLiveWorkspaceActiveTab(
-            ws2,
-            useTabsStore.getState().tabs
-          );
+          const tab = getLiveWorkspaceActiveTab(ws2, useTabsStore.getState().tabs);
           if (!tab?.url) return;
           if (tab.discardedAt !== null) {
             useTabsStore.getState().restoreTab(tab.id);
@@ -685,8 +689,7 @@ export function useWebviewBridge(
     };
 
     window.addEventListener("xevo:ua-changed", recreateForUserAgent);
-    return () =>
-      window.removeEventListener("xevo:ua-changed", recreateForUserAgent);
+    return () => window.removeEventListener("xevo:ua-changed", recreateForUserAgent);
   }, [contentAreaRef]);
 
   // ── CAP CONCURRENT WEBVIEWS: enforce soft limit of maxConcurrentWebviews ──
@@ -700,9 +703,9 @@ export function useWebviewBridge(
       if (liveCount <= maxConcurrent) return;
 
       const tabsState = useTabsStore.getState().tabs;
-      const currentActiveTabId = useWorkspacesStore.getState().workspaces[
-        useWorkspacesStore.getState().activeWorkspaceId
-      ]?.activeTabId;
+      const currentActiveTabId =
+        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId]
+          ?.activeTabId;
 
       const candidates = Array.from(createdTabsRef.current)
         .filter((id) => id !== currentActiveTabId)
@@ -712,7 +715,6 @@ export function useWebviewBridge(
 
       const toDiscard = candidates.slice(0, liveCount - maxConcurrent);
       for (const tabId of toDiscard) {
-        // Save tab state (scroll + form data) before destroying the webview
         saveTabState(tabId).catch(() => {});
         closeTabWebview(tabId)
           .then(() => {
@@ -815,17 +817,19 @@ export function useWebviewBridge(
       onDownloadStarted(({ url, destination }) => {
         useDownloadsStore.getState().start(url, destination);
         useUIStore.getState().pushToast(`Downloading ${destination.split(/[\\/]/).pop()}`, "info");
-      })
+      }),
     );
     track(
       onDownloadFinished(({ url, path, success }) => {
         useDownloadsStore.getState().finish(url, path, success);
-      })
+      }),
     );
 
     return () => {
       cancelled = true;
-      unlisteners.forEach((fn) => fn());
+      unlisteners.forEach((fn) => {
+        fn();
+      });
     };
   }, []);
 
@@ -837,13 +841,16 @@ export function useWebviewBridge(
     if (!IS_TAURI) return;
     const sync = () => {
       const { rulesByWs } = useHeadersStore.getState();
-      const rulesByTab: Record<string, ReturnType<typeof useHeadersStore.getState>["rulesByWs"][string]> = {};
+      const rulesByTab: Record<
+        string,
+        ReturnType<typeof useHeadersStore.getState>["rulesByWs"][string]
+      > = {};
       for (const tab of Object.values(useTabsStore.getState().tabs)) {
         const rules = rulesByWs[tab.workspaceId];
         if (rules?.length) rulesByTab[tab.id] = rules;
       }
       setHeaderRules(rulesByTab).catch((err) =>
-        console.error("Failed to sync header rules:", err)
+        console.error("[xevo] Failed to sync header rules:", err),
       );
     };
     sync();
@@ -872,11 +879,10 @@ export function useWebviewBridge(
         width: bounds.width,
         height: bounds.height,
       }).catch((err) => {
-        console.error("[XEVO-BOUNDS] sidebarToggle Rust ERROR:", err, "for bounds:", bounds);
+        console.error("[xevo] setWebviewBounds failed (sidebar toggle):", err);
       });
     }, 80);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidebarOpen]);
 
   // ── Hide/show webview when chrome overlays open ──────────────────
@@ -889,11 +895,7 @@ export function useWebviewBridge(
   useEffect(() => {
     if (!IS_TAURI) return;
     const overlayOpen =
-      commandPaletteOpen ||
-      shortcutHelpOpen ||
-      settingsPanelOpen ||
-      apiTesterOpen ||
-      findOpen;
+      commandPaletteOpen || shortcutHelpOpen || settingsPanelOpen || apiTesterOpen || findOpen;
     const wsState = useWorkspacesStore.getState();
     const ws = wsState.workspaces[wsState.activeWorkspaceId];
     const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
@@ -955,9 +957,7 @@ export function useWebviewBridge(
     if (!IS_TAURI) return;
     let resolved: "light" | "dark" = theme === "light" ? "light" : "dark";
     if (theme === "system") {
-      resolved = window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
+      resolved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
     setWebviewTheme(resolved).catch(() => {});
   }, [theme]);
@@ -971,6 +971,6 @@ export function useWebviewBridge(
       syncBounds,
       stopLoading: stopLoadingAction,
     }),
-    [navigate, goBack, goForward, reload, syncBounds, stopLoadingAction]
+    [navigate, goBack, goForward, reload, syncBounds, stopLoadingAction],
   );
 }

@@ -1,28 +1,29 @@
 /**
  * ApiTester — Postman-style API testing panel.
  *
- * MVP features:
- *   - Method selector (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS)
- *   - URL input
- *   - Tabbed request editor: Headers, Body, cURL Import
- *   - Send button (routed through the Rust `api_fetch` command — the main
- *     window's own `fetch()` is bound by the app's CSP to localhost, so a
- *     real HTTP client on the Rust side is what makes cross-origin requests work)
- *   - Response viewer: status, duration, size, headers, body
- *   - JSON auto-formatting in the response body
- *   - Per-session request history (last 50), shared with the sidebar
- *     launcher card via useApiHistoryStore
- *   - Two layouts: full-page modal (embedded=false) and sidebar (embedded=true)
- *
- * History is in-memory only for the v1 MVP. Persisting the history
- * is a future enhancement.
+ * Requests are sent through the Rust `api_fetch` command rather than the
+ * window's own `fetch()`, which the app's CSP binds to localhost — a real
+ * HTTP client on the Rust side is what makes cross-origin requests work.
  */
 import { useState, useRef, useMemo, useEffect } from "react";
 import {
-  Send, Plus, X, Trash2, Clock, ChevronDown, ChevronUp,
-  History, Code2, FileText, Clipboard, Check, Save,
+  Send,
+  Plus,
+  X,
+  Trash2,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  History,
+  Code2,
+  FileText,
+  Clipboard,
+  Check,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatBytes } from "@/lib/format";
+import { useCopy } from "@/hooks/useCopy";
 import { useServersStore } from "@/stores/servers";
 import { useApiHistoryStore } from "@/stores/apiHistory";
 import { useApiCollectionsStore, type SavedRequest } from "@/stores/apiCollections";
@@ -33,9 +34,7 @@ import type { HttpMethod, ApiHeader, ApiHistoryEntry } from "@/types";
 /** Fired by the sidebar collection list to load a saved request in here. */
 export const LOAD_REQUEST_EVENT = "xevo:load-api-request";
 
-const METHODS: HttpMethod[] = [
-  "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
-];
+const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
 
 const METHOD_COLORS: Record<HttpMethod, string> = {
   GET: "#22c55e",
@@ -47,14 +46,10 @@ const METHOD_COLORS: Record<HttpMethod, string> = {
   OPTIONS: "#06b6d4",
 };
 
-function genId(): string {
-  return `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 function defaultHeaders(): ApiHeader[] {
   return [
-    { id: genId(), key: "Content-Type", value: "application/json", enabled: true },
-    { id: genId(), key: "Accept", value: "application/json", enabled: true },
+    { id: crypto.randomUUID(), key: "Content-Type", value: "application/json", enabled: true },
+    { id: crypto.randomUUID(), key: "Accept", value: "application/json", enabled: true },
   ];
 }
 
@@ -70,7 +65,7 @@ interface ParsedCurl {
   body: string;
 }
 
-export function parseCurl(input: string): ParsedCurl {
+function parseCurl(input: string): ParsedCurl {
   const result: ParsedCurl = {
     method: "GET",
     url: "",
@@ -95,14 +90,20 @@ export function parseCurl(input: string): ParsedCurl {
         const idx = v.indexOf(":");
         if (idx > 0) {
           result.headers.push({
-            id: genId(),
+            id: crypto.randomUUID(),
             key: v.slice(0, idx).trim(),
             value: v.slice(idx + 1).trim(),
             enabled: true,
           });
         }
       }
-    } else if (tok === "-d" || tok === "--data" || tok === "--data-raw" || tok === "--data-binary" || tok === "--data-urlencode") {
+    } else if (
+      tok === "-d" ||
+      tok === "--data" ||
+      tok === "--data-raw" ||
+      tok === "--data-binary" ||
+      tok === "--data-urlencode"
+    ) {
       const v = next();
       if (v != null) {
         result.body += result.body ? "\n" + v : v;
@@ -114,7 +115,7 @@ export function parseCurl(input: string): ParsedCurl {
         const idx = v.indexOf("=");
         if (idx > 0) {
           result.headers.push({
-            id: genId(),
+            id: crypto.randomUUID(),
             key: v.slice(0, idx).trim(),
             value: v.slice(idx + 1).trim(),
             enabled: true,
@@ -126,7 +127,7 @@ export function parseCurl(input: string): ParsedCurl {
       if (v) {
         const encoded = btoa(v);
         result.headers.push({
-          id: genId(),
+          id: crypto.randomUUID(),
           key: "Authorization",
           value: `Basic ${encoded}`,
           enabled: true,
@@ -136,7 +137,7 @@ export function parseCurl(input: string): ParsedCurl {
       const v = next();
       if (v) {
         result.headers.push({
-          id: genId(),
+          id: crypto.randomUUID(),
           key: "User-Agent",
           value: v,
           enabled: true,
@@ -146,13 +147,22 @@ export function parseCurl(input: string): ParsedCurl {
       const v = next();
       if (v) {
         result.headers.push({
-          id: genId(),
+          id: crypto.randomUUID(),
           key: "Cookie",
           value: v,
           enabled: true,
         });
       }
-    } else if (tok === "-L" || tok === "--location" || tok === "-k" || tok === "--insecure" || tok === "-s" || tok === "--silent" || tok === "-i" || tok === "--include") {
+    } else if (
+      tok === "-L" ||
+      tok === "--location" ||
+      tok === "-k" ||
+      tok === "--insecure" ||
+      tok === "-s" ||
+      tok === "--silent" ||
+      tok === "-i" ||
+      tok === "--include"
+    ) {
       // skip flags we don't surface
     } else if (tok.startsWith("-") && tok.length > 2) {
       // combined short flags like -sSL, -iL - skip
@@ -171,8 +181,7 @@ export function parseCurl(input: string): ParsedCurl {
 function tokenizeCurl(input: string): string[] {
   const out: string[] = [];
   const re = /\s*('([^'\\]*(?:\\.[^'\\]*)*)'|"([^"\\]*(?:\\.[^"\\]*)*)"|(\S+))/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(input)) !== null) {
+  for (const m of input.matchAll(re)) {
     out.push(m[2] ?? m[3] ?? m[4] ?? "");
   }
   return out;
@@ -228,7 +237,8 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
   const [error, setError] = useState<string | null>(null);
   const [responseTab, setResponseTab] = useState<ResponseTab>("body");
   const [historyOpen, setHistoryOpen] = useState<boolean>(!embedded);
-  const [copied, setCopied] = useState<boolean>(false);
+  const { copiedLabel, copy: copyText } = useCopy();
+  const copied = !!copiedLabel;
 
   const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -268,7 +278,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
         .filter((s) => s.isAlive)
         .map((s) => `${s.protocol}://localhost:${s.port}`)
         .slice(0, 6),
-    [servers]
+    [servers],
   );
 
   async function send() {
@@ -289,10 +299,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
       }
     }
 
-    const hasBody =
-      body.trim().length > 0 &&
-      method !== "GET" &&
-      method !== "HEAD";
+    const hasBody = body.trim().length > 0 && method !== "GET" && method !== "HEAD";
 
     try {
       const res = await apiFetch({
@@ -333,10 +340,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
   }
 
   function addHeaderRow() {
-    setHeaders((h) => [
-      ...h,
-      { id: genId(), key: "", value: "", enabled: true },
-    ]);
+    setHeaders((h) => [...h, { id: crypto.randomUUID(), key: "", value: "", enabled: true }]);
   }
 
   function updateHeader(id: string, patch: Partial<ApiHeader>) {
@@ -369,10 +373,7 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
 
   function copyResponse() {
     if (!response) return;
-    navigator.clipboard.writeText(response.body).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }).catch(() => {});
+    copyText(response.body);
   }
 
   const statusColor = response
@@ -629,9 +630,7 @@ function RequestEditor(p: BodySharedProps) {
                 <input
                   type="checkbox"
                   checked={h.enabled}
-                  onChange={(e) =>
-                    p.updateHeader(h.id, { enabled: e.target.checked })
-                  }
+                  onChange={(e) => p.updateHeader(h.id, { enabled: e.target.checked })}
                   className="accent-[var(--color-accent)] flex-shrink-0"
                 />
                 <input
@@ -715,10 +714,7 @@ function RequestEditor(p: BodySharedProps) {
 function ResponseViewer(p: BodySharedProps) {
   if (p.error) {
     return (
-      <div
-        className="p-3 text-sm font-mono"
-        style={{ color: "var(--color-dead)" }}
-      >
+      <div className="p-3 text-sm font-mono" style={{ color: "var(--color-dead)" }}>
         {p.error}
       </div>
     );
@@ -796,9 +792,7 @@ function ResponseViewer(p: BodySharedProps) {
           <div className="space-y-0.5">
             {Object.entries(r.headers).map(([k, v]) => (
               <div key={k} className="flex text-sm font-mono">
-                <span className="text-[var(--color-accent)] mr-2 flex-shrink-0">
-                  {k}:
-                </span>
+                <span className="text-[var(--color-accent)] mr-2 flex-shrink-0">{k}:</span>
                 <span className="text-[var(--color-text-primary)] break-all">{v}</span>
               </div>
             ))}
@@ -824,10 +818,7 @@ function HistoryPanel(p: BodySharedProps) {
     );
   }
   return (
-    <div
-      className="border-t"
-      style={{ borderColor: "var(--color-border)" }}
-    >
+    <div className="border-t" style={{ borderColor: "var(--color-border)" }}>
       <div className="flex items-center justify-between px-3 py-1.5">
         <span className="text-xs font-semibold tracking-wider text-[var(--color-text-disabled)] uppercase flex items-center gap-1">
           <History size={12} /> History
@@ -875,17 +866,21 @@ function HistoryPanel(p: BodySharedProps) {
               <span
                 className="text-xs font-mono flex-shrink-0"
                 style={{
-                  color: h.status >= 200 && h.status < 300
-                    ? "var(--color-live)"
-                    : h.status >= 400
-                      ? "var(--color-dead)"
-                      : "var(--color-warn)",
+                  color:
+                    h.status >= 200 && h.status < 300
+                      ? "var(--color-live)"
+                      : h.status >= 400
+                        ? "var(--color-dead)"
+                        : "var(--color-warn)",
                   fontFeatureSettings: '"tnum" 1',
                 }}
               >
                 {h.status}
               </span>
-              <span className="text-xs text-[var(--color-text-disabled)] flex-shrink-0" style={{ fontFeatureSettings: '"tnum" 1' }}>
+              <span
+                className="text-xs text-[var(--color-text-disabled)] flex-shrink-0"
+                style={{ fontFeatureSettings: '"tnum" 1' }}
+              >
                 {h.durationMs}ms
               </span>
             </button>
@@ -903,9 +898,7 @@ function QuickUrls(p: BodySharedProps) {
       className="flex items-center gap-1 flex-wrap px-3 py-2 border-t"
       style={{ borderColor: "var(--color-border)" }}
     >
-      <span className="text-xs text-[var(--color-text-disabled)] mr-1">
-        Quick:
-      </span>
+      <span className="text-xs text-[var(--color-text-disabled)] mr-1">Quick:</span>
       {p.quickUrls.map((u) => (
         <button
           key={u}
@@ -984,7 +977,7 @@ function TabButton({
         active
           ? "bg-[var(--color-hover)] text-[var(--color-text-primary)]"
           : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]",
-        disabled && "opacity-40 cursor-not-allowed"
+        disabled && "opacity-40 cursor-not-allowed",
       )}
     >
       {icon}
@@ -1002,12 +995,6 @@ function TabButton({
       )}
     </button>
   );
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function EmbeddedBody(p: BodySharedProps) {
@@ -1054,5 +1041,3 @@ function FullPageBody(p: BodySharedProps & { onClose?: () => void }) {
     </div>
   );
 }
-
-export default ApiTester;

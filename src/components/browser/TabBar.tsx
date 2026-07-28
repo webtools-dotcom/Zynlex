@@ -17,7 +17,7 @@ interface TabBarProps {
   vertical?: boolean;
 }
 
-export const VERTICAL_TAB_BAR_WIDTH = 200;
+const VERTICAL_TAB_BAR_WIDTH = 200;
 
 interface ContextMenuState {
   tabId: string;
@@ -61,11 +61,14 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
     setActiveTab(activeWorkspaceId, id);
   }, [activeWorkspaceId, addTab, addTabToWorkspace, setActiveTab]);
 
-  const handleCloseTab = useCallback((tabId: string) => {
-    removeTabFromWorkspace(activeWorkspaceId, tabId);
-    closeTab(tabId);
-    closeTabWebview(tabId).catch(() => {});
-  }, [activeWorkspaceId, removeTabFromWorkspace, closeTab]);
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      removeTabFromWorkspace(activeWorkspaceId, tabId);
+      closeTab(tabId);
+      closeTabWebview(tabId).catch(() => {});
+    },
+    [activeWorkspaceId, removeTabFromWorkspace, closeTab],
+  );
 
   const handleContextMenu = useCallback((tabId: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -100,7 +103,6 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
     // Capture pointer so mousemove fires even outside the tab
     tabEl.setPointerCapture(e.pointerId);
 
-    // Create ghost element
     const ghost = tabEl.cloneNode(true) as HTMLDivElement;
     ghost.style.position = "fixed";
     ghost.style.top = `${rect.top}px`;
@@ -120,97 +122,102 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
     dropTargetRef.current = null;
   }, []);
 
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current || !dragGhostRef.current) return;
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isDragging.current || !dragGhostRef.current) return;
 
-    // Same hit-testing logic in both layouts — only the axis changes.
-    if (vertical) {
-      dragGhostRef.current.style.top = `${e.clientY - dragOffsetY.current}px`;
-    } else {
-      dragGhostRef.current.style.left = `${e.clientX - dragOffsetX.current}px`;
-    }
-
-    const pos = vertical ? e.clientY : e.clientX;
-    const startOf = (r: DOMRect) => (vertical ? r.top : r.left);
-    const endOf = (r: DOMRect) => (vertical ? r.bottom : r.right);
-
-    // Find which tab we're hovering over using cached rects
-    const rects = tabRectsRef.current;
-    let newTarget: string | null = null;
-
-    for (const [tabId, rect] of rects) {
-      if (tabId === dragTabIdRef.current) continue;
-      if (pos >= startOf(rect) && pos <= endOf(rect)) {
-        newTarget = tabId;
-        break;
+      // Same hit-testing logic in both layouts — only the axis changes.
+      if (vertical) {
+        dragGhostRef.current.style.top = `${e.clientY - dragOffsetY.current}px`;
+      } else {
+        dragGhostRef.current.style.left = `${e.clientX - dragOffsetX.current}px`;
       }
-    }
 
-    // Check if hovering past the last tab (drop at end)
-    if (!newTarget) {
-      const allIds = [...rects.keys()];
-      if (allIds.length > 0) {
-        const lastRect = rects.get(allIds[allIds.length - 1]);
-        if (lastRect && pos > endOf(lastRect)) {
-          newTarget = "__end__";
+      const pos = vertical ? e.clientY : e.clientX;
+      const startOf = (r: DOMRect) => (vertical ? r.top : r.left);
+      const endOf = (r: DOMRect) => (vertical ? r.bottom : r.right);
+
+      // Find which tab we're hovering over using cached rects
+      const rects = tabRectsRef.current;
+      let newTarget: string | null = null;
+
+      for (const [tabId, rect] of rects) {
+        if (tabId === dragTabIdRef.current) continue;
+        if (pos >= startOf(rect) && pos <= endOf(rect)) {
+          newTarget = tabId;
+          break;
         }
       }
-    }
 
-    // Only update state if target changed
-    if (newTarget !== dropTargetRef.current) {
-      dropTargetRef.current = newTarget;
-      setDropTarget(newTarget);
-    }
-  }, [vertical]);
+      // Check if hovering past the last tab (drop at end)
+      if (!newTarget) {
+        const allIds = [...rects.keys()];
+        if (allIds.length > 0) {
+          const lastRect = rects.get(allIds[allIds.length - 1]);
+          if (lastRect && pos > endOf(lastRect)) {
+            newTarget = "__end__";
+          }
+        }
+      }
 
-  const handlePointerUp = useCallback((_e: React.PointerEvent) => {
-    if (!isDragging.current) return;
+      // Only update state if target changed
+      if (newTarget !== dropTargetRef.current) {
+        dropTargetRef.current = newTarget;
+        setDropTarget(newTarget);
+      }
+    },
+    [vertical],
+  );
 
-    // Remove ghost
-    if (dragGhostRef.current) {
-      dragGhostRef.current.remove();
-      dragGhostRef.current = null;
-    }
+  const handlePointerUp = useCallback(
+    (_e: React.PointerEvent) => {
+      if (!isDragging.current) return;
 
-    const sourceId = dragTabIdRef.current;
-    const targetId = dropTargetRef.current;
+      if (dragGhostRef.current) {
+        dragGhostRef.current.remove();
+        dragGhostRef.current = null;
+      }
 
-    // Clean up state
-    isDragging.current = false;
-    dragTabIdRef.current = null;
-    dropTargetRef.current = null;
-    setDraggingTabId(null);
-    setDropTarget(null);
+      const sourceId = dragTabIdRef.current;
+      const targetId = dropTargetRef.current;
 
-    // If dropped on itself or no target, do nothing
-    if (!sourceId || !targetId || sourceId === targetId) return;
+      // Clean up state
+      isDragging.current = false;
+      dragTabIdRef.current = null;
+      dropTargetRef.current = null;
+      setDraggingTabId(null);
+      setDropTarget(null);
 
-    // Execute reorder using live store reads (avoids stale closures)
-    const liveWsId = useWorkspacesStore.getState().activeWorkspaceId;
-    const current = useWorkspacesStore.getState().workspaces[liveWsId];
-    if (!current) return;
+      // If dropped on itself or no target, do nothing
+      if (!sourceId || !targetId || sourceId === targetId) return;
 
-    const tabsState = useTabsStore.getState().tabs;
-    const live = getLiveWorkspaceTabIds(current, tabsState);
-    const next = live.filter((id) => id !== sourceId);
+      // Execute reorder using live store reads (avoids stale closures)
+      const liveWsId = useWorkspacesStore.getState().activeWorkspaceId;
+      const current = useWorkspacesStore.getState().workspaces[liveWsId];
+      if (!current) return;
 
-    if (targetId === "__end__") {
-      next.push(sourceId);
-    } else {
-      const insertAt = next.indexOf(targetId);
-      if (insertAt === -1) {
+      const tabsState = useTabsStore.getState().tabs;
+      const live = getLiveWorkspaceTabIds(current, tabsState);
+      const next = live.filter((id) => id !== sourceId);
+
+      if (targetId === "__end__") {
         next.push(sourceId);
       } else {
-        next.splice(insertAt, 0, sourceId);
+        const insertAt = next.indexOf(targetId);
+        if (insertAt === -1) {
+          next.push(sourceId);
+        } else {
+          next.splice(insertAt, 0, sourceId);
+        }
       }
-    }
 
-    // Normalize pinned tabs to front
-    const pinned = next.filter((id) => tabsState[id]?.isPinned);
-    const unpinned = next.filter((id) => !tabsState[id]?.isPinned);
-    reorderTabs(liveWsId, [...pinned, ...unpinned]);
-  }, [reorderTabs]);
+      // Normalize pinned tabs to front
+      const pinned = next.filter((id) => tabsState[id]?.isPinned);
+      const unpinned = next.filter((id) => !tabsState[id]?.isPinned);
+      reorderTabs(liveWsId, [...pinned, ...unpinned]);
+    },
+    [reorderTabs],
+  );
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────
 
@@ -220,8 +227,14 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
       const tag = target?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea") return;
       const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key === "t") { e.preventDefault(); openNewTab(); }
-      if (mod && e.key === "w") { e.preventDefault(); if (activeTabId) handleCloseTab(activeTabId); }
+      if (mod && e.key === "t") {
+        e.preventDefault();
+        openNewTab();
+      }
+      if (mod && e.key === "w") {
+        e.preventDefault();
+        if (activeTabId) handleCloseTab(activeTabId);
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

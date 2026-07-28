@@ -1,3 +1,5 @@
+import { originOf } from "@/lib/url";
+
 interface StatusBarProps {
   isLoading: boolean;
   loadTime: number | null;
@@ -6,23 +8,13 @@ interface StatusBarProps {
   zoom: number;
 }
 
-function getOrigin(url: string): string | null {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return null;
-  }
-}
-
 export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom }: StatusBarProps) {
-  const origin = url ? getOrigin(url) : null;
+  const origin = url ? originOf(url) : "";
 
   let leftContent: React.ReactNode = null;
   if (hoveredUrl) {
     const display = hoveredUrl.length > 60 ? hoveredUrl.slice(0, 60) + "…" : hoveredUrl;
-    leftContent = (
-      <span style={{ color: "var(--color-text-muted)" }}>{display}</span>
-    );
+    leftContent = <span style={{ color: "var(--color-text-muted)" }}>{display}</span>;
   } else if (isLoading) {
     leftContent = (
       <span className="animate-pulse" style={{ color: "var(--color-accent)" }}>
@@ -32,7 +24,9 @@ export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom }: Status
   } else if (loadTime !== null) {
     leftContent = (
       <span>
-        <span style={{ color: "var(--color-text-muted)", fontFeatureSettings: '"tnum" 1' }}>{loadTime}</span>
+        <span style={{ color: "var(--color-text-muted)", fontFeatureSettings: '"tnum" 1' }}>
+          {loadTime}
+        </span>
         <span style={{ color: "var(--color-text-disabled)" }}> ms</span>
       </span>
     );
@@ -51,13 +45,9 @@ export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom }: Status
       {leftContent}
       <div className="flex-1" />
       {zoom !== 1 && (
-        <span style={{ color: "var(--color-text-muted)" }}>
-          {Math.round(zoom * 100)}%
-        </span>
+        <span style={{ color: "var(--color-text-muted)" }}>{Math.round(zoom * 100)}%</span>
       )}
-      {origin && (
-        <span style={{ color: "var(--color-text-disabled)" }}>{origin}</span>
-      )}
+      {origin && <span style={{ color: "var(--color-text-disabled)" }}>{origin}</span>}
     </div>
   );
 }

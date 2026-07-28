@@ -10,19 +10,13 @@
  */
 import { useEffect, useRef, useCallback } from "react";
 import { Search, X, ChevronUp, ChevronDown } from "lucide-react";
-import {
-  webviewFind,
-  webviewFindNext,
-  webviewStopFind,
-  onFindResult,
-} from "@/services/browser";
+import { webviewFind, webviewFindNext, webviewStopFind, onFindResult } from "@/services/browser";
 import { useUIStore } from "@/stores/ui";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTabId } from "@/lib/workspaceTabs";
 
-const IS_TAURI =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 function getActiveTabId(): string | null {
   const wsState = useWorkspacesStore.getState();
@@ -43,23 +37,20 @@ export function FindBar() {
   const lastQueriedRef = useRef<string>("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const runFind = useCallback(
-    async (q: string) => {
-      if (!IS_TAURI) return;
-      if (q === lastQueriedRef.current) return;
-      const tabId = getActiveTabId();
-      if (!tabId) return;
-      lastQueriedRef.current = q;
-      try {
-        await webviewFind(tabId, q, true);
-      } catch (e) {
-        if (import.meta.env.DEV) {
-          console.error("[xevo] webviewFind failed:", e);
-        }
+  const runFind = useCallback(async (q: string) => {
+    if (!IS_TAURI) return;
+    if (q === lastQueriedRef.current) return;
+    const tabId = getActiveTabId();
+    if (!tabId) return;
+    lastQueriedRef.current = q;
+    try {
+      await webviewFind(tabId, q);
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        console.error("[xevo] webviewFind failed:", e);
       }
-    },
-    [],
-  );
+    }
+  }, []);
 
   // Subscribe to find-result events (active/total match counts).
   useEffect(() => {
@@ -69,7 +60,10 @@ export function FindBar() {
     onFindResult((result) => {
       setFindResult(result.active_match, result.total_matches);
     }).then((fn) => {
-      if (cancelled) { fn(); return; }
+      if (cancelled) {
+        fn();
+        return;
+      }
       unlisten = fn;
     });
     return () => {
@@ -87,7 +81,6 @@ export function FindBar() {
         inputRef.current?.select();
       }, 0);
     } else {
-      // Clear state when bar is hidden.
       lastQueriedRef.current = "";
       if (IS_TAURI) {
         const tabId = getActiveTabId();
@@ -151,10 +144,7 @@ export function FindBar() {
         if (e.key === "Escape") e.stopPropagation();
       }}
     >
-      <Search
-        size={14}
-        className="text-[var(--color-text-disabled)] flex-shrink-0"
-      />
+      <Search size={14} className="text-[var(--color-text-disabled)] flex-shrink-0" />
       <input
         ref={inputRef}
         type="text"
@@ -212,5 +202,3 @@ export function FindBar() {
     </div>
   );
 }
-
-export default FindBar;

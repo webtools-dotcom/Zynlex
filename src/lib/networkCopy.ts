@@ -1,23 +1,11 @@
 import type { NetworkLogEntry } from "@/stores/network";
 
-export function entryToCurl(entry: NetworkLogEntry): string {
+/** `compact` also drops Cookie/Set-Cookie headers, for pasting somewhere less trusted. */
+export function entryToCurl(entry: NetworkLogEntry, compact = false): string {
+  const skip = compact ? ["content-length", "cookie", "set-cookie"] : ["content-length"];
   const parts: string[] = [`curl -X ${entry.method} "${entry.url.replace(/"/g, '\\"')}"`];
   for (const [k, v] of Object.entries(entry.headers)) {
-    if (k.toLowerCase() !== "content-length") {
-      parts.push(`-H "${k}: ${v.replace(/"/g, '\\"')}"`);
-    }
-  }
-  if (entry.body && entry.body.length > 0 && entry.body.length < 10000) {
-    const escaped = entry.body.replace(/"/g, '\\"').replace(/\n/g, "\\n");
-    parts.push(`-d "${escaped}"`);
-  }
-  return parts.join(" ");
-}
-
-export function entryToCurlCompact(entry: NetworkLogEntry): string {
-  const parts: string[] = [`curl -X ${entry.method} "${entry.url}"`];
-  for (const [k, v] of Object.entries(entry.headers)) {
-    if (!["content-length", "cookie", "set-cookie"].includes(k.toLowerCase())) {
+    if (!skip.includes(k.toLowerCase())) {
       parts.push(`-H "${k}: ${v.replace(/"/g, '\\"')}"`);
     }
   }
@@ -46,29 +34,15 @@ export function entryToFetch(entry: NetworkLogEntry): string {
   }
   if (entry.body && entry.body.length > 0 && entry.body.length < 10000) {
     const bodyStr = (() => {
-      try { return JSON.stringify(JSON.parse(entry.body)); }
-      catch { return JSON.stringify(entry.body); }
+      try {
+        return JSON.stringify(JSON.parse(entry.body));
+      } catch {
+        return JSON.stringify(entry.body);
+      }
     })();
     parts.push(`    body: ${bodyStr},`);
   }
   parts.push("  }");
   parts.push(");");
   return parts.join("\n");
-}
-
-export async function copyToClipboard(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("aria-hidden", "true");
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-  }
 }

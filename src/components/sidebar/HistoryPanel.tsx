@@ -6,6 +6,7 @@ import { useTabsStore } from "@/stores/tabs";
 import { VirtualList } from "@/components/ui/VirtualList";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { HistoryEntry } from "@/types";
+import { titleFromUrl } from "@/lib/url";
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -81,10 +82,11 @@ export function HistoryPanel() {
       {entries.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center py-4">
-            <Clock size={22} className="mx-auto mb-1.5 text-[var(--color-text-disabled)] opacity-40" />
-            <p className="text-sm text-[var(--color-text-muted)]">
-              No history yet
-            </p>
+            <Clock
+              size={22}
+              className="mx-auto mb-1.5 text-[var(--color-text-disabled)] opacity-40"
+            />
+            <p className="text-sm text-[var(--color-text-muted)]">No history yet</p>
             <p className="text-xs text-[var(--color-text-disabled)] mt-0.5">
               Pages you visit will appear here
             </p>
@@ -100,64 +102,67 @@ export function HistoryPanel() {
                     {item.label}
                   </span>
                 </div>
-              ) : item.entry ? (() => {
-                const entry = item.entry;
-                const domain = entry.url
-                  .replace(/^https?:\/\/(www\.)?/, "")
-                  .split("/")[0];
-                return (
-                  <div
-                    style={style}
-                    key={entry.id}
-                    className="group flex items-center gap-2 px-2 py-1 rounded hover:bg-[var(--color-hover)] transition-colors"
-                  >
-                    <button
-                      onClick={() => openEntry(entry.url)}
-                      className="flex-1 min-w-0 text-left"
-                      title={entry.url}
+              ) : item.entry ? (
+                (() => {
+                  const entry = item.entry;
+                  const domain = titleFromUrl(entry.url);
+                  return (
+                    <div
+                      style={style}
+                      key={entry.id}
+                      className="group flex items-center gap-2 px-2 py-1 rounded hover:bg-[var(--color-hover)] transition-colors"
                     >
-                      <div className="flex items-center gap-1.5">
-                        {entry.favicon ? (
-                          <img
-                            src={entry.favicon}
-                            alt=""
-                            className="w-4 h-4 rounded-sm flex-shrink-0"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <Globe size={12} className="text-[var(--color-text-disabled)] flex-shrink-0" />
-                        )}
-                        <span className="text-sm text-[var(--color-text-muted)] truncate font-medium">
-                          {entry.title || domain}
-                        </span>
-                      </div>
-                    </button>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <span className="text-micro text-[var(--color-text-disabled)]">
-                        {relativeTime(entry.timestamp)}
-                      </span>
                       <button
                         onClick={() => openEntry(entry.url)}
-                        title="Open in new tab"
-                        aria-label="Open in new tab"
-                        className="text-[var(--color-text-disabled)] hover:text-[var(--color-accent)]"
+                        className="flex-1 min-w-0 text-left"
+                        title={entry.url}
                       >
-                        <ExternalLink size={11} />
+                        <div className="flex items-center gap-1.5">
+                          {entry.favicon ? (
+                            <img
+                              src={entry.favicon}
+                              alt=""
+                              className="w-4 h-4 rounded-sm flex-shrink-0"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <Globe
+                              size={12}
+                              className="text-[var(--color-text-disabled)] flex-shrink-0"
+                            />
+                          )}
+                          <span className="text-sm text-[var(--color-text-muted)] truncate font-medium">
+                            {entry.title || domain}
+                          </span>
+                        </div>
                       </button>
-                      <button
-                        onClick={() => removeEntry(entry.id)}
-                        title="Remove"
-                        aria-label="Remove from history"
-                        className="text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
-                      >
-                        <Trash2 size={11} />
-                      </button>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        <span className="text-micro text-[var(--color-text-disabled)]">
+                          {relativeTime(entry.timestamp)}
+                        </span>
+                        <button
+                          onClick={() => openEntry(entry.url)}
+                          title="Open in new tab"
+                          aria-label="Open in new tab"
+                          className="text-[var(--color-text-disabled)] hover:text-[var(--color-accent)]"
+                        >
+                          <ExternalLink size={11} />
+                        </button>
+                        <button
+                          onClick={() => removeEntry(entry.id)}
+                          title="Remove"
+                          aria-label="Remove from history"
+                          className="text-[var(--color-text-disabled)] hover:text-[var(--color-dead)]"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                );
-              })() : null
+                  );
+                })()
+              ) : null
             }
           </VirtualList>
         </div>

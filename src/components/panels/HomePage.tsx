@@ -42,7 +42,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
           return a.port - b.port;
         })
         .slice(0, 12),
-    [servers]
+    [servers],
   );
 
   const wsBookmarks = useMemo(
@@ -51,16 +51,12 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
         .filter((b) => b.workspaceId === activeWorkspaceId)
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 8),
-    [bookmarks, activeWorkspaceId]
+    [bookmarks, activeWorkspaceId],
   );
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();
-    const url = resolveInput(
-      query,
-      settings.searchEngine,
-      settings.customSearchUrl
-    );
+    const url = resolveInput(query, settings.searchEngine, settings.customSearchUrl);
     if (!url) return;
     if (onNavigate) {
       onNavigate(url);
@@ -103,7 +99,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
 
         {/* ── Subtitle ───────────────────────────────────────────── */}
         <p className="font-mono text-[.8125rem] text-[var(--color-text-disabled)] mb-10">
-          // everything running on this machine, one keystroke away
+          {"// everything running on this machine, one keystroke away"}
         </p>
 
         {/* ── Command bar ────────────────────────────────────────── */}
@@ -145,16 +141,31 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
           </div>
 
           {liveServers.length === 0 ? (
-            <div className="relative text-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-accent-dim)]" style={{ padding: "42px 32px" }}>
-              <span className="absolute top-2.5 left-3 font-mono text-xs text-[var(--color-border)]">┌</span>
-              <span className="absolute top-2.5 right-3 font-mono text-xs text-[var(--color-border)]">┐</span>
-              <span className="absolute bottom-2.5 left-3 font-mono text-xs text-[var(--color-border)]">└</span>
-              <span className="absolute bottom-2.5 right-3 font-mono text-xs text-[var(--color-border)]">┘</span>
-              <div className="text-[1rem] text-[var(--color-text-secondary)] mb-1.5" style={{ fontFamily: "var(--font-display)" }}>
+            <div
+              className="relative text-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-accent-dim)]"
+              style={{ padding: "42px 32px" }}
+            >
+              <span className="absolute top-2.5 left-3 font-mono text-xs text-[var(--color-border)]">
+                ┌
+              </span>
+              <span className="absolute top-2.5 right-3 font-mono text-xs text-[var(--color-border)]">
+                ┐
+              </span>
+              <span className="absolute bottom-2.5 left-3 font-mono text-xs text-[var(--color-border)]">
+                └
+              </span>
+              <span className="absolute bottom-2.5 right-3 font-mono text-xs text-[var(--color-border)]">
+                ┘
+              </span>
+              <div
+                className="text-[1rem] text-[var(--color-text-secondary)] mb-1.5"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
                 No dev servers detected on localhost.
               </div>
               <div className="font-mono text-[.8125rem] text-[var(--color-text-disabled)]">
-                Start one and it appears here — <span className="text-[var(--color-accent)]">npm run dev</span> ⏎
+                Start one and it appears here —{" "}
+                <span className="text-[var(--color-accent)]">npm run dev</span> ⏎
               </div>
             </div>
           ) : (
@@ -169,9 +180,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
                     <span
                       className="w-1.5 h-1.5 rounded-full"
                       style={{
-                        background: server.isAlive
-                          ? "var(--color-live)"
-                          : "var(--color-dead)",
+                        background: server.isAlive ? "var(--color-live)" : "var(--color-dead)",
                       }}
                     />
                   </div>
@@ -214,7 +223,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
                   onClick={() => openBookmark(bookmark.url)}
                   className={cn(
                     "w-full flex items-center gap-2 px-3 h-8 rounded-md text-left",
-                    "hover:bg-[var(--color-hover)] transition-colors duration-0"
+                    "hover:bg-[var(--color-hover)] transition-colors duration-0",
                   )}
                 >
                   <ArrowRight
@@ -238,5 +247,3 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
     </div>
   );
 }
-
-export default HomePage;

@@ -4,19 +4,14 @@ import { persist } from "zustand/middleware";
 import type { Tab, NewTabOptions } from "@/types";
 import { useNetworkStore } from "@/stores/network";
 
-function genId(): string {
-  return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 function buildTab(workspaceId: string, opts: NewTabOptions = {}): Tab {
   return {
-    id: genId(),
+    id: crypto.randomUUID(),
     title: opts.url ? opts.url : "New Tab",
     url: opts.url ?? "",
     favicon: opts.favicon ?? null,
     isLoading: false,
     isPinned: opts.isPinned ?? false,
-    isMuted: opts.isMuted ?? false,
     workspaceId,
     createdAt: Date.now(),
     savedFormState: null,
@@ -68,7 +63,9 @@ export const useTabsStore = create<TabsStore>()(
 
       addTab: (workspaceId, opts = {}) => {
         const tab = buildTab(workspaceId, opts);
-        set((s) => { s.tabs[tab.id] = tab; });
+        set((s) => {
+          s.tabs[tab.id] = tab;
+        });
         return tab.id;
       },
 
@@ -97,7 +94,9 @@ export const useTabsStore = create<TabsStore>()(
           title: src.title,
           favicon: src.favicon ?? undefined,
         });
-        set((s) => { s.tabs[tab.id] = tab; });
+        set((s) => {
+          s.tabs[tab.id] = tab;
+        });
         return tab.id;
       },
 
@@ -108,11 +107,15 @@ export const useTabsStore = create<TabsStore>()(
       },
 
       setLoading: (tabId, val) => {
-        set((s) => { if (s.tabs[tabId]) s.tabs[tabId].isLoading = val; });
+        set((s) => {
+          if (s.tabs[tabId]) s.tabs[tabId].isLoading = val;
+        });
       },
 
       setFavicon: (tabId, favicon) => {
-        set((s) => { if (s.tabs[tabId]) s.tabs[tabId].favicon = favicon; });
+        set((s) => {
+          if (s.tabs[tabId]) s.tabs[tabId].favicon = favicon;
+        });
       },
 
       recordNavigation: (tabId, fromUrl) => {
@@ -166,7 +169,10 @@ export const useTabsStore = create<TabsStore>()(
         return nextUrl;
       },
 
-      clearLastClosedTab: () => set((s) => { s.lastClosedTab = null; }),
+      clearLastClosedTab: () =>
+        set((s) => {
+          s.lastClosedTab = null;
+        }),
 
       discardTab: (tabId) => {
         set((s) => {
@@ -209,27 +215,28 @@ export const useTabsStore = create<TabsStore>()(
     })),
     {
       name: "xevo-session",
-      partialize: (s) => ({
-        // Only tabs that actually went somewhere — an empty "New Tab" is not
-        // worth restoring, and restoring one would show HomePage anyway.
-        tabs: Object.fromEntries(
-          Object.values(s.tabs)
-            .filter((t) => !!t.url)
-            .map((t): [string, TabSnapshot] => [
-              t.id,
-              {
-                id: t.id,
-                url: t.url,
-                title: t.title,
-                favicon: t.favicon,
-                isPinned: t.isPinned,
-                workspaceId: t.workspaceId,
-                createdAt: t.createdAt,
-                zoom: t.zoom,
-              },
-            ])
-        ),
-      }) as unknown as TabsStore,
+      partialize: (s) =>
+        ({
+          // Only tabs that actually went somewhere — an empty "New Tab" is not
+          // worth restoring, and restoring one would show HomePage anyway.
+          tabs: Object.fromEntries(
+            Object.values(s.tabs)
+              .filter((t) => !!t.url)
+              .map((t): [string, TabSnapshot] => [
+                t.id,
+                {
+                  id: t.id,
+                  url: t.url,
+                  title: t.title,
+                  favicon: t.favicon,
+                  isPinned: t.isPinned,
+                  workspaceId: t.workspaceId,
+                  createdAt: t.createdAt,
+                  zoom: t.zoom,
+                },
+              ]),
+          ),
+        }) as unknown as TabsStore,
       /**
        * Every restored tab is born *discarded*: it has a URL and title so it
        * renders in the tab bar, but no webview. useWebviewBridge already knows
@@ -258,6 +265,6 @@ export const useTabsStore = create<TabsStore>()(
         }
         return { ...current, tabs };
       },
-    }
-  )
+    },
+  ),
 );

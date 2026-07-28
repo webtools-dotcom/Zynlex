@@ -40,7 +40,7 @@ export function OverlayPanel({ apiTesterContent }: OverlayPanelProps) {
       startHeightRef.current = overlayHeight;
       setDragging(true);
     },
-    [overlayHeight]
+    [overlayHeight],
   );
 
   useEffect(() => {
@@ -88,9 +88,7 @@ export function OverlayPanel({ apiTesterContent }: OverlayPanelProps) {
         className="flex items-center justify-between h-8 px-2 border-b flex-shrink-0"
         style={{ borderColor: "var(--color-border-subtle)" }}
       >
-        <span className="text-micro font-semibold text-[var(--color-text-muted)]">
-          API Tester
-        </span>
+        <span className="text-micro font-semibold text-[var(--color-text-muted)]">API Tester</span>
         <button
           onClick={closeOverlay}
           className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
@@ -112,10 +110,7 @@ export function OverlayPanel({ apiTesterContent }: OverlayPanelProps) {
         className="h-2.5 flex items-center justify-center cursor-ns-resize flex-shrink-0 hover:bg-[var(--color-hover)] transition-colors"
         style={{ borderTop: "1px solid var(--color-border-subtle)" }}
       >
-        <GripHorizontal
-          size={10}
-          className="text-[var(--color-text-disabled)]"
-        />
+        <GripHorizontal size={10} className="text-[var(--color-text-disabled)]" />
       </div>
     </div>
   );
