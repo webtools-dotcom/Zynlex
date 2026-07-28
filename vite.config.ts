@@ -15,6 +15,13 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Without this, the dep scanner's default **/*.html glob from the project
+  // root picks up the 20k+ files in src-tauri/target/doc (rustdoc output) —
+  // EMFILE on Windows and a much slower cold start. index.html is the only
+  // real entry point.
+  optimizeDeps: {
+    entries: ["index.html"],
+  },
   build: {
     rollupOptions: {
       output: {
