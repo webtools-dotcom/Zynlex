@@ -7,7 +7,6 @@ import {
   MoreHorizontal,
   Star,
   Columns3,
-  Camera,
   Lock,
   ShieldAlert,
   Wrench,
@@ -21,8 +20,6 @@ import { useBookmarksStore } from "@/stores/bookmarks";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { resolveInput } from "@/lib/url";
-import { takeScreenshot } from "@/services/browser";
-import { copyImageToClipboard } from "@/lib/clipboard";
 
 /**
  * Address-bar security indicator, derived purely from the URL scheme.
@@ -285,22 +282,6 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
         )}
       >
         <Columns3 size={15} />
-      </button>
-
-      {/* Screenshot button — saves to disk + copies to clipboard */}
-      <button
-        onClick={() => {
-          takeScreenshot()
-            .then(({ bytes }) => copyImageToClipboard(bytes))
-            .catch((error) => {
-              useUIStore.getState().pushToast(`Screenshot failed: ${String(error)}`, "danger");
-            });
-        }}
-        title="Take screenshot (Ctrl+Shift+S)"
-        aria-label="Take screenshot"
-        className="w-8 h-8 flex items-center justify-center rounded-[4px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
-      >
-        <Camera size={15} />
       </button>
 
       {/* Right-side actions */}

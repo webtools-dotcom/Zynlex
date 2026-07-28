@@ -1,7 +1,5 @@
 mod find;
 pub use find::*;
-mod screenshot;
-pub use screenshot::*;
 mod events;
 pub use events::*;
 mod inspector;
@@ -614,7 +612,7 @@ pub async fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String
 ///
 /// Neither wry nor `ICoreWebView2::Reload()` offers an ignore-cache option, and
 /// `location.reload(true)` has been a no-op in Chromium for years — so this goes
-/// through the DevTools protocol, the same channel `browser_screenshot` uses.
+/// through the DevTools protocol (`CallDevToolsProtocolMethod`) instead.
 /// Fire-and-forget: CDP reports completion, but there is nothing to report back.
 #[tauri::command]
 pub async fn browser_hard_reload(app: AppHandle, tab_id: String) -> Result<(), String> {

@@ -17,8 +17,7 @@ import { useUIStore } from "@/stores/ui";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
-import { closeTabWebview, takeScreenshot, setTabZoom, hardReload } from "@/services/browser";
-import { copyImageToClipboard } from "@/lib/clipboard";
+import { closeTabWebview, setTabZoom, hardReload } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
@@ -121,15 +120,6 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     useWorkspacesStore.getState().addTabToWorkspace(wsId, newId);
     useWorkspacesStore.getState().setActiveTab(wsId, newId);
     useTabsStore.getState().clearLastClosedTab();
-    return;
-  }
-
-  if (shortcut === "ctrl+shift+s") {
-    takeScreenshot()
-      .then(({ bytes }) => copyImageToClipboard(bytes))
-      .catch((error) => {
-        useUIStore.getState().pushToast(`Screenshot failed: ${String(error)}`, "danger");
-      });
     return;
   }
 
@@ -492,16 +482,6 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         return;
       }
 
-      // ── Ctrl+Shift+S → take screenshot ─────────────────────────────
-      if (mod && e.shiftKey && !e.altKey && e.key === "S") {
-        e.preventDefault();
-        takeScreenshot()
-          .then(({ bytes }) => copyImageToClipboard(bytes))
-          .catch((error) => {
-            useUIStore.getState().pushToast(`Screenshot failed: ${String(error)}`, "danger");
-          });
-        return;
-      }
     }
 
     window.addEventListener("keydown", onKey);

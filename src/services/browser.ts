@@ -364,16 +364,6 @@ export async function showViewport(label: string): Promise<void> {
   await invoke<void>("show_viewport", { label });
 }
 
-interface ScreenshotResult {
-  bytes: number[];
-  path: string;
-}
-
-export async function takeScreenshot(): Promise<{ bytes: Uint8Array; path: string }> {
-  const result = await invoke<ScreenshotResult>("browser_screenshot");
-  return { bytes: new Uint8Array(result.bytes), path: result.path };
-}
-
 interface NetworkEntryPayload {
   tabId: string;
   method: string;
