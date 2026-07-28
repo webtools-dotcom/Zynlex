@@ -180,7 +180,9 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         }
         return;
       }
-      showTabWebview(tabId, bounds).catch(() => {});
+      showTabWebview(tabId, bounds).catch((err) => {
+        console.error("[xevo] showTabWebview failed:", err);
+      });
     },
     [contentAreaRef],
   );

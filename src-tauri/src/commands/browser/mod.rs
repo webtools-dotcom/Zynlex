@@ -818,6 +818,24 @@ pub async fn browser_show_tab(
     if let Some(wv) = wv {
         wv.set_position(Position::Logical(LogicalPosition::new(x, y)))
             .map_err(|e| format!("failed to set position: {e}"))?;
+        // Recomposite nudge (see apply_active_child_bounds in lib.rs for the
+        // same fix on the resize path): if this tab's bounds didn't change
+        // while it was hidden — e.g. an absolutely-positioned overlay like
+        // Settings that doesn't reflow the content area — this set_size is
+        // byte-identical to the one already applied, and WebView2 suppresses
+        // a same-size set_bounds. That's invisible on its own (a hidden
+        // webview repaints fine from its existing surface once shown), but a
+        // profile-wide change made while hidden — e.g. browser_set_theme's
+        // SetPreferredColorScheme — leaves the surface stale, and the
+        // suppressed set_size then means show() never repaints it. Forcing
+        // height-1 then the real height is a one-line "always changed" bounds
+        // update. Unconditional and flicker-free here, unlike the maximize
+        // case: the webview is still hidden at this point (show() is next),
+        // so nothing is ever composited at height-1.
+        let _ = wv.set_size(Size::Logical(LogicalSize::new(
+            width.max(1.0),
+            (height - 1.0).max(1.0),
+        )));
         wv.set_size(Size::Logical(LogicalSize::new(
             width.max(1.0),
             height.max(1.0),
