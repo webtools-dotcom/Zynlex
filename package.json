@@ -1,15 +1,16 @@
 {
-  "name": "xevo",
+  "name": "zynlex",
   "private": true,
-  "version": "0.1.0",
-  "packageManager": "pnpm@11.13.1",
+  "version": "0.9.0",
+  "packageManager": "pnpm@11.18.0",
   "description": "A lightweight desktop browser built for web developers",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/webtools-dotcom/Xevo"
+    "url": "https://github.com/webtools-dotcom/Zynlex"
   },
-  "homepage": "https://github.com/webtools-dotcom/Xevo",
-  "bugs": "https://github.com/webtools-dotcom/Xevo/issues",
+  "homepage": "https://github.com/webtools-dotcom/Zynlex",
+  "bugs": "https://github.com/webtools-dotcom/Zynlex/issues",
   "type": "module",
   "scripts": {
     "dev": "vite",

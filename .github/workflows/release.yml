@@ -1,0 +1,53 @@
+name: Release
+
+# Tag a commit with v* (e.g. v0.9.0) to build and publish a release.
+# The release is created as a DRAFT — review the artifacts, then publish by hand.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  release:
+    # ZYNLEX is Windows-only (WebView2 COM APIs) — see docs/architecture.md.
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      # Fail fast before the slow Rust release build.
+      - name: Type-check
+        run: pnpm check-types
+
+      - name: Test
+        run: pnpm test
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ZYNLEX ${{ github.ref_name }}
+          releaseBody: |
+            See [CHANGELOG.md](https://github.com/webtools-dotcom/Zynlex/blob/main/CHANGELOG.md) for what's in this release.
+
+            **Requirements:** Windows 10 or 11. The installer adds the WebView2 runtime if it's missing.
+          releaseDraft: true
+          prerelease: false
