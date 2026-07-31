@@ -1,5 +1,5 @@
 use super::pwstr_to_string;
-use crate::xevo_log;
+use crate::zynlex_log;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -132,7 +132,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
             let core = match platform.controller().CoreWebView2() {
                 Ok(core) => core,
                 Err(e) => {
-                    xevo_log!("[xevo] CoreWebView2() failed for network capture: {e:?}");
+                    zynlex_log!("[zynlex] CoreWebView2() failed for network capture: {e:?}");
                     return;
                 }
             };
@@ -141,7 +141,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                 windows::core::w!("*"),
                 COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
             ) {
-                xevo_log!("[xevo] AddWebResourceRequestedFilter failed: {e:?}");
+                zynlex_log!("[zynlex] AddWebResourceRequestedFilter failed: {e:?}");
                 return;
             }
 
@@ -233,15 +233,15 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
             let mut token: i64 = 0;
             match core.add_WebResourceRequested(&req_handler, &mut token) {
                 Ok(()) => {
-                    xevo_log!("[XEVO] WebResourceRequested handler registered — token={token}")
+                    zynlex_log!("[ZYNLEX] WebResourceRequested handler registered — token={token}")
                 }
-                Err(e) => xevo_log!("[XEVO] WebResourceRequested handler FAILED: {e:?}"),
+                Err(e) => zynlex_log!("[ZYNLEX] WebResourceRequested handler FAILED: {e:?}"),
             }
 
             let core2: ICoreWebView2_2 = match core.cast() {
                 Ok(c) => c,
                 Err(e) => {
-                    xevo_log!("[xevo] ICoreWebView2_2 cast failed: {e:?}");
+                    zynlex_log!("[zynlex] ICoreWebView2_2 cast failed: {e:?}");
                     return;
                 }
             };

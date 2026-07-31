@@ -405,7 +405,7 @@ pub async fn browser_eval_inspector(
             let data = read_cookies(&wv).await?;
             return app
                 .emit(
-                    "xevo://inspector-data",
+                    "zynlex://inspector-data",
                     serde_json::json!({
                         "tabId": tab_id,
                         "dataType": inspector_type,
@@ -450,7 +450,7 @@ pub async fn browser_eval_inspector(
 
         let data = eval_json(&wv, script).await?;
         app.emit(
-            "xevo://inspector-data",
+            "zynlex://inspector-data",
             serde_json::json!({
                 "tabId": tab_id,
                 "dataType": inspector_type,

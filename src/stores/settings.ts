@@ -2,13 +2,13 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { persist } from "zustand/middleware";
 import type { AppSettings } from "@/types";
+import { DEFAULT_SEARCH_ENGINE, SEARCH_ENGINES } from "@/lib/url";
 
 const DEFAULTS: AppSettings = {
   theme: "dark",
-  searchEngine: "google",
-  customSearchUrl: "",
+  searchEngine: DEFAULT_SEARCH_ENGINE,
   tabBarPosition: "top",
-  homePage: "xevo://home",
+  homePage: "zynlex://home",
   portScanInterval: 10,
   customPorts: [],
   compactMode: false,
@@ -39,14 +39,21 @@ export const useSettingsStore = create<SettingsStore>()(
       },
     })),
     {
-      name: "xevo-settings",
-      version: 2,
+      name: "zynlex-settings",
+      version: 3,
       migrate: (persistedState, version) => {
-        if (version < 2) {
-          const state = persistedState as any;
-          return { settings: { ...DEFAULTS, ...(state.settings || {}) } };
+        const state = persistedState as any;
+        const settings = { ...DEFAULTS, ...(state?.settings || {}) };
+        if (version < 3) {
+          // v3 dropped the "custom" engine (and its customSearchUrl). Anyone
+          // persisted on it — or on an engine we no longer ship — would other-
+          // wise land on an id with no template and get no results.
+          delete settings.customSearchUrl;
+          if (!SEARCH_ENGINES.some((e) => e.id === settings.searchEngine)) {
+            settings.searchEngine = DEFAULT_SEARCH_ENGINE;
+          }
         }
-        return persistedState;
+        return { settings };
       },
     },
   ),

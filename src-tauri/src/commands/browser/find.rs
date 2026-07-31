@@ -1,5 +1,5 @@
 use super::{find_tab_webview, webview_label_for_tab};
-use crate::xevo_log;
+use crate::zynlex_log;
 use tauri::{AppHandle, Emitter};
 
 fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<(), String> {
@@ -9,7 +9,7 @@ fn eval_find_script(app: &AppHandle, tab_id: &str, script_body: &str) -> Result<
     // ponytail: script_body already JS-escaped via js_string_literal — no re-escaping needed
     let wrapped = format!("(function() {{ {} }})();", script_body);
     wv.eval(&wrapped).map_err(|e| {
-        xevo_log!("[xevo] browser find eval failed: {e}");
+        zynlex_log!("[zynlex] browser find eval failed: {e}");
         e.to_string()
     })
 }
@@ -25,9 +25,9 @@ pub(super) fn js_string_literal(s: &str) -> String {
 #[tauri::command]
 pub async fn browser_find(app: AppHandle, tab_id: String, query: String) -> Result<(), String> {
     if query.is_empty() {
-        return eval_find_script(&app, &tab_id, "window.__xevoClearFind()");
+        return eval_find_script(&app, &tab_id, "window.__zynlexClearFind()");
     }
-    let body = format!("window.__xevoFind({})", js_string_literal(&query));
+    let body = format!("window.__zynlexFind({})", js_string_literal(&query));
     eval_find_script(&app, &tab_id, &body)
 }
 
@@ -38,13 +38,13 @@ pub async fn browser_find_next(
     forward: Option<bool>,
 ) -> Result<(), String> {
     let fwd = forward.unwrap_or(true);
-    let body = format!("window.__xevoFindNext({})", fwd);
+    let body = format!("window.__zynlexFindNext({})", fwd);
     eval_find_script(&app, &tab_id, &body)
 }
 
 #[tauri::command]
 pub async fn browser_stop_find(app: AppHandle, tab_id: String) -> Result<(), String> {
-    eval_find_script(&app, &tab_id, "window.__xevoClearFind()")
+    eval_find_script(&app, &tab_id, "window.__zynlexClearFind()")
 }
 
 #[tauri::command]

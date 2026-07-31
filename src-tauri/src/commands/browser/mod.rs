@@ -10,7 +10,7 @@ pub use viewport::*;
 mod net;
 pub use net::*;
 
-use crate::xevo_log;
+use crate::zynlex_log;
 use crate::BrowserState;
 use std::sync::atomic::Ordering;
 use tauri::webview::{DownloadEvent, PageLoadEvent, WebviewBuilder};
@@ -136,7 +136,7 @@ async fn wait_until_absent(app: &AppHandle, state: &crate::BrowserState, label: 
     }
 }
 
-/// Build a child Webview for a tab. Injects per-tab __XEVO_TAB_ID plus
+/// Build a child Webview for a tab. Injects per-tab __ZYNLEX_TAB_ID plus
 /// all shared init scripts (core, chrome features, JSON viewer).
 ///
 /// Uses `Window::add_child`, NOT `WebviewWindowBuilder::parent()`. On Windows
@@ -173,8 +173,8 @@ fn create_webview_for_tab(
     let tab_id_download = tab_id.to_string();
     let app_for_download = app.clone();
 
-    // Per-tab init script that sets __XEVO_TAB_ID
-    let tab_id_init = format!("window.__XEVO_TAB_ID = \"{}\";", tab_id);
+    // Per-tab init script that sets __ZYNLEX_TAB_ID
+    let tab_id_init = format!("window.__ZYNLEX_TAB_ID = \"{}\";", tab_id);
 
     let state = app.state::<BrowserState>();
     let user_agent = state
@@ -264,7 +264,7 @@ fn create_webview_for_tab(
             match event {
                 DownloadEvent::Requested { url, destination } => {
                     let _ = app_for_download.emit(
-                        "xevo://download-started",
+                        "zynlex://download-started",
                         serde_json::json!({
                             "tabId": tab_id_download,
                             "url": url.to_string(),
@@ -274,7 +274,7 @@ fn create_webview_for_tab(
                 }
                 DownloadEvent::Finished { url, path, success } => {
                     let _ = app_for_download.emit(
-                        "xevo://download-finished",
+                        "zynlex://download-finished",
                         serde_json::json!({
                             "url": url.to_string(),
                             "path": path.as_ref().map(|p| p.to_string_lossy().to_string()),
@@ -337,8 +337,8 @@ pub async fn browser_create_tab(
     {
         let mut webviews = state.webviews.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(old_wv) = webviews.remove(&label) {
-            xevo_log!(
-                "[XEVO-LIFECYCLE] browser_create_tab — closing stale handle for label={}",
+            zynlex_log!(
+                "[ZYNLEX-LIFECYCLE] browser_create_tab — closing stale handle for label={}",
                 label
             );
             let _ = old_wv.close();
@@ -347,8 +347,8 @@ pub async fn browser_create_tab(
 
     // Close any orphan webview in Tauri's registry with this label.
     if let Some(orphan) = app.get_webview(&label) {
-        xevo_log!(
-            "[XEVO-LIFECYCLE] browser_create_tab — closing orphan label={}",
+        zynlex_log!(
+            "[ZYNLEX-LIFECYCLE] browser_create_tab — closing orphan label={}",
             label
         );
         let _ = orphan.close();
@@ -363,7 +363,7 @@ pub async fn browser_create_tab(
     {
         let webviews = state.webviews.lock().unwrap_or_else(|e| e.into_inner());
         if app.get_webview(&label).is_some() || webviews.contains_key(&label) {
-            xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — label={} did not release after waiting, aborting", label);
+            zynlex_log!("[ZYNLEX-LIFECYCLE] browser_create_tab — label={} did not release after waiting, aborting", label);
             return Err(format!(
                 "webview for tab {} did not release in time",
                 tab_id
@@ -371,8 +371,8 @@ pub async fn browser_create_tab(
         }
     }
 
-    xevo_log!(
-        "[XEVO-LIFECYCLE] browser_create_tab — creating label={} url={} x={} y={} w={} h={}",
+    zynlex_log!(
+        "[ZYNLEX-LIFECYCLE] browser_create_tab — creating label={} url={} x={} y={} w={} h={}",
         label,
         url,
         x,
@@ -400,7 +400,7 @@ pub async fn browser_create_tab(
         // Race check: another call may have created this webview while we were
         // creating ours. If so, drop our duplicate to avoid orphaning theirs.
         if webviews.contains_key(&label) {
-            xevo_log!("[XEVO-LIFECYCLE] browser_create_tab — RACE: label={} already in map, dropping duplicate", label);
+            zynlex_log!("[ZYNLEX-LIFECYCLE] browser_create_tab — RACE: label={} already in map, dropping duplicate", label);
             drop(webview);
             return Ok(());
         }
@@ -425,8 +425,8 @@ pub async fn browser_close_tab(
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
     let exists = app.get_webview(&label).is_some();
-    xevo_log!(
-        "[XEVO-LIFECYCLE] browser_close_tab — label={} tab_id={} exists_before={}",
+    zynlex_log!(
+        "[ZYNLEX-LIFECYCLE] browser_close_tab — label={} tab_id={} exists_before={}",
         label,
         tab_id,
         exists
@@ -447,14 +447,14 @@ pub async fn browser_close_tab(
         .remove(&label);
     if let Some(wv) = app.get_webview(&label) {
         wv.close().map_err(|e| e.to_string())?;
-        xevo_log!(
-            "[XEVO-LIFECYCLE] browser_close_tab — label={} closed OK, still_exists={}",
+        zynlex_log!(
+            "[ZYNLEX-LIFECYCLE] browser_close_tab — label={} closed OK, still_exists={}",
             label,
             app.get_webview(&label).is_some()
         );
     } else {
-        xevo_log!(
-            "[XEVO-LIFECYCLE] browser_close_tab — label={} not found (already closed?)",
+        zynlex_log!(
+            "[ZYNLEX-LIFECYCLE] browser_close_tab — label={} not found (already closed?)",
             label
         );
     }
@@ -491,7 +491,7 @@ pub async fn browser_navigate_tab(
     if let Some(wv) = find_tab_webview(&app, &label) {
         wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
             .map_err(|e| {
-                xevo_log!("[xevo] browser_navigate_tab failed: {e}");
+                zynlex_log!("[zynlex] browser_navigate_tab failed: {e}");
                 e.to_string()
             })?;
     }
@@ -526,8 +526,8 @@ pub async fn browser_set_bounds(
     {
         return Ok(());
     }
-    xevo_log!(
-        "[XEVO-BOUNDS] browser_set_bounds called — label={} x={} y={} w={} h={}",
+    zynlex_log!(
+        "[ZYNLEX-BOUNDS] browser_set_bounds called — label={} x={} y={} w={} h={}",
         label,
         x,
         y,
@@ -541,16 +541,16 @@ pub async fn browser_set_bounds(
         // separate message to the wry event loop, processed on separate iterations,
         // so the webview visibly moved on one frame and resized on the next.
         // set_bounds does both in a single message.
-        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — webview found, calling set_bounds");
+        zynlex_log!("[ZYNLEX-BOUNDS] browser_set_bounds — webview found, calling set_bounds");
         let bounds = tauri::Rect {
             position: Position::Logical(LogicalPosition::new(x, y)),
             size: Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),
         };
         if let Err(e) = wv.set_bounds(bounds) {
-            xevo_log!("[XEVO-BOUNDS] browser_set_bounds — set_bounds ERROR: {}", e);
+            zynlex_log!("[ZYNLEX-BOUNDS] browser_set_bounds — set_bounds ERROR: {}", e);
             return Err(format!("set_bounds failed: {}", e));
         }
-        xevo_log!("[XEVO-BOUNDS] browser_set_bounds — OK");
+        zynlex_log!("[ZYNLEX-BOUNDS] browser_set_bounds — OK");
 
         // Cache the content-area insets so a native window resize can reposition
         // the active webview directly from Rust (see on_window_event in lib.rs),
@@ -568,8 +568,8 @@ pub async fn browser_set_bounds(
             }
         }
     } else {
-        xevo_log!(
-            "[XEVO-BOUNDS] browser_set_bounds — webview NOT FOUND for label: {}",
+        zynlex_log!(
+            "[ZYNLEX-BOUNDS] browser_set_bounds — webview NOT FOUND for label: {}",
             label
         );
     }
@@ -631,7 +631,7 @@ pub async fn browser_hard_reload(app: AppHandle, tab_id: String) -> Result<(), S
                 let core = match platform.controller().CoreWebView2() {
                     Ok(c) => c,
                     Err(e) => {
-                        xevo_log!("[xevo] hard reload: CoreWebView2 failed: {e:?}");
+                        zynlex_log!("[zynlex] hard reload: CoreWebView2 failed: {e:?}");
                         return;
                     }
                 };
@@ -711,7 +711,7 @@ pub fn apply_color_scheme(wv: &tauri::Webview, dark: bool) {
             let core = match platform.controller().CoreWebView2() {
                 Ok(c) => c,
                 Err(e) => {
-                    xevo_log!("[xevo] color-scheme: CoreWebView2() failed: {e:?}");
+                    zynlex_log!("[zynlex] color-scheme: CoreWebView2() failed: {e:?}");
                     return;
                 }
             };
@@ -724,12 +724,12 @@ pub fn apply_color_scheme(wv: &tauri::Webview, dark: bool) {
                             COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT
                         };
                         if let Err(e) = profile.SetPreferredColorScheme(scheme) {
-                            xevo_log!("[xevo] SetPreferredColorScheme failed: {e:?}");
+                            zynlex_log!("[zynlex] SetPreferredColorScheme failed: {e:?}");
                         }
                     }
-                    Err(e) => xevo_log!("[xevo] Profile() unavailable: {e:?}"),
+                    Err(e) => zynlex_log!("[zynlex] Profile() unavailable: {e:?}"),
                 },
-                Err(e) => xevo_log!("[xevo] ICoreWebView2_13 unavailable: {e:?}"),
+                Err(e) => zynlex_log!("[zynlex] ICoreWebView2_13 unavailable: {e:?}"),
             }
         }
         #[cfg(not(windows))]
@@ -762,12 +762,12 @@ pub async fn browser_hide_tab(
     tab_id: String,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    xevo_log!("[XEVO-LIFECYCLE] browser_hide_tab — label={}", label);
+    zynlex_log!("[ZYNLEX-LIFECYCLE] browser_hide_tab — label={}", label);
     let wv = find_tab_webview(&app, &label);
     if let Some(wv) = wv {
         wv.hide().map_err(|e| format!("failed to hide tab: {e}"))?;
-        xevo_log!(
-            "[XEVO-LIFECYCLE] browser_hide_tab — label={} hidden OK",
+        zynlex_log!(
+            "[ZYNLEX-LIFECYCLE] browser_hide_tab — label={} hidden OK",
             label
         );
         // Clear active_tab_label if we just hid the tracked webview.
@@ -781,8 +781,8 @@ pub async fn browser_hide_tab(
             *active = None;
         }
     } else {
-        xevo_log!(
-            "[XEVO-LIFECYCLE] browser_hide_tab — label={} not found",
+        zynlex_log!(
+            "[ZYNLEX-LIFECYCLE] browser_hide_tab — label={} not found",
             label
         );
     }
@@ -810,7 +810,7 @@ pub async fn browser_show_tab(
         return Ok(());
     }
 
-    xevo_log!("[XEVO-BOUNDS] browser_show_tab called — label={}", label);
+    zynlex_log!("[ZYNLEX-BOUNDS] browser_show_tab called — label={}", label);
     // Try Tauri's registry first, then fallback to our persistent handle map
     let wv = find_tab_webview(&app, &label);
     if let Some(wv) = wv {
@@ -852,13 +852,13 @@ pub async fn browser_show_tab(
             .active_tab_label
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = Some(label.clone());
-        xevo_log!(
-            "[XEVO-BOUNDS] browser_show_tab — restored active_tab_label to {}",
+        zynlex_log!(
+            "[ZYNLEX-BOUNDS] browser_show_tab — restored active_tab_label to {}",
             label
         );
     } else {
-        xevo_log!(
-            "[XEVO-BOUNDS] browser_show_tab — webview NOT FOUND for label: {}",
+        zynlex_log!(
+            "[ZYNLEX-BOUNDS] browser_show_tab — webview NOT FOUND for label: {}",
             label
         );
     }
@@ -904,12 +904,12 @@ pub fn apply_memory_target(wv: &tauri::Webview, low: bool) {
                 Ok(core) => match core.cast::<ICoreWebView2_19>() {
                     Ok(core19) => {
                         if let Err(e) = core19.SetMemoryUsageTargetLevel(level) {
-                            xevo_log!("[xevo] SetMemoryUsageTargetLevel failed: {e:?}");
+                            zynlex_log!("[zynlex] SetMemoryUsageTargetLevel failed: {e:?}");
                         }
                     }
-                    Err(e) => xevo_log!("[xevo] ICoreWebView2_19 unavailable: {e:?}"),
+                    Err(e) => zynlex_log!("[zynlex] ICoreWebView2_19 unavailable: {e:?}"),
                 },
-                Err(e) => xevo_log!("[xevo] CoreWebView2() failed: {e:?}"),
+                Err(e) => zynlex_log!("[zynlex] CoreWebView2() failed: {e:?}"),
             }
         }
     });
@@ -924,14 +924,14 @@ pub async fn browser_set_memory_target(
     low: bool,
 ) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
-    xevo_log!(
-        "[XEVO-LIFECYCLE] browser_set_memory_target — label={} low={}",
+    zynlex_log!(
+        "[ZYNLEX-LIFECYCLE] browser_set_memory_target — label={} low={}",
         label,
         low
     );
     let wv = find_tab_webview(&app, &label).ok_or_else(|| {
-        xevo_log!(
-            "[XEVO-LIFECYCLE] browser_set_memory_target — label={} NOT FOUND",
+        zynlex_log!(
+            "[ZYNLEX-LIFECYCLE] browser_set_memory_target — label={} NOT FOUND",
             label
         );
         format!("no webview for tab {}", tab_id)
@@ -1015,7 +1015,7 @@ pub async fn browser_restore_tab_state(
                     }}
                 }}
             }} catch(e) {{
-                console.warn('[xevo] restore state failed:', e);
+                console.warn('[zynlex] restore state failed:', e);
             }}
         }})()"#
     );

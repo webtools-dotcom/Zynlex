@@ -11,9 +11,9 @@ function App() {
 
   useEffect(() => {
     if (compactMode) {
-      document.documentElement.classList.add("xevo-compact");
+      document.documentElement.classList.add("zynlex-compact");
     } else {
-      document.documentElement.classList.remove("xevo-compact");
+      document.documentElement.classList.remove("zynlex-compact");
     }
   }, [compactMode]);
 

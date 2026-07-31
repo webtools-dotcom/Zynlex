@@ -5,7 +5,7 @@ mod commands;
 /// release build regardless — these calls were previously unconditional,
 /// running on every window-move/resize frame for no one to see.
 #[macro_export]
-macro_rules! xevo_log {
+macro_rules! zynlex_log {
     ($($arg:tt)*) => {
         if cfg!(debug_assertions) { eprintln!($($arg)*); }
     };
@@ -153,7 +153,7 @@ pub fn run() {
             // the browser process early, and the main window's own webview
             // already does that.
 
-            // XEVO is Windows-only for v1.0. Every dev feature — network
+            // ZYNLEX is Windows-only for v1.0. Every dev feature — network
             // capture, header injection, cookies, tab titles/favicons, in-page
             // shortcuts, zoom, hard reload, screenshots, memory targeting — is
             // implemented against WebView2 COM behind #[cfg(windows)], with no
@@ -163,7 +163,7 @@ pub fn run() {
             {
                 let _ = _app;
                 eprintln!(
-                    "XEVO is Windows-only for v1.0: every developer feature is built on \
+                    "ZYNLEX is Windows-only for v1.0: every developer feature is built on \
                      WebView2 COM APIs with no macOS/Linux equivalent implemented yet. \
                      Refusing to start rather than launch a browser with none of them."
                 );

@@ -1,6 +1,6 @@
 # Architecture
 
-XEVO runs each browser tab as its own child webview, composited natively inside a
+ZYNLEX runs each browser tab as its own child webview, composited natively inside a
 single undecorated OS window. This document covers the invariants that keep that
 model correct: process layout, bounds/resize, fullscreen, viewport emulation, and
 the security boundary between page content and the app.

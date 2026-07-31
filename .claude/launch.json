@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "xevo-dev",
+      "name": "zynlex-dev",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev"],
       "port": 1420

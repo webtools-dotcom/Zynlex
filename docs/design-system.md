@@ -1,6 +1,6 @@
 # Design System
 
-XEVO is a developer tool, not a consumer app. Its UI is infrastructure: the
+ZYNLEX is a developer tool, not a consumer app. Its UI is infrastructure: the
 webview — the content the developer is building — should be the loudest thing on
 screen, and everything else recedes.
 

@@ -92,7 +92,7 @@ export const useServersStore = create<ServersStore>()(
       },
     })),
     {
-      name: "xevo-servers",
+      name: "zynlex-servers",
       partialize: (s) => ({
         servers: s.servers.map((sv) => ({
           ...sv,

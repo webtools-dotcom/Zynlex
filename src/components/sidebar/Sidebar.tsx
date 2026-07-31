@@ -202,7 +202,7 @@ function LiveServersPanel() {
 
 function PanelSkeleton() {
   return (
-    <div className="animate-pulse p-4 space-y-3 xevo-panel-enter">
+    <div className="animate-pulse p-4 space-y-3 zynlex-panel-enter">
       <div className="h-4 bg-[var(--color-hover)] rounded w-1/3" />
       <div className="h-4 bg-[var(--color-hover)] rounded w-2/3" />
       <div className="h-4 bg-[var(--color-hover)] rounded w-1/2" />
@@ -304,7 +304,7 @@ export function Sidebar() {
       </div>
 
       {/* Panel content */}
-      <div key={activePanel} className="flex-1 overflow-y-auto xevo-panel-enter">
+      <div key={activePanel} className="flex-1 overflow-y-auto zynlex-panel-enter">
         <Suspense fallback={<PanelSkeleton />}>
           {activePanel === "servers" && <LiveServersPanel />}
           {activePanel === "bookmarks" && <BookmarksPanel />}

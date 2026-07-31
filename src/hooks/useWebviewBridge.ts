@@ -152,7 +152,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     }
     lastBoundsRef.current = bounds;
     setWebviewBounds(tabId, bounds).catch((err) => {
-      console.error("[xevo] setWebviewBounds failed:", err);
+      console.error("[zynlex] setWebviewBounds failed:", err);
     });
   };
 
@@ -181,7 +181,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         return;
       }
       showTabWebview(tabId, bounds).catch((err) => {
-        console.error("[xevo] showTabWebview failed:", err);
+        console.error("[zynlex] showTabWebview failed:", err);
       });
     },
     [contentAreaRef],
@@ -688,8 +688,8 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         .catch(() => {});
     };
 
-    window.addEventListener("xevo:ua-changed", recreateForUserAgent);
-    return () => window.removeEventListener("xevo:ua-changed", recreateForUserAgent);
+    window.addEventListener("zynlex:ua-changed", recreateForUserAgent);
+    return () => window.removeEventListener("zynlex:ua-changed", recreateForUserAgent);
   }, [contentAreaRef]);
 
   // ── CAP CONCURRENT WEBVIEWS: enforce soft limit of maxConcurrentWebviews ──
@@ -767,8 +767,8 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       lastBoundsRef.current = null;
       setTimeout(() => syncBoundsRef.current(), 60);
     };
-    window.addEventListener("xevo:maximize-changed", onMaxChanged);
-    return () => window.removeEventListener("xevo:maximize-changed", onMaxChanged);
+    window.addEventListener("zynlex:maximize-changed", onMaxChanged);
+    return () => window.removeEventListener("zynlex:maximize-changed", onMaxChanged);
   }, []);
 
   // Window move/resize following is GONE, and deliberately so.
@@ -850,7 +850,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         if (rules?.length) rulesByTab[tab.id] = rules;
       }
       setHeaderRules(rulesByTab).catch((err) =>
-        console.error("[xevo] Failed to sync header rules:", err),
+        console.error("[zynlex] Failed to sync header rules:", err),
       );
     };
     sync();
@@ -879,7 +879,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         width: bounds.width,
         height: bounds.height,
       }).catch((err) => {
-        console.error("[xevo] setWebviewBounds failed (sidebar toggle):", err);
+        console.error("[zynlex] setWebviewBounds failed (sidebar toggle):", err);
       });
     }, 80);
     return () => clearTimeout(timer);

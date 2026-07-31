@@ -13,7 +13,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { formatBytes } from "@/lib/format";
 import { hostOf } from "@/lib/url";
 import { useCopy } from "@/hooks/useCopy";
-import { setNetworkCapture } from "@/services/browser";
+import { setNetworkCapture, webviewReload } from "@/services/browser";
 
 const METHOD_COLORS: Record<string, string> = {
   GET: "text-method-get",
@@ -541,9 +541,24 @@ export function NetworkPanel() {
         >
           {filtered.length === 0 ? (
             <div className="text-micro text-[var(--color-text-muted)] px-3 py-4 italic">
-              {entries.length === 0
-                ? "No network requests captured yet. Navigate to a page to see requests."
-                : "No requests match the current filter."}
+              {entries.length > 0 ? (
+                "No requests match the current filter."
+              ) : (
+                <>
+                  Recording started when this panel opened — requests made before
+                  that aren't captured.{" "}
+                  {activeTabId && (
+                    <button
+                      type="button"
+                      onClick={() => webviewReload(activeTabId).catch(() => {})}
+                      className="not-italic underline text-[var(--color-accent)] hover:opacity-80"
+                    >
+                      Reload the page
+                    </button>
+                  )}{" "}
+                  to see them.
+                </>
+              )}
             </div>
           ) : (
             filtered.map((entry) => (

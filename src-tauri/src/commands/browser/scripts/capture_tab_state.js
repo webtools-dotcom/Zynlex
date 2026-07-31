@@ -22,7 +22,7 @@
         var stateJson = JSON.stringify({ scrollX: scrollX, scrollY: scrollY, formState: formState });
         if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
             window.__TAURI_INTERNALS__.invoke('browser_tab_state_saved', {
-                tabId: window.__XEVO_TAB_ID || '',
+                tabId: window.__ZYNLEX_TAB_ID || '',
                 stateJson: stateJson
             }).catch(function(){});
         }

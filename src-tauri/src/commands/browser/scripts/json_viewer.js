@@ -1,5 +1,5 @@
 (function() {
-  function xevoRenderJson() {
+  function zynlexRenderJson() {
     try {
       var ct = (document.contentType || "").toLowerCase();
       var isJsonPage = false;
@@ -96,7 +96,7 @@
       var fullUrl = window.location.href || "";
       var truncatedUrl = fullUrl.length > 80 ? fullUrl.slice(0, 80) + "\u2026" : fullUrl;
 
-      document.head.innerHTML = '<title>JSON \u2014 XEVO</title><style>' + css + '</style>';
+      document.head.innerHTML = '<title>JSON \u2014 ZYNLEX</title><style>' + css + '</style>';
       document.body.innerHTML = '<div class="xj-header">'
         + '<span class="xj-path">' + esc(truncatedUrl) + '</span>'
         + '<button class="xj-copy" id="xj-copy-btn">Copy</button>'
@@ -115,5 +115,5 @@
       }
     } catch (e) {}
   }
-  document.addEventListener("DOMContentLoaded", xevoRenderJson);
+  document.addEventListener("DOMContentLoaded", zynlexRenderJson);
 })();

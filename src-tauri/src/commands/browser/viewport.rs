@@ -1,5 +1,5 @@
 use super::{eval_json, find_tab_webview};
-use crate::xevo_log;
+use crate::zynlex_log;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl,
@@ -48,7 +48,7 @@ fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
             let core = match platform.controller().CoreWebView2() {
                 Ok(c) => c,
                 Err(e) => {
-                    xevo_log!("[xevo] viewport emulation: CoreWebView2 unavailable: {e:?}");
+                    zynlex_log!("[zynlex] viewport emulation: CoreWebView2 unavailable: {e:?}");
                     return;
                 }
             };

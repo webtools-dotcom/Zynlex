@@ -82,7 +82,7 @@ export function usePortScanner() {
       setLastScanAt(Date.now());
     } catch (e) {
       if (import.meta.env.DEV) {
-        console.error("[xevo] scan_ports failed:", e);
+        console.error("[zynlex] scan_ports failed:", e);
       }
     } finally {
       isScanningRef.current = false;

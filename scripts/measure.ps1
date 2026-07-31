@@ -1,12 +1,12 @@
-# Total RAM for XEVO: its own process plus the whole msedgewebview2 tree it spawned.
-# Renderer memory lives in the children, so measuring xevo.exe alone understates it badly.
+# Total RAM for ZYNLEX: its own process plus the whole msedgewebview2 tree it spawned.
+# Renderer memory lives in the children, so measuring zynlex.exe alone understates it badly.
 #
 #   .\scripts\measure.ps1                  one sample
 #   .\scripts\measure.ps1 -Label "5 tabs"  tag the row
 #   .\scripts\measure.ps1 -Name chrome     compare against another browser
 param(
     [string]$Label = "",
-    [string]$Name = "xevo"
+    [string]$Name = "zynlex"
 )
 
 $all = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, WorkingSetSize

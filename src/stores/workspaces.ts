@@ -170,7 +170,7 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
       },
     })),
     {
-      name: "xevo-workspaces",
+      name: "zynlex-workspaces",
       version: 2,
       migrate: (persistedState) => {
         const state = isRecord(persistedState)
@@ -221,7 +221,7 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
       // getLiveWorkspaceTabIds() in lib/workspaceTabs.ts.
       onRehydrateStorage: () => (_state, error) => {
         if (error) {
-          console.error("[xevo] Workspace persistence hydration failed:", error);
+          console.error("[zynlex] Workspace persistence hydration failed:", error);
         }
       },
     },

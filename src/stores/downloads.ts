@@ -62,7 +62,7 @@ export const useDownloadsStore = create<DownloadsStore>()(
       clear: () => set({ items: [] }),
     }),
     {
-      name: "xevo-downloads",
+      name: "zynlex-downloads",
       version: 1,
       // An "active" download can't survive a restart — there is no handle to
       // resume it, so it would sit spinning forever.

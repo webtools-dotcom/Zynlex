@@ -88,13 +88,21 @@ export function RootLayout() {
         )}
 
         {/* Toolbar — 40px, nav buttons + address bar */}
-        <Toolbar
-          onNavigate={bridge?.navigate ?? null}
-          onBack={bridge?.goBack ?? null}
-          onForward={bridge?.goForward ?? null}
-          onReload={bridge?.reload ?? null}
-        />
-        <LoadingBar isLoading={isLoading} />
+        {/* LoadingBar is absolutely positioned over the toolbar's bottom edge,
+            not in flow: in flow it shifted the content top by 2px whenever
+            loading toggled, and a stale bounds sync then left the child webview
+            2px high, covering the bar everywhere but the sidebar strip. It must
+            stay inside the toolbar band — the tab is a native child webview
+            composited above this page, so anything drawn under it is invisible. */}
+        <div className="relative flex-shrink-0">
+          <Toolbar
+            onNavigate={bridge?.navigate ?? null}
+            onBack={bridge?.goBack ?? null}
+            onForward={bridge?.goForward ?? null}
+            onReload={bridge?.reload ?? null}
+          />
+          <LoadingBar isLoading={isLoading} />
+        </div>
         {bookmarkBarVisible && <BookmarkBar />}
 
         {/* Sidebar + Content area */}

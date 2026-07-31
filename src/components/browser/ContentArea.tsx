@@ -27,10 +27,10 @@ export function ContentArea({ onBridgeReady }: ContentAreaProps) {
   }, [bridge]);
 
   // Honour settings.homePage: an empty tab shows the built-in start page only
-  // while homePage is the xevo://home sentinel; any real URL is navigated to
+  // while homePage is the zynlex://home sentinel; any real URL is navigated to
   // instead. Keyed on the tab id so it fires once per newly-opened empty tab.
   const homePage = useSettingsStore((s) => s.settings.homePage);
-  const isCustomHome = !!homePage && homePage !== "xevo://home";
+  const isCustomHome = !!homePage && homePage !== "zynlex://home";
   useEffect(() => {
     if (!activeTab || activeTab.url || !isCustomHome) return;
     void bridge.navigate(homePage);
@@ -44,7 +44,7 @@ export function ContentArea({ onBridgeReady }: ContentAreaProps) {
         background: "var(--color-base)",
       }}
     >
-      {/* XEVO Home page fills the content area when no tab is open */}
+      {/* ZYNLEX Home page fills the content area when no tab is open */}
       {!hasUrl && <HomePage onNavigate={bridge?.navigate ?? null} />}
     </div>
   );

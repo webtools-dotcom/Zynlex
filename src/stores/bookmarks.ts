@@ -3,7 +3,7 @@
  *
  * Each bookmark belongs to a specific workspace (so a "Frontend" workspace
  * can keep its own set of dev URLs separate from a "Personal" workspace).
- * State is persisted to localStorage under "xevo-bookmarks" and survives
+ * State is persisted to localStorage under "zynlex-bookmarks" and survives
  * app restarts.
  */
 import { create } from "zustand";
@@ -184,7 +184,7 @@ export const useBookmarksStore = create<BookmarksStore>()(
       },
     })),
     {
-      name: "xevo-bookmarks",
+      name: "zynlex-bookmarks",
       version: 1,
       // v0 bookmarks predate folders — everything lands at the root level.
       migrate: (persisted) => {

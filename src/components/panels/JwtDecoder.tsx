@@ -237,7 +237,7 @@ export function JwtDecoder() {
 
           {/* Signature note */}
           <p className="text-xs px-1 mt-1" style={{ color: "var(--color-text-disabled)" }}>
-            Signature not verified — XEVO does not validate JWT signatures.
+            Signature not verified — ZYNLEX does not validate JWT signatures.
           </p>
         </>
       )}

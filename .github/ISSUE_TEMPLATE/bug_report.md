@@ -17,7 +17,7 @@ A clear description of what's wrong.
 What you expected to happen instead.
 
 **Environment**
-- XEVO version:
+- ZYNLEX version:
 - Windows version:
 
 **Screenshots / logs**

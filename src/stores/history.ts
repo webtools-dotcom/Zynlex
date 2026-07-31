@@ -31,6 +31,6 @@ export const useHistoryStore = create<HistoryStore>()(
         })),
       clearAll: () => set({ entries: [] }),
     }),
-    { name: "xevo-history" },
+    { name: "zynlex-history" },
   ),
 );

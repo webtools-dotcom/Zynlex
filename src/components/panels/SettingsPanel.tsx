@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { X } from "lucide-react";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
+import { SEARCH_ENGINES, type SearchEngineId } from "@/lib/url";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
@@ -52,14 +53,16 @@ function SearchEngineButton({
   onSelect,
 }: {
   label: string;
-  value: "google" | "duckduckgo" | "bing" | "custom";
-  current: "google" | "duckduckgo" | "bing" | "custom";
-  onSelect: (v: "google" | "duckduckgo" | "bing" | "custom") => void;
+  value: SearchEngineId;
+  current: SearchEngineId;
+  onSelect: (v: SearchEngineId) => void;
 }) {
   const active = current === value;
   return (
     <button
       onClick={() => onSelect(value)}
+      role="radio"
+      aria-checked={active}
       className={
         active
           ? "border border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/10 text-[var(--color-text-primary)] rounded px-2 py-1.5 text-xs text-center"
@@ -112,7 +115,7 @@ export function SettingsPanel() {
 
   return (
     <div
-      className="absolute top-0 right-0 w-[300px] h-full border-l z-50 overflow-y-auto p-4 xevo-settings-panel"
+      className="absolute top-0 right-0 w-[300px] h-full border-l z-50 overflow-y-auto p-4 zynlex-settings-panel"
       style={{
         background: "var(--color-elevated)",
         borderColor: "var(--color-border)",
@@ -199,46 +202,17 @@ export function SettingsPanel() {
       {/* ── Search Engine ───────────────────────────────────────────── */}
       <SectionHeader>Search Engine</SectionHeader>
 
-      <div className="grid grid-cols-2 gap-1">
-        <SearchEngineButton
-          label="Google"
-          value="google"
-          current={settings.searchEngine}
-          onSelect={(searchEngine) => update({ searchEngine })}
-        />
-        <SearchEngineButton
-          label="DuckDuckGo"
-          value="duckduckgo"
-          current={settings.searchEngine}
-          onSelect={(searchEngine) => update({ searchEngine })}
-        />
-        <SearchEngineButton
-          label="Bing"
-          value="bing"
-          current={settings.searchEngine}
-          onSelect={(searchEngine) => update({ searchEngine })}
-        />
-        <SearchEngineButton
-          label="Custom"
-          value="custom"
-          current={settings.searchEngine}
-          onSelect={(searchEngine) => update({ searchEngine })}
-        />
+      <div className="grid grid-cols-2 gap-1" role="radiogroup" aria-label="Search engine">
+        {SEARCH_ENGINES.map((engine) => (
+          <SearchEngineButton
+            key={engine.id}
+            label={engine.label}
+            value={engine.id}
+            current={settings.searchEngine}
+            onSelect={(searchEngine) => update({ searchEngine })}
+          />
+        ))}
       </div>
-
-      {settings.searchEngine === "custom" && (
-        <input
-          type="text"
-          placeholder="https://search.example.com?q=%s"
-          value={settings.customSearchUrl}
-          onChange={(e) => update({ customSearchUrl: e.target.value })}
-          className="w-full mt-1 px-2 py-1 text-xs border rounded text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] outline-none focus:border-[var(--color-accent)]"
-          style={{
-            background: "var(--color-elevated)",
-            borderColor: "var(--color-border)",
-          }}
-        />
-      )}
 
       {/* ── Port Scanner ────────────────────────────────────────────── */}
       <SectionHeader>Port Scanner</SectionHeader>
@@ -302,19 +276,19 @@ export function SettingsPanel() {
 
       <input
         type="text"
-        placeholder="xevo://home"
+        placeholder="zynlex://home"
         value={settings.homePage}
         onChange={(e) => update({ homePage: e.target.value })}
         className="w-full px-2 py-1 text-xs border rounded text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] outline-none focus:border-[var(--color-accent)]"
         style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
       />
       <span className="text-xs text-[var(--color-text-disabled)] block mt-1">
-        Where new tabs land. Leave as <code>xevo://home</code> for the built-in start page.
+        Where new tabs land. Leave as <code>zynlex://home</code> for the built-in start page.
       </span>
 
       {/* ── About ───────────────────────────────────────────────────── */}
       <div className="text-xs text-[var(--color-text-disabled)] mt-6 space-y-1">
-        <div>XEVO Browser v1.18.0</div>
+        <div>ZYNLEX Browser v1.18.0</div>
         <div>Open source · Zero telemetry · Zero accounts</div>
       </div>
     </div>

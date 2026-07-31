@@ -1,3 +1,5 @@
+import type { SearchEngineId } from "@/lib/url";
+
 // ─── Tab ────────────────────────────────────────────────────────
 
 export interface Tab {
@@ -49,7 +51,6 @@ export interface LocalServer {
 
 // ─── Settings ────────────────────────────────────────────────────
 
-type SearchEngine = "google" | "duckduckgo" | "bing" | "custom";
 export type ThemeMode = "dark" | "light" | "system";
 type TabBarPosition = "top" | "left";
 export type PanelId =
@@ -69,8 +70,7 @@ export type PanelId =
 export interface AppSettings {
   theme: ThemeMode;
   userAgent: string | null;
-  searchEngine: SearchEngine;
-  customSearchUrl: string;
+  searchEngine: SearchEngineId;
   tabBarPosition: TabBarPosition;
   homePage: string;
   /** Port scan interval in seconds (5..60, default 10) */

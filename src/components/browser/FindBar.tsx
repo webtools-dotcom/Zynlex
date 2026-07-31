@@ -47,7 +47,7 @@ export function FindBar() {
       await webviewFind(tabId, q);
     } catch (e) {
       if (import.meta.env.DEV) {
-        console.error("[xevo] webviewFind failed:", e);
+        console.error("[zynlex] webviewFind failed:", e);
       }
     }
   }, []);

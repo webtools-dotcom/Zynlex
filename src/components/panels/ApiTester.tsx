@@ -32,7 +32,7 @@ import { apiFetch } from "@/services/browser";
 import type { HttpMethod, ApiHeader, ApiHistoryEntry } from "@/types";
 
 /** Fired by the sidebar collection list to load a saved request in here. */
-export const LOAD_REQUEST_EVENT = "xevo:load-api-request";
+export const LOAD_REQUEST_EVENT = "zynlex:load-api-request";
 
 const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
 

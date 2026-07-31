@@ -140,7 +140,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
   }
 
   if (shortcut === "ctrl+l") {
-    window.dispatchEvent(new CustomEvent("xevo:focus-address-bar"));
+    window.dispatchEvent(new CustomEvent("zynlex:focus-address-bar"));
     return;
   }
 
@@ -491,14 +491,14 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
   // ── Mechanism 2: Browser-focus shortcut bridge ───────────────────────
   // Works when the browser webview has focus. The webview injects a
   // keydown listener that forwards shortcuts to Rust, which re-emits
-  // them here as xevo://shortcut events.
+  // them here as zynlex://shortcut events.
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
 
     let cancelled = false;
     let unlisten: UnlistenFn | null = null;
 
-    void listen<string>("xevo://shortcut", (e) => {
+    void listen<string>("zynlex://shortcut", (e) => {
       handleShortcut(e.payload.toLowerCase(), bridgeRef.current);
     }).then((fn) => {
       if (cancelled) {

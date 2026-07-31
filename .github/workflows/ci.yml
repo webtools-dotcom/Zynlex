@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   frontend:
-    # XEVO is currently Windows-only (WebView2 COM APIs) — see docs/architecture.md.
+    # ZYNLEX is currently Windows-only (WebView2 COM APIs) — see docs/architecture.md.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

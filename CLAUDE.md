@@ -2,7 +2,7 @@
 
 Project-specific guidance for AI coding agents working in this repo. General
 agent conduct (scope discipline, no speculative abstractions, ask before
-guessing) is assumed — this file only covers what's specific to XEVO.
+guessing) is assumed — this file only covers what's specific to ZYNLEX.
 
 ## Where things live
 

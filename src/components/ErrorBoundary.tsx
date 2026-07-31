@@ -19,7 +19,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     if (import.meta.env.DEV) {
-      console.error("[xevo] ErrorBoundary caught:", error, info.componentStack);
+      console.error("[zynlex] ErrorBoundary caught:", error, info.componentStack);
     }
   }
 

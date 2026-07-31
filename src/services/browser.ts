@@ -214,13 +214,13 @@ interface DownloadFinished {
 export function onDownloadStarted(
   callback: (payload: DownloadStarted) => void,
 ): Promise<UnlistenFn> {
-  return listen<DownloadStarted>("xevo://download-started", (e) => callback(e.payload));
+  return listen<DownloadStarted>("zynlex://download-started", (e) => callback(e.payload));
 }
 
 export function onDownloadFinished(
   callback: (payload: DownloadFinished) => void,
 ): Promise<UnlistenFn> {
-  return listen<DownloadFinished>("xevo://download-finished", (e) => callback(e.payload));
+  return listen<DownloadFinished>("zynlex://download-finished", (e) => callback(e.payload));
 }
 
 /** reveal=false opens the file, reveal=true shows it in the OS file manager. */
@@ -232,7 +232,7 @@ export async function openDownload(path: string, reveal: boolean): Promise<void>
 
 export async function setUserAgent(userAgent: string): Promise<void> {
   await invoke<void>("browser_set_user_agent", { userAgent });
-  window.dispatchEvent(new CustomEvent("xevo:ua-changed"));
+  window.dispatchEvent(new CustomEvent("zynlex:ua-changed"));
 }
 
 // ─── Memory Target ────────────────────────────────────────────────
@@ -269,7 +269,7 @@ interface InspectorDataEvent {
 export function onInspectorData(
   callback: (event: InspectorDataEvent) => void,
 ): Promise<UnlistenFn> {
-  return listen<InspectorDataEvent>("xevo://inspector-data", (e) => callback(e.payload));
+  return listen<InspectorDataEvent>("zynlex://inspector-data", (e) => callback(e.payload));
 }
 
 export async function inspectorMutate(

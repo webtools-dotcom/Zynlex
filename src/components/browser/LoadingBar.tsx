@@ -58,15 +58,14 @@ export function LoadingBar({ isLoading }: LoadingBarProps) {
 
   const animation =
     state === "loading"
-      ? "xevo-progress 8s ease-out forwards"
-      : "xevo-progress-done 0.3s ease-out forwards";
+      ? "zynlex-progress 8s ease-out forwards"
+      : "zynlex-progress-done 0.3s ease-out forwards";
 
   return (
     <div
       ref={containerRef}
-      className="w-full flex-shrink-0"
+      className="absolute bottom-0 left-0 right-0"
       style={{
-        position: "relative",
         height: 2,
         background: "transparent",
         overflow: "hidden",

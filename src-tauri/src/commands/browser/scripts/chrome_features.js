@@ -13,7 +13,7 @@
   }
 
   function clearFind() {
-    var marks = document.querySelectorAll("mark.xevo-find-hit");
+    var marks = document.querySelectorAll("mark.zynlex-find-hit");
     for (var i = 0; i < marks.length; i++) {
       var mark = marks[i];
       var parent = mark.parentNode;
@@ -38,7 +38,7 @@
         if (tag === "script" || tag === "style" || tag === "noscript") {
           return NodeFilter.FILTER_REJECT;
         }
-        if (p.closest && p.closest("mark.xevo-find-hit")) {
+        if (p.closest && p.closest("mark.zynlex-find-hit")) {
           return NodeFilter.FILTER_REJECT;
         }
         if (!node.nodeValue || node.nodeValue.toLowerCase().indexOf(query) === -1) {
@@ -68,7 +68,7 @@
         range.setStart(m.node, m.offset);
         range.setEnd(m.node, m.offset + m.length);
         var mark = document.createElement("mark");
-        mark.className = "xevo-find-hit";
+        mark.className = "zynlex-find-hit";
         mark.style.backgroundColor = "#fde047";
         mark.style.color = "#000";
         mark.style.padding = "0";
@@ -77,17 +77,17 @@
     }
   }
 
-  window.__xevoFind = function(query) {
+  window.__zynlexFind = function(query) {
     clearFind();
     if (!query) {
-      window.__xevoFindState = { query: "", matches: [], currentIndex: -1 };
+      window.__zynlexFindState = { query: "", matches: [], currentIndex: -1 };
       reportFindResult(0, 0);
       return;
     }
     var matches = findAll(query);
     highlightMatches(matches);
     var currentIndex = matches.length > 0 ? 0 : -1;
-    window.__xevoFindState = {
+    window.__zynlexFindState = {
       query: query,
       matches: matches,
       currentIndex: currentIndex
@@ -98,11 +98,11 @@
     reportFindResult(currentIndex >= 0 ? 1 : 0, matches.length);
   };
 
-  window.__xevoFindNext = function(forward) {
-    var s = window.__xevoFindState;
+  window.__zynlexFindNext = function(forward) {
+    var s = window.__zynlexFindState;
     if (!s || s.matches.length === 0) {
       if (s && s.query) {
-        window.__xevoFind(s.query);
+        window.__zynlexFind(s.query);
       }
       return;
     }
@@ -115,16 +115,16 @@
     reportFindResult(s.currentIndex + 1, s.matches.length);
   };
 
-  window.__xevoClearFind = function() {
+  window.__zynlexClearFind = function() {
     clearFind();
-    window.__xevoFindState = { query: "", matches: [], currentIndex: -1 };
+    window.__zynlexFindState = { query: "", matches: [], currentIndex: -1 };
     reportFindResult(0, 0);
   };
 
   function scrollToCurrent() {
-    var s = window.__xevoFindState;
+    var s = window.__zynlexFindState;
     if (!s || s.currentIndex < 0) return;
-    var marks = document.querySelectorAll("mark.xevo-find-hit");
+    var marks = document.querySelectorAll("mark.zynlex-find-hit");
     var active = marks[s.currentIndex];
     if (active) {
       for (var i = 0; i < marks.length; i++) {
@@ -136,7 +136,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function() {
-    window.__xevoFindState = { query: "", matches: [], currentIndex: -1 };
+    window.__zynlexFindState = { query: "", matches: [], currentIndex: -1 };
   });
 })();
 
@@ -169,8 +169,8 @@
     } catch (err) {}
   }
 
-  if (!window.__xevoBookmarkReady) {
-    window.__xevoBookmarkReady = true;
+  if (!window.__zynlexBookmarkReady) {
+    window.__zynlexBookmarkReady = true;
     document.addEventListener("keydown", onKeyDown, true);
   }
 })();

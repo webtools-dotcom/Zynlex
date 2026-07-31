@@ -5,7 +5,7 @@
 - Node.js 24
 - Rust (stable toolchain, `rustc` 1.96+)
 - pnpm 11
-- Windows — XEVO is currently Windows-only (see
+- Windows — ZYNLEX is currently Windows-only (see
   [docs/architecture.md](docs/architecture.md#known-limitations))
 
 ## Getting started
@@ -43,8 +43,8 @@ isn't self-evident from the diff.
 
 ## Measuring memory
 
-`scripts/measure.ps1` sums the working set of `xevo.exe` plus its whole
-`msedgewebview2` child process tree — measuring `xevo.exe` alone understates
+`scripts/measure.ps1` sums the working set of `zynlex.exe` plus its whole
+`msedgewebview2` child process tree — measuring `zynlex.exe` alone understates
 RAM usage significantly, since the actual page renderers live in the child
 processes. Pass `-Name chrome` to compare against another browser.
 

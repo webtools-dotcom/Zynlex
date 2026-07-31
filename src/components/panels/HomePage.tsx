@@ -56,7 +56,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();
-    const url = resolveInput(query, settings.searchEngine, settings.customSearchUrl);
+    const url = resolveInput(query, settings.searchEngine);
     if (!url) return;
     if (onNavigate) {
       onNavigate(url);
@@ -86,7 +86,7 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
       <div className="min-h-full flex flex-col items-center px-10 pt-24 pb-10">
         {/* ── Eyebrow ────────────────────────────────────────────── */}
         <div className="font-mono text-[.75rem] tracking-[0.25em] text-[var(--color-text-muted)] mb-5">
-          <span className="text-[var(--color-accent)]">▚</span> XEVO / LOCALHOST
+          <span className="text-[var(--color-accent)]">▚</span> ZYNLEX / LOCALHOST
         </div>
 
         {/* ── Heading ────────────────────────────────────────────── */}

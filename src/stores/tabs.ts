@@ -214,7 +214,7 @@ export const useTabsStore = create<TabsStore>()(
       },
     })),
     {
-      name: "xevo-session",
+      name: "zynlex-session",
       partialize: (s) =>
         ({
           // Only tabs that actually went somewhere — an empty "New Tab" is not

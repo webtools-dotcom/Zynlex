@@ -87,7 +87,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
   const workspaces = useWorkspacesStore((s) => s.workspaces);
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const tabs = useTabsStore((s) => s.tabs);
-  const { searchEngine, customSearchUrl } = useSettingsStore((s) => s.settings);
+  const searchEngine = useSettingsStore((s) => s.settings.searchEngine);
   const toggleSettingsPanel = useUIStore((s) => s.toggleSettingsPanel);
   const viewportMode = useUIStore((s) => s.viewportMode);
 
@@ -110,12 +110,12 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
 
   const handleNavigate = useCallback(
     async (raw: string) => {
-      const url = resolveInput(raw, searchEngine, customSearchUrl);
+      const url = resolveInput(raw, searchEngine);
       if (!url) return;
       setDraft(url);
       if (onNavigate) await onNavigate(url);
     },
-    [onNavigate, searchEngine, customSearchUrl],
+    [onNavigate, searchEngine],
   );
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -141,10 +141,10 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
       focusInput();
     }
     window.addEventListener("keydown", handler);
-    window.addEventListener("xevo:focus-address-bar", onForwarded);
+    window.addEventListener("zynlex:focus-address-bar", onForwarded);
     return () => {
       window.removeEventListener("keydown", handler);
-      window.removeEventListener("xevo:focus-address-bar", onForwarded);
+      window.removeEventListener("zynlex:focus-address-bar", onForwarded);
     };
   }, []);
 

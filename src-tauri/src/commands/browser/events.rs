@@ -6,7 +6,7 @@
 // page-originated IPC, so no ACL to satisfy.
 
 use super::{pwstr_to_string, webview_label_for_tab};
-use crate::xevo_log;
+use crate::zynlex_log;
 use tauri::{AppHandle, Emitter, Manager};
 
 // ─── Bookmark & Shortcut forwarding (global, not tab-specific) ───────
@@ -21,7 +21,7 @@ pub fn browser_bookmark_request(app: AppHandle) -> Result<(), String> {
 /// Called from the native accelerator-key handler — never exposed as an
 /// IPC command, since it would let any page spoof a keyboard shortcut.
 fn forward_shortcut(app: AppHandle, shortcut: String) -> Result<(), String> {
-    app.emit("xevo://shortcut", shortcut)
+    app.emit("zynlex://shortcut", shortcut)
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -63,7 +63,7 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             let core = match platform.controller().CoreWebView2() {
                 Ok(core) => core,
                 Err(e) => {
-                    xevo_log!("[xevo] CoreWebView2() failed for native events: {e:?}");
+                    zynlex_log!("[zynlex] CoreWebView2() failed for native events: {e:?}");
                     return;
                 }
             };

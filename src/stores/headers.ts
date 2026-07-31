@@ -53,7 +53,7 @@ export const useHeadersStore = create<HeadersStore>()(
       getRules: (wsId) => get().rulesByWs[wsId] ?? [],
     }),
     {
-      name: "xevo-header-rules",
+      name: "zynlex-header-rules",
       version: 1,
     },
   ),

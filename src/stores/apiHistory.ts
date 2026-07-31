@@ -40,7 +40,7 @@ export const useApiHistoryStore = create<ApiHistoryStore>()(
       },
     })),
     {
-      name: "xevo-api-history",
+      name: "zynlex-api-history",
       version: 1,
       partialize: (s) => ({ history: s.history }) as unknown as ApiHistoryStore,
     },

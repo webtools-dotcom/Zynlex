@@ -3,7 +3,7 @@
 /* ── Custom dark variant (matches data-theme attribute) ─── */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
-/* ── XEVO Design Tokens ────────────────────────────────── */
+/* ── ZYNLEX Design Tokens ────────────────────────────────── */
 @theme {
   /* Surface layers — warm ivory (2b) */
   --color-base:     #0b0b0a;
@@ -121,30 +121,30 @@
   --radius:             var(--radius-md);
 
   /* Legacy aliases — components still reference these */
-  --xevo-workspace-bar: var(--color-base);
-  --xevo-sidebar-bg:    var(--color-surface);
-  --xevo-sidebar-border: var(--color-border);
-  --xevo-tab-bar:       var(--color-surface);
-  --xevo-tab-active:    var(--color-elevated);
-  --xevo-address-bar:   var(--color-surface);
-  --xevo-content-bg:    var(--color-base);
-  --xevo-border:        var(--color-border);
-  --xevo-text:          var(--color-text-primary);
-  --xevo-text-muted:    var(--color-text-muted);
-  --xevo-text-faint:    var(--color-text-disabled);
-  --xevo-accent:        var(--color-accent);
-  --xevo-accent-hover:  var(--color-accent-hover);
-  --xevo-accent-dim:    var(--color-accent-dim);
-  --xevo-accent-border: rgba(220, 211, 196, 0.25);
-  --xevo-success:       var(--color-live);
-  --xevo-danger:        var(--color-dead);
-  --xevo-warning:       var(--color-warn);
-  --xevo-hover:         var(--color-hover);
-  --xevo-modal-bg:      var(--color-elevated);
-  --xevo-modal-border:  var(--color-border);
-  --xevo-badge-bg:      var(--color-elevated);
-  --xevo-border-subtle: var(--color-border-subtle);
-  --xevo-radius:        var(--radius-md);
+  --zynlex-workspace-bar: var(--color-base);
+  --zynlex-sidebar-bg:    var(--color-surface);
+  --zynlex-sidebar-border: var(--color-border);
+  --zynlex-tab-bar:       var(--color-surface);
+  --zynlex-tab-active:    var(--color-elevated);
+  --zynlex-address-bar:   var(--color-surface);
+  --zynlex-content-bg:    var(--color-base);
+  --zynlex-border:        var(--color-border);
+  --zynlex-text:          var(--color-text-primary);
+  --zynlex-text-muted:    var(--color-text-muted);
+  --zynlex-text-faint:    var(--color-text-disabled);
+  --zynlex-accent:        var(--color-accent);
+  --zynlex-accent-hover:  var(--color-accent-hover);
+  --zynlex-accent-dim:    var(--color-accent-dim);
+  --zynlex-accent-border: rgba(220, 211, 196, 0.25);
+  --zynlex-success:       var(--color-live);
+  --zynlex-danger:        var(--color-dead);
+  --zynlex-warning:       var(--color-warn);
+  --zynlex-hover:         var(--color-hover);
+  --zynlex-modal-bg:      var(--color-elevated);
+  --zynlex-modal-border:  var(--color-border);
+  --zynlex-badge-bg:      var(--color-elevated);
+  --zynlex-border-subtle: var(--color-border-subtle);
+  --zynlex-radius:        var(--radius-md);
 
   /* Rich text editor theme mapping */
   --rte-bg: var(--color-base);
@@ -183,7 +183,7 @@
   --rte-font-mono: "JetBrains Mono", "Fira Code", monospace;
 }
 
-/* ── XEVO Global Resets ───────────────────────────────────── */
+/* ── ZYNLEX Global Resets ───────────────────────────────────── */
 /* Layered so Tailwind utilities (pl-*, mb-*, etc., emitted in @layer utilities)
    can still override this — an unlayered rule here would win over every
    utility class regardless of specificity, per CSS cascade-layer rules. */
@@ -200,7 +200,7 @@ html {
 }
 
 /* Density — the only knob. Every size is rem, so this scales the whole UI. */
-html.xevo-compact {
+html.zynlex-compact {
   font-size: 14px;
 }
 
@@ -269,29 +269,29 @@ input, textarea, [contenteditable], .selectable {
   --color-status-5xx: #9333ea;
 
   /* Legacy aliases — light overrides */
-  --xevo-workspace-bar: var(--color-base);
-  --xevo-sidebar-bg:    var(--color-surface);
-  --xevo-sidebar-border: var(--color-border);
-  --xevo-tab-bar:       var(--color-surface);
-  --xevo-tab-active:    var(--color-elevated);
-  --xevo-address-bar:   var(--color-surface);
-  --xevo-content-bg:    var(--color-base);
-  --xevo-border:        var(--color-border);
-  --xevo-text:          var(--color-text-primary);
-  --xevo-text-muted:    var(--color-text-muted);
-  --xevo-text-faint:    var(--color-text-disabled);
-  --xevo-accent:        var(--color-accent);
-  --xevo-accent-hover:  var(--color-accent-hover);
-  --xevo-accent-dim:    var(--color-accent-dim);
-  --xevo-accent-border: rgba(168, 152, 120, 0.2);
-  --xevo-success:       var(--color-live);
-  --xevo-danger:        var(--color-dead);
-  --xevo-warning:       var(--color-warn);
-  --xevo-hover:         var(--color-hover);
-  --xevo-modal-bg:      var(--color-elevated);
-  --xevo-modal-border:  var(--color-border);
-  --xevo-badge-bg:      var(--color-elevated);
-  --xevo-border-subtle: var(--color-border-subtle);
+  --zynlex-workspace-bar: var(--color-base);
+  --zynlex-sidebar-bg:    var(--color-surface);
+  --zynlex-sidebar-border: var(--color-border);
+  --zynlex-tab-bar:       var(--color-surface);
+  --zynlex-tab-active:    var(--color-elevated);
+  --zynlex-address-bar:   var(--color-surface);
+  --zynlex-content-bg:    var(--color-base);
+  --zynlex-border:        var(--color-border);
+  --zynlex-text:          var(--color-text-primary);
+  --zynlex-text-muted:    var(--color-text-muted);
+  --zynlex-text-faint:    var(--color-text-disabled);
+  --zynlex-accent:        var(--color-accent);
+  --zynlex-accent-hover:  var(--color-accent-hover);
+  --zynlex-accent-dim:    var(--color-accent-dim);
+  --zynlex-accent-border: rgba(168, 152, 120, 0.2);
+  --zynlex-success:       var(--color-live);
+  --zynlex-danger:        var(--color-dead);
+  --zynlex-warning:       var(--color-warn);
+  --zynlex-hover:         var(--color-hover);
+  --zynlex-modal-bg:      var(--color-elevated);
+  --zynlex-modal-border:  var(--color-border);
+  --zynlex-badge-bg:      var(--color-elevated);
+  --zynlex-border-subtle: var(--color-border-subtle);
 
   /* Rich text editor — light */
   --rte-bg: var(--color-base);
@@ -355,24 +355,24 @@ input, textarea, [contenteditable], .selectable {
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
 
 /* ── Loading progress bar (Chrome-style) ──────────────────── */
-@keyframes xevo-progress {
+@keyframes zynlex-progress {
   0%   { width: 0%;   opacity: 1; }
   60%  { width: 75%;  opacity: 1; }
   90%  { width: 85%;  opacity: 1; }
   100% { width: 90%;  opacity: 1; }
 }
-@keyframes xevo-progress-done {
+@keyframes zynlex-progress-done {
   0%   { width: var(--loading-start-width, 90%);  opacity: 1; }
   100% { width: 100%; opacity: 0; }
 }
 
 /* ── Settings panel slide-in ──────────────────────────────── */
-@keyframes xevo-settings-slide-in {
+@keyframes zynlex-settings-slide-in {
   from { transform: translateX(100%); opacity: 0.6; }
   to   { transform: translateX(0);    opacity: 1; }
 }
-.xevo-settings-panel {
-  animation: xevo-settings-slide-in var(--duration-normal) var(--ease-out);
+.zynlex-settings-panel {
+  animation: zynlex-settings-slide-in var(--duration-normal) var(--ease-out);
 }
 
 /* ── Sidebar panel switch ─────────────────────────────────
@@ -381,12 +381,12 @@ input, textarea, [contenteditable], .selectable {
    nothing blocks the new content appearing.
    opacity/transform only: both are composited, neither triggers layout, so
    this can never perturb the child webview's bounds. */
-@keyframes xevo-panel-in {
+@keyframes zynlex-panel-in {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.xevo-panel-enter {
-  animation: xevo-panel-in var(--duration-normal) var(--ease-out);
+.zynlex-panel-enter {
+  animation: zynlex-panel-in var(--duration-normal) var(--ease-out);
 }
 
 /* ── Command palette open ───────────────────────────────── */

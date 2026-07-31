@@ -21,7 +21,7 @@ export function getLiveWorkspaceTabIds(
   }
 
   if (dups > 0 && import.meta.env.DEV) {
-    console.warn(`[xevo] ${dups} duplicate tabId(s) in workspace; ignored`);
+    console.warn(`[zynlex] ${dups} duplicate tabId(s) in workspace; ignored`);
   }
 
   return liveTabIds;

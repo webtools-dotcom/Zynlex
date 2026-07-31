@@ -17,6 +17,12 @@ export function WindowControls() {
 
   useEffect(() => {
     if (!win) return;
+    // onResized() resolves asynchronously, so under StrictMode's double-invoke
+    // the cleanup can run before we hold an unlisten fn. Without `cancelled`
+    // that listener leaks and the later unlisten hits an already-cleared
+    // registry entry ("Cannot read properties of undefined (reading
+    // 'handlerId')").
+    let cancelled = false;
     let unlisten: (() => void) | null = null;
     win.isMaximized().then(setIsMaximized);
     win
@@ -28,9 +34,14 @@ export function WindowControls() {
         });
       })
       .then((fn) => {
+        if (cancelled) {
+          fn();
+          return;
+        }
         unlisten = fn;
       });
     return () => {
+      cancelled = true;
       unlisten?.();
       if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
     };
@@ -40,7 +51,7 @@ export function WindowControls() {
   // flips, so its ResizeObserver → syncBounds fallback is guaranteed to re-push
   // bounds after a maximize/restore (belt-and-suspenders for the Rust resync).
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent("xevo:maximize-changed"));
+    window.dispatchEvent(new CustomEvent("zynlex:maximize-changed"));
   }, [isMaximized]);
 
   if (!win) return null;

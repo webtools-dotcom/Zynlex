@@ -1,6 +1,6 @@
 # Security Policy
 
-XEVO is a developer tool that intercepts and modifies live web traffic: it injects
+ZYNLEX is a developer tool that intercepts and modifies live web traffic: it injects
 arbitrary HTTP headers, captures network requests via native WebView2 COM APIs,
 reads and edits cookies (including HttpOnly cookies), decodes JWTs, and makes
 outbound HTTP requests on the user's behalf through the API Tester. Bugs in any
@@ -15,7 +15,7 @@ repository, rather than a public issue. Include:
 
 - A description of the vulnerability and its impact
 - Steps to reproduce
-- The XEVO version and Windows build you tested against
+- The ZYNLEX version and Windows build you tested against
 
 We'll acknowledge reports within a few days and follow up once a fix is ready.
 

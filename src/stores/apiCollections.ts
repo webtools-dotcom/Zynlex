@@ -109,7 +109,7 @@ export const useApiCollectionsStore = create<ApiCollectionsStore>()(
       };
     },
     {
-      name: "xevo-api-collections",
+      name: "zynlex-api-collections",
       version: 1,
       partialize: (s) => ({ byWs: s.byWs }),
     },

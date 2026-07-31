@@ -91,7 +91,7 @@ function BookmarksPanel() {
     const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `xevo-bookmarks-${wsName.replace(/\s+/g, "-").toLowerCase()}.json`;
+    a.download = `zynlex-bookmarks-${wsName.replace(/\s+/g, "-").toLowerCase()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
