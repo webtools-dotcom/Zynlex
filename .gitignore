@@ -49,18 +49,10 @@ ehthumbs.db
 *.msi
 *.exe
 
-# Claude Code local config (may contain machine paths/permissions) — launch.json is shared
+# Local editor and tooling config
 .claude/*
 !.claude/launch.json
-
-# Local working notes, kept out of the public repo
-notes/
-
-# opencode dev config (local plugin hooks — not part of the project)
-.opencode/
-
-# graphify knowledge graph artifacts (dev tooling, not part of the project)
 graphify-out/
 
-# Playwright MCP artifacts (dev tooling)
-.playwright-mcp/
+# Local working notes
+notes/
