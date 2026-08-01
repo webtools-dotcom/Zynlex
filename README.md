@@ -4,14 +4,14 @@
 
 # ZYNLEX
 
-**A browser for web developers, with the devtools built into the chrome instead of bolted on. Windows only.**
+**A 3.5 MB browser for developers. Built in Rust and Tauri, not Electron.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![CI](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml/badge.svg)](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/webtools-dotcom/Zynlex)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
-[![Installer](https://img.shields.io/badge/installer-3.5%20MB-brightgreen)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
+[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-blue)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
-<img src=".github/assets/demo.gif" alt="Finding a dev server, watching the network log, and checking a mobile viewport" width="800" />
+<img src=".github/assets/demo.gif" alt="Opening a detected dev server, watching the network log fill, and switching to a phone viewport" width="800" />
 
 ### [Download for Windows →](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
@@ -19,44 +19,67 @@
 
 ---
 
-## What you get
+## What it does
 
-- **Your dev servers, found for you.** ZYNLEX scans localhost and lists what's running. New tab, click the port, you're on it.
-- **A network log that isn't a panel you forgot to open.** Requests, timing, response bodies, filters, pause/resume — scoped per tab, always one keystroke away.
-- **Device viewports at true 1:1.** Pick a phone, get a real frame with the right pixel ratio, user agent, Client Hints and touch flags. Not a scaled-down screenshot.
-- **Header injection per tab.** Add, override or strip request headers with glob-matched rules. Test an auth flow without touching a proxy.
-- **An API client in the sidebar.** Methods, headers, bodies, cURL import, saved collections. It runs through Rust, so app CORS and CSP don't get a vote.
-- **Workspaces.** Each project gets its own tabs, bookmarks, header rules and saved requests. Switching contexts doesn't mean 40 tabs.
-- **The small stuff, in-window.** Meta and Open Graph validation, social preview cards, a cookie inspector that sees HttpOnly, UA switching, JWT decode, Base64.
-- **No account, no telemetry, no network calls of its own.**
+New tab shows your running dev servers. ZYNLEX scans localhost, reads the page titles, and lists them. Click one to open it.
 
-Everything reachable from `Ctrl+K`.
+The sidebar has the things you'd otherwise keep four apps around for:
 
-## Why this exists
+- **Network log** — per-tab capture with filters, URL search, pause, and response bodies
+- **Device viewports** — one device at a time, rendered at its real pixel size
+- **Header rules** — add, override or strip request headers, matched per URL pattern
+- **API client** — saved collections, cURL import, runs through Rust so page CORS doesn't apply
+- **Inspector** — meta tags, Open Graph previews, and cookies including HttpOnly
+- JWT decoder, Base64, user-agent switcher
 
-Chrome DevTools is excellent and lives in the wrong place — it's a drawer you open inside a browser that doesn't know or care what you're building. Responsively and Polypane put device frames first and stop short of being browsers you'd actually browse in. Meanwhile the things you reach for twenty times a day (which port is that, what did that request return, what does this look like on a phone, add this header) live in four separate applications.
+Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it.
 
-ZYNLEX is the other arrangement: a real browser where those tools are the chrome. Every tab is a native WebView2 child window, so the page you're testing renders in the same engine that ships with Edge — no Electron wrapper, no shim. The installer is 3.5 MB because the rendering engine is already on your machine.
+No account. No telemetry. It makes no network calls of its own.
+
+## Why it exists
+
+Two months ago I was watching [a video by @crynta](https://youtu.be/kykgXa7sm1g) and got stuck on a comment thread underneath it, where people were asking for a lightweight, telemetry-free browser. I wanted one too. But the version I actually needed was for development work, so that's the one I built.
+
+Chrome DevTools is good and lives in the wrong place — a drawer inside a browser that has no idea what you're working on. Responsively and Polypane lead with device frames and aren't browsers you'd actually browse in. So the four things I check constantly (which port is that, what did that request return, how does this look on a phone, what happens with this header) lived in four separate windows.
+
+ZYNLEX puts them in the browser chrome instead.
+
+## Size and memory
+
+Measured on one Windows 11 machine, clean profiles, identical pages, same window size:
+
+| | ZYNLEX | Chrome |
+|---|---|---|
+| Idle, one blank tab | **452 MB** | 689 MB |
+| Three tabs — GitHub, YouTube, localhost | **~1.1 GB** | ~1.8 GB |
+
+About a third less, and it holds at idle and under load. The idle gap is roughly **237 MB**.
+
+That is not clever engineering, and it's worth being clear about why. Your tabs run on WebView2, which is Chromium — the same renderer Chrome uses. Heavy pages cost the same in both. The savings come from what ZYNLEX doesn't run: no sync, no Safe Browsing, no prerendering, no extension host, no update service. The app process itself is 27 MB.
+
+The installer is 3.46 MB for the same reason. WebView2 already ships with Windows, so there's no bundled copy of Chromium to download. It's also why there's no macOS or Linux build yet.
+
+## Compared to the alternatives
 
 | | ZYNLEX | Responsively | Polypane | Chrome DevTools |
 |---|---|---|---|---|
 | Price | Free, Apache-2.0 | Free, MIT | Paid | Free |
 | macOS / Linux | **No** | Yes | Yes | Yes |
-| Multiple devices side by side | No — one at a time | **Yes** | **Yes** | Limited |
+| Several devices at once | No | **Yes** | **Yes** | Limited |
 | Accessibility auditing | No | No | **Yes** | Yes |
-| Usable as your everyday browser | Yes | No | Partly | n/a |
-| Network log, header rules, API client built in | Yes | No | Partly | Log only |
-| Localhost server discovery | Yes | No | No | No |
+| Everyday browsing | Yes | No | Partly | n/a |
+| Network log, header rules, API client | Yes | No | Partly | Log only |
+| Finds your localhost servers | Yes | No | No | No |
 
-If you need macOS, several devices at once, or accessibility audits, one of the others is the better tool and I'd rather you use it.
+If you need macOS, several viewports side by side, or accessibility audits, one of the others is a better tool. Use it.
 
 ## Install
 
-Grab the installer from the [latest release](https://github.com/webtools-dotcom/Zynlex/releases/latest) and run it.
+Download the installer from the [latest release](https://github.com/webtools-dotcom/Zynlex/releases/latest) and run it.
 
-**Requirements:** Windows 10 or 11, and the WebView2 runtime — already present on Windows 11 and on most Windows 10 machines. The installer adds it if it's missing.
+Windows 10 or 11. You need the WebView2 runtime, which is already on Windows 11 and most Windows 10 machines; the installer adds it if it's missing.
 
-Building from source:
+From source:
 
 ```bash
 pnpm install
@@ -65,44 +88,45 @@ pnpm tauri dev
 
 ## A look around
 
-**Home — your servers, live.**
+Your servers, on the new tab page:
 
-<img src=".github/assets/home.png" alt="The new tab page listing detected local dev servers" width="820" />
+<img src=".github/assets/home.png" alt="New tab page listing three detected local dev servers" width="820" />
 
-**Network log.** Per-tab capture through native WebView2 COM, not a proxy. Filter by method, status, resource type; search URLs; pause the stream; keep the log across reloads.
+Network log. Capture goes through WebView2's native COM API, not a proxy, so there's nothing to configure and no certificate to trust.
 
-<img src=".github/assets/network.png" alt="Network panel with filters and an expanded request" width="820" />
+<img src=".github/assets/network.png" alt="Network panel showing 231 captured requests with filters and one request expanded" width="820" />
 
-**Viewport.** One device, rendered at its real CSS pixel size.
+A device viewport at 1:1, next to the chrome:
 
-<img src=".github/assets/viewport.png" alt="A mobile viewport rendered at 1:1 beside the browser chrome" width="820" />
+<img src=".github/assets/viewport.png" alt="A Galaxy S26 Ultra viewport at 412x891 rendering GitHub" width="820" />
 
-**API tester.** Saved per workspace, with folders and history.
+API client, saved per workspace:
 
-<img src=".github/assets/api.png" alt="API tester showing a saved collection and a response" width="820" />
+<img src=".github/assets/api.png" alt="API tester with a saved collection and a JSON response" width="820" />
 
 ## Limitations
 
-Stated plainly so you can decide before downloading:
+Worth knowing before you download:
 
-- **Windows only, and not by oversight.** Tabs, cookies, network capture, header injection and viewport emulation are all built directly on WebView2 COM APIs. There's no WebKitGTK or WKWebView equivalent written yet, so a build for another platform compiles but deliberately refuses to start rather than launch a browser with none of its tools. macOS and Linux are planned — see [ROADMAP.md](ROADMAP.md).
-- **Downloads show started and finished, not a percentage.** Tauri's download event carries no progress callback.
-- **Header rules don't cover WebSockets.** WebView2 never fires its request event for the handshake, so this isn't fixable from the app side.
-- **The network log captures fetch and XHR, not images, fonts or stylesheets.** That's deliberate — asset noise is what makes a request list unusable.
+- **Windows only.** Tabs, cookies, network capture, header injection and viewport emulation are written against WebView2 COM APIs. There's no WebKit equivalent yet, so a build for another platform compiles but refuses to start rather than open a browser with none of its tools working. macOS and Linux are planned — [ROADMAP.md](ROADMAP.md).
+- Downloads show started and finished, not a percentage. Tauri's download event has no progress callback.
+- Header rules don't apply to WebSocket handshakes. WebView2 never raises its request event for them.
+- The network log captures fetch and XHR, not images, fonts or stylesheets. That's deliberate; asset noise is what makes a request list useless.
+- JWT signatures are decoded, never verified.
 
 ## Docs
 
-- [docs/architecture.md](docs/architecture.md) — process model, bounds and resize, fullscreen, viewport emulation, security boundary.
-- [docs/design-system.md](docs/design-system.md) — tokens, typography, layout rules.
-- [CONTRIBUTING.md](CONTRIBUTING.md) — build commands and pre-PR checks.
-- [ROADMAP.md](ROADMAP.md) — what's open.
+- [docs/architecture.md](docs/architecture.md) — process model, bounds and resize, viewport emulation, security boundary
+- [docs/design-system.md](docs/design-system.md) — tokens, typography, layout rules
+- [CONTRIBUTING.md](CONTRIBUTING.md) — build commands and the checks CI runs
+- [ROADMAP.md](ROADMAP.md) — what's open
 
 ## Contributing
 
-Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the build commands and the checks that run before review. If you're picking up something non-trivial, open an issue first so we don't both write it.
+Issues and pull requests welcome. If you're picking up something non-trivial, open an issue first so we don't both write it.
 
 Built with [Tauri](https://tauri.app), React and Rust.
 
 ## License
 
-[Apache-2.0](LICENSE).
+[Apache-2.0](LICENSE)
