@@ -13,6 +13,8 @@
 
 <img src=".github/assets/demo.gif" alt="Opening a detected dev server, watching the network log fill, and switching to a phone viewport" width="800" />
 
+<sub>The GIF is compressed. [Download the 1080p recording](https://github.com/webtools-dotcom/Zynlex/releases/download/v0.9.0/high_quality.mp4) if the text is hard to read.</sub>
+
 ### [Download for Windows →](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
 </div>
@@ -59,19 +61,7 @@ That is not clever engineering, and it's worth being clear about why. Your tabs 
 
 The installer is 3.46 MB for the same reason. WebView2 already ships with Windows, so there's no bundled copy of Chromium to download. It's also why there's no macOS or Linux build yet.
 
-## Compared to the alternatives
-
-| | ZYNLEX | Responsively | Polypane | Chrome DevTools |
-|---|---|---|---|---|
-| Price | Free, Apache-2.0 | Free, MIT | Paid | Free |
-| macOS / Linux | **No** | Yes | Yes | Yes |
-| Several devices at once | No | **Yes** | **Yes** | Limited |
-| Accessibility auditing | No | No | **Yes** | Yes |
-| Everyday browsing | Yes | No | Partly | n/a |
-| Network log, header rules, API client | Yes | No | Partly | Log only |
-| Finds your localhost servers | Yes | No | No | No |
-
-If you need macOS, several viewports side by side, or accessibility audits, one of the others is a better tool. Use it.
+If you need macOS, several viewports side by side, or accessibility audits, [Responsively](https://responsively.app) and [Polypane](https://polypane.app) do those and ZYNLEX doesn't.
 
 ## Install
 
