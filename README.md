@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![CI](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml/badge.svg)](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/webtools-dotcom/Zynlex)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
-[![Installer](https://img.shields.io/badge/installer-4.8%20MB-brightgreen)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
+[![Installer](https://img.shields.io/badge/installer-3.5%20MB-brightgreen)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
 <img src=".github/assets/demo.gif" alt="Finding a dev server, watching the network log, and checking a mobile viewport" width="800" />
 
@@ -36,7 +36,7 @@ Everything reachable from `Ctrl+K`.
 
 Chrome DevTools is excellent and lives in the wrong place — it's a drawer you open inside a browser that doesn't know or care what you're building. Responsively and Polypane put device frames first and stop short of being browsers you'd actually browse in. Meanwhile the things you reach for twenty times a day (which port is that, what did that request return, what does this look like on a phone, add this header) live in four separate applications.
 
-ZYNLEX is the other arrangement: a real browser where those tools are the chrome. Every tab is a native WebView2 child window, so the page you're testing renders in the same engine that ships with Edge — no Electron wrapper, no shim. The installer is 4.8 MB because the rendering engine is already on your machine.
+ZYNLEX is the other arrangement: a real browser where those tools are the chrome. Every tab is a native WebView2 child window, so the page you're testing renders in the same engine that ships with Edge — no Electron wrapper, no shim. The installer is 3.5 MB because the rendering engine is already on your machine.
 
 | | ZYNLEX | Responsively | Polypane | Chrome DevTools |
 |---|---|---|---|---|
