@@ -4,7 +4,8 @@
  * Mounted by RootLayout when useUIStore.settingsPanelOpen is true.
  * All edits persist via the Zustand settings store.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { X } from "lucide-react";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
@@ -100,6 +101,13 @@ export function SettingsPanel() {
   const setPortScanInterval = useSettingsStore((s) => s.setPortScanInterval);
   const update = useSettingsStore((s) => s.update);
   const toggleSettingsPanel = useUIStore((s) => s.toggleSettingsPanel);
+
+  // Read from tauri.conf.json rather than hardcoding — the version shown here
+  // and the one the installer stamps are then the same value by construction.
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    void getVersion().then(setVersion);
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -288,7 +296,7 @@ export function SettingsPanel() {
 
       {/* ── About ───────────────────────────────────────────────────── */}
       <div className="text-xs text-[var(--color-text-disabled)] mt-6 space-y-1">
-        <div>ZYNLEX Browser v1.18.0</div>
+        <div>ZYNLEX Browser{version && ` v${version}`}</div>
         <div>Open source · Zero telemetry · Zero accounts</div>
       </div>
     </div>
