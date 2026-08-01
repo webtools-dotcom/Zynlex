@@ -1,19 +1,25 @@
 mod commands;
 
-/// Debug-build-only trace logging. Release builds set `windows_subsystem =
-/// "windows"` (see main.rs), so there is no console to read stderr from in a
-/// release build regardless — these calls were previously unconditional,
-/// running on every window-move/resize frame for no one to see.
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
+
+/// Opt-in trace logging: silent unless `ZYNLEX_TRACE=1` is set, even in debug
+/// builds — `browser_set_bounds` alone fires on every resize/drag frame, so
+/// always-on-in-debug drowned a first `pnpm tauri dev` in noise. Release
+/// builds also set `windows_subsystem = "windows"` (see main.rs), so there's
+/// no console to read stderr from there regardless.
 #[macro_export]
 macro_rules! zynlex_log {
     ($($arg:tt)*) => {
-        if cfg!(debug_assertions) { eprintln!($($arg)*); }
+        if $crate::trace_enabled() { eprintln!($($arg)*); }
     };
 }
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+pub fn trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("ZYNLEX_TRACE").as_deref() == Ok("1"))
+}
 
 /// Tracks which browser webview is currently visible.
 /// Each tab gets a child Webview (via `Window::add_child`) inside the main
