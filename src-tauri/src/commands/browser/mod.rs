@@ -547,7 +547,10 @@ pub async fn browser_set_bounds(
             size: Size::Logical(LogicalSize::new(width.max(1.0), height.max(1.0))),
         };
         if let Err(e) = wv.set_bounds(bounds) {
-            zynlex_log!("[ZYNLEX-BOUNDS] browser_set_bounds — set_bounds ERROR: {}", e);
+            zynlex_log!(
+                "[ZYNLEX-BOUNDS] browser_set_bounds — set_bounds ERROR: {}",
+                e
+            );
             return Err(format!("set_bounds failed: {}", e));
         }
         zynlex_log!("[ZYNLEX-BOUNDS] browser_set_bounds — OK");
