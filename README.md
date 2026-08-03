@@ -13,7 +13,7 @@
 
 <img src=".github/assets/demo.gif" alt="Opening a detected dev server, watching the network log fill, and switching to a phone viewport" width="800" />
 
-<sub>The GIF is compressed. [Download the 1080p recording](https://github.com/webtools-dotcom/Zynlex/releases/download/v0.9.0/high_quality.mp4) if the text is hard to read.</sub>
+<sub>Text hard to read? There's a [1080p version](https://github.com/webtools-dotcom/Zynlex/releases/download/v0.9.0/high_quality.mp4) of the same clip.</sub>
 
 ### [Download for Windows →](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
