@@ -27,11 +27,11 @@ New tab shows your running dev servers. ZYNLEX scans localhost, reads the page t
 
 The sidebar has the things you'd otherwise keep four apps around for:
 
-- **Network log** — per-tab capture with filters, URL search, pause, and response bodies
-- **Device viewports** — one device at a time, rendered at its real pixel size
-- **Header rules** — add, override or strip request headers, matched per URL pattern
-- **API client** — saved collections, cURL import, runs through Rust so page CORS doesn't apply
-- **Inspector** — meta tags, Open Graph previews, and cookies including HttpOnly
+- **Network log**: per-tab capture with filters, URL search, pause, and response bodies
+- **Device viewports**: one device at a time, rendered at its real pixel size
+- **Header rules**: add, override or strip request headers, matched per URL pattern
+- **API client**: saved collections, cURL import, runs through Rust so page CORS doesn't apply
+- **Inspector**: meta tags, Open Graph previews, and cookies including HttpOnly
 - JWT decoder, Base64, user-agent switcher
 
 Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it.
@@ -42,7 +42,7 @@ No account. No telemetry. It makes no network calls of its own.
 
 Two months ago I was watching [a video by @crynta](https://youtu.be/kykgXa7sm1g) and got stuck on a comment thread underneath it, where people were asking for a lightweight, telemetry-free browser. I wanted one too. But the version I actually needed was for development work, so that's the one I built.
 
-Chrome DevTools is good and lives in the wrong place — a drawer inside a browser that has no idea what you're working on. Responsively and Polypane lead with device frames and aren't browsers you'd actually browse in. So the four things I check constantly (which port is that, what did that request return, how does this look on a phone, what happens with this header) lived in four separate windows.
+Chrome DevTools is good and lives in the wrong place. It is a drawer inside a browser that has no idea what you're working on. Responsively and Polypane lead with device frames and aren't browsers you'd actually browse in. So the four things I check constantly (which port is that, what did that request return, how does this look on a phone, what happens with this header) lived in four separate windows.
 
 ZYNLEX puts them in the browser chrome instead.
 
@@ -53,11 +53,11 @@ Measured on one Windows 11 machine, clean profiles, identical pages, same window
 | | ZYNLEX | Chrome |
 |---|---|---|
 | Idle, one blank tab | **452 MB** | 689 MB |
-| Three tabs — GitHub, YouTube, localhost | **~1.1 GB** | ~1.8 GB |
+| Three tabs (GitHub, YouTube, localhost) | **~1.1 GB** | ~1.8 GB |
 
 About a third less, and it holds at idle and under load. The idle gap is roughly **237 MB**.
 
-That is not clever engineering, and it's worth being clear about why. Your tabs run on WebView2, which is Chromium — the same renderer Chrome uses. Heavy pages cost the same in both. The savings come from what ZYNLEX doesn't run: no sync, no Safe Browsing, no prerendering, no extension host, no update service. The app process itself is 27 MB.
+That is not clever engineering, and it's worth being clear about why. Your tabs run on WebView2, which is Chromium, the same renderer Chrome uses. Heavy pages cost the same in both. The savings come from what ZYNLEX doesn't run: no sync, no Safe Browsing, no prerendering, no extension host, no update service. The app process itself is 27 MB.
 
 The installer is 3.46 MB for the same reason. WebView2 already ships with Windows, so there's no bundled copy of Chromium to download. It's also why there's no macOS or Linux build yet.
 
@@ -98,7 +98,7 @@ API client, saved per workspace:
 
 Worth knowing before you download:
 
-- **Windows only.** Tabs, cookies, network capture, header injection and viewport emulation are written against WebView2 COM APIs. There's no WebKit equivalent yet, so a build for another platform compiles but refuses to start rather than open a browser with none of its tools working. macOS and Linux are planned — [ROADMAP.md](ROADMAP.md).
+- **Windows only.** Tabs, cookies, network capture, header injection and viewport emulation are written against WebView2 COM APIs. There's no WebKit equivalent yet, so a build for another platform compiles but refuses to start rather than open a browser with none of its tools working. macOS and Linux are planned, see [ROADMAP.md](ROADMAP.md).
 - Downloads show started and finished, not a percentage. Tauri's download event has no progress callback.
 - Header rules don't apply to WebSocket handshakes. WebView2 never raises its request event for them.
 - The network log captures fetch and XHR, not images, fonts or stylesheets. That's deliberate; asset noise is what makes a request list useless.
@@ -106,10 +106,10 @@ Worth knowing before you download:
 
 ## Docs
 
-- [docs/architecture.md](docs/architecture.md) — process model, bounds and resize, viewport emulation, security boundary
-- [docs/design-system.md](docs/design-system.md) — tokens, typography, layout rules
-- [CONTRIBUTING.md](CONTRIBUTING.md) — build commands and the checks CI runs
-- [ROADMAP.md](ROADMAP.md) — what's open
+- [docs/architecture.md](docs/architecture.md): process model, bounds and resize, viewport emulation, security boundary
+- [docs/design-system.md](docs/design-system.md): tokens, typography, layout rules
+- [CONTRIBUTING.md](CONTRIBUTING.md): build commands and the checks CI runs
+- [ROADMAP.md](ROADMAP.md): what's open
 
 ## Contributing
 
