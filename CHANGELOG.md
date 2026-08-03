@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-03
+
+### Fixed
+
+- The About line in Settings showed a hardcoded version instead of the real one.
+
 ## [0.9.0] - 2026-07-31
 
 First public release. Development history before this point is in the git log
@@ -55,5 +61,6 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.9.1
 [0.9.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.9.0
