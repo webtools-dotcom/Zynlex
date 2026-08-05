@@ -15,7 +15,7 @@ import { ShortcutHelp } from "@/components/ShortcutHelp";
 import { Toast } from "@/components/Toast";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ViewportSurface } from "@/components/panels/ViewportPanel";
-import { useUIStore } from "@/stores/ui";
+import { useUIStore, useViewportMode } from "@/stores/ui";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useSettingsStore } from "@/stores/settings";
@@ -72,7 +72,7 @@ export function RootLayout() {
   }, []);
 
   useKeyboardShortcuts(bridge);
-  const viewportMode = useUIStore((s) => s.viewportMode);
+  const viewportMode = useViewportMode();
 
   return (
     <ErrorBoundary>

@@ -26,7 +26,7 @@ const METHOD_COLORS: Record<string, string> = {
 };
 
 function CollectionsCard() {
-  const openOverlay = useUIStore((s) => s.openOverlay);
+  const openApiTester = useUIStore((s) => s.openApiTester);
   const wsId = useWorkspacesStore((s) => s.activeWorkspaceId);
   const collection = useApiCollectionsStore((s) => s.byWs[wsId]);
   const { updateRequest, removeRequest, duplicateRequest, addFolder, removeFolder } =
@@ -38,7 +38,7 @@ function CollectionsCard() {
   const requests = collection?.requests ?? [];
 
   function load(req: SavedRequest) {
-    openOverlay("api-tester");
+    openApiTester();
     // The overlay mounts on the same tick; dispatch after it can listen.
     setTimeout(() => window.dispatchEvent(new CustomEvent(LOAD_REQUEST_EVENT, { detail: req })), 0);
   }
@@ -173,7 +173,7 @@ function CollectionsCard() {
 }
 
 function ApiTesterPanel() {
-  const openOverlay = useUIStore((s) => s.openOverlay);
+  const openApiTester = useUIStore((s) => s.openApiTester);
   const history = useApiHistoryStore((s) => s.history);
   const clearHistory = useApiHistoryStore((s) => s.clearHistory);
 
@@ -188,7 +188,7 @@ function ApiTesterPanel() {
 
       {/* Open button card */}
       <button
-        onClick={() => openOverlay("api-tester")}
+        onClick={() => openApiTester()}
         className="flex items-center gap-2 p-3 rounded-md text-left border border-[var(--color-border)] bg-[var(--color-elevated)] hover:border-[var(--color-accent)] hover:bg-[var(--color-hover)] transition-colors"
       >
         <Code2 size={18} className="text-[var(--color-accent)] flex-shrink-0" />
@@ -252,7 +252,7 @@ function ApiTesterPanel() {
             {history.slice(0, 5).map((h) => (
               <button
                 key={h.id}
-                onClick={() => openOverlay("api-tester")}
+                onClick={() => openApiTester()}
                 className="w-full flex items-center gap-1.5 px-2 py-1 text-left hover:bg-[var(--color-hover)] transition-colors"
               >
                 <span

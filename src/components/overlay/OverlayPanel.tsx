@@ -1,15 +1,19 @@
 import { useRef, useCallback, useEffect, useState } from "react";
 import { X, GripHorizontal } from "lucide-react";
-import { useUIStore } from "@/stores/ui";
+import { useUIStore, useApiTesterOpen } from "@/stores/ui";
+import { ApiTester } from "@/components/panels/ApiTester";
 
-interface OverlayPanelProps {
-  apiTesterContent?: React.ReactNode;
-}
-
-export function OverlayPanel({ apiTesterContent }: OverlayPanelProps) {
-  const overlayPanel = useUIStore((s) => s.overlayPanel);
+/**
+ * The API Tester's dock. Scoped to the workspace it was opened in — switch
+ * workspaces and it unmounts, which is also what resets the request draft.
+ *
+ * ponytail: an in-progress draft is lost on workspace switch. Persist it per
+ * workspace in stores/apiCollections.ts if that turns out to be annoying.
+ */
+export function OverlayPanel() {
+  const open = useApiTesterOpen();
   const overlayHeight = useUIStore((s) => s.overlayHeight);
-  const closeOverlay = useUIStore((s) => s.closeOverlay);
+  const closeApiTester = useUIStore((s) => s.closeApiTester);
   const setOverlayHeight = useUIStore((s) => s.setOverlayHeight);
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -20,17 +24,17 @@ export function OverlayPanel({ apiTesterContent }: OverlayPanelProps) {
 
   // Esc to close overlay
   useEffect(() => {
-    if (overlayPanel === "none") return;
+    if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && !e.defaultPrevented) {
         e.preventDefault();
         e.stopPropagation();
-        closeOverlay();
+        closeApiTester();
       }
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [overlayPanel, closeOverlay]);
+  }, [open, closeApiTester]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -69,7 +73,7 @@ export function OverlayPanel({ apiTesterContent }: OverlayPanelProps) {
     };
   }, [dragging, setOverlayHeight]);
 
-  if (overlayPanel === "none") return null;
+  if (!open) return null;
 
   const heightPercent = overlayHeight * 100;
 
@@ -90,7 +94,7 @@ export function OverlayPanel({ apiTesterContent }: OverlayPanelProps) {
       >
         <span className="text-micro font-semibold text-[var(--color-text-muted)]">API Tester</span>
         <button
-          onClick={closeOverlay}
+          onClick={closeApiTester}
           className="w-5 h-5 flex items-center justify-center rounded text-[var(--color-text-disabled)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
           title="Close panel (Esc)"
           aria-label="Close panel"
@@ -101,7 +105,7 @@ export function OverlayPanel({ apiTesterContent }: OverlayPanelProps) {
 
       {/* Panel content */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-        {overlayPanel === "api-tester" && apiTesterContent}
+        <ApiTester embedded onClose={closeApiTester} />
       </div>
 
       {/* Drag handle */}

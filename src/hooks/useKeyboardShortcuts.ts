@@ -13,7 +13,7 @@
 import { useEffect, useRef } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useWorkspacesStore } from "@/stores/workspaces";
-import { useUIStore } from "@/stores/ui";
+import { useUIStore, isFindOpen } from "@/stores/ui";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
@@ -130,7 +130,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
 
   if (shortcut === "ctrl+f") {
     const ui = useUIStore.getState();
-    if (ui.findOpen) {
+    if (isFindOpen()) {
       ui.closeFind();
       requestAnimationFrame(() => ui.openFind());
     } else {
@@ -146,7 +146,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
 
   if (shortcut === "escape") {
     const ui = useUIStore.getState();
-    if (ui.findOpen) {
+    if (isFindOpen()) {
       ui.closeFind();
     } else if (bridge) {
       const wsState = useWorkspacesStore.getState();
@@ -269,7 +269,7 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
       // ── Escape → close find bar or stop loading ──────────────────────
       if (e.key === "Escape") {
         const ui = useUIStore.getState();
-        if (ui.findOpen) {
+        if (isFindOpen()) {
           e.preventDefault();
           ui.closeFind();
         } else if (bridge) {
@@ -318,7 +318,7 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
       if (mod && !e.shiftKey && !e.altKey && e.key === "f") {
         e.preventDefault();
         const ui = useUIStore.getState();
-        if (ui.findOpen) {
+        if (isFindOpen()) {
           ui.closeFind();
           requestAnimationFrame(() => ui.openFind());
         } else {
@@ -481,7 +481,6 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         useTabsStore.getState().clearLastClosedTab();
         return;
       }
-
     }
 
     window.addEventListener("keydown", onKey);

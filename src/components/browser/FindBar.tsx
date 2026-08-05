@@ -11,21 +11,14 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Search, X, ChevronUp, ChevronDown } from "lucide-react";
 import { webviewFind, webviewFindNext, webviewStopFind, onFindResult } from "@/services/browser";
-import { useUIStore } from "@/stores/ui";
-import { useWorkspacesStore } from "@/stores/workspaces";
-import { useTabsStore } from "@/stores/tabs";
-import { getLiveWorkspaceActiveTabId } from "@/lib/workspaceTabs";
+import { useUIStore, useFindOpen } from "@/stores/ui";
+import { getActiveTabId } from "@/hooks/useActiveScope";
 
 const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-function getActiveTabId(): string | null {
-  const wsState = useWorkspacesStore.getState();
-  const ws = wsState.workspaces[wsState.activeWorkspaceId];
-  return getLiveWorkspaceActiveTabId(ws, useTabsStore.getState().tabs);
-}
-
 export function FindBar() {
-  const findOpen = useUIStore((s) => s.findOpen);
+  const findOpen = useFindOpen();
+  const findTabId = useUIStore((s) => s.findTabId);
   const findQuery = useUIStore((s) => s.findQuery);
   const findActiveMatch = useUIStore((s) => s.findActiveMatch);
   const findTotalMatches = useUIStore((s) => s.findTotalMatches);
@@ -72,22 +65,22 @@ export function FindBar() {
     };
   }, [setFindResult]);
 
-  // Focus the input whenever the bar opens.
+  // Focus the input whenever the bar opens, and clear the highlights on the way
+  // out. Stopping the find in a *cleanup* keyed on the searched tab is what
+  // matters: the bar is scoped per tab now, so switching tabs unmounts it, and
+  // an `else` branch would never run — leaving the old tab highlighted forever.
   useEffect(() => {
-    if (findOpen) {
-      // Defer one tick so the input is mounted.
-      setTimeout(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      }, 0);
-    } else {
+    if (!findTabId) return;
+    // Defer one tick so the input is mounted.
+    setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, 0);
+    return () => {
       lastQueriedRef.current = "";
-      if (IS_TAURI) {
-        const tabId = getActiveTabId();
-        if (tabId) webviewStopFind(tabId).catch(() => {});
-      }
-    }
-  }, [findOpen]);
+      if (IS_TAURI) webviewStopFind(findTabId).catch(() => {});
+    };
+  }, [findTabId]);
 
   // Debounced find on query change.
   useEffect(() => {

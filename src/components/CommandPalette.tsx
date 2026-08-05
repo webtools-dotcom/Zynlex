@@ -157,7 +157,7 @@ export function CommandPalette() {
         sublabel: "Test HTTP endpoints in a split panel",
         icon: <Code2 size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
-          useUIStore.getState().openOverlay("api-tester");
+          useUIStore.getState().openApiTester();
           useUIStore.getState().closeCommandPalette();
         },
       },
@@ -238,7 +238,7 @@ export function CommandPalette() {
       sublabel: `${r.method} ${r.url}`,
       icon: <Code2 size={14} className="text-[var(--color-text-muted)]" />,
       action: () => {
-        useUIStore.getState().openOverlay("api-tester");
+        useUIStore.getState().openApiTester();
         useUIStore.getState().closeCommandPalette();
         setTimeout(
           () => window.dispatchEvent(new CustomEvent(LOAD_REQUEST_EVENT, { detail: r })),

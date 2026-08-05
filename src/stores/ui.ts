@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { PanelId, OverlayPanelId } from "@/types";
+import { useWorkspacesStore } from "@/stores/workspaces";
+import { getActiveTabId, getActiveWorkspaceId, useActiveTabId } from "@/hooks/useActiveScope";
+import type { PanelId } from "@/types";
 
 type ToastKind = "success" | "info" | "danger";
 
@@ -31,16 +33,27 @@ interface UIStore {
   commandPaletteOpen: boolean;
   settingsPanelOpen: boolean;
   shortcutHelpOpen: boolean;
-  findOpen: boolean;
+  /**
+   * Per-scope UI state is stored as the id of the scope that OWNS it, not as a
+   * boolean: the feature is open iff its owner id equals the current scope id.
+   *
+   * That is what keeps these panels from bleeding across workspaces and tabs
+   * (they all used to be plain globals), and it needs no cleanup — close a tab
+   * or delete a workspace and the stale id simply stops matching. Same idea as
+   * inspector.lastTabId. Read them through the helpers at the bottom of this
+   * file, never by comparing ids at the call site.
+   */
+  findTabId: string | null;
+  viewportTabId: string | null;
+  apiTesterWsId: string | null;
+
   findQuery: string;
   findActiveMatch: number;
   findTotalMatches: number;
-  apiTesterOpen: boolean;
-  overlayPanel: OverlayPanelId;
   overlayHeight: number;
   toasts: Toast[];
 
-  viewportMode: boolean;
+  /** Shared device config, not per-scope: a preset list, like bookmarks. */
   viewports: Viewport[];
   selectedViewportId: string | null;
 
@@ -62,8 +75,6 @@ interface UIStore {
   setFindResult: (active: number, total: number) => void;
   openApiTester: () => void;
   closeApiTester: () => void;
-  openOverlay: (panel: OverlayPanelId, height?: number) => void;
-  closeOverlay: () => void;
   setOverlayHeight: (h: number) => void;
   pushToast: (message: string, kind?: ToastKind) => void;
   dismissToast: (id: string) => void;
@@ -97,16 +108,15 @@ export const useUIStore = create<UIStore>()(
     commandPaletteOpen: false,
     settingsPanelOpen: false,
     shortcutHelpOpen: false,
-    findOpen: false,
+    findTabId: null,
+    viewportTabId: null,
+    apiTesterWsId: null,
     findQuery: "",
     findActiveMatch: 0,
     findTotalMatches: 0,
-    apiTesterOpen: false,
-    overlayPanel: "none",
     overlayHeight: 0.4,
     toasts: [],
     recentPaletteIds: [],
-    viewportMode: false,
     viewports: [],
     selectedViewportId: null,
 
@@ -160,13 +170,13 @@ export const useUIStore = create<UIStore>()(
       }),
     openFind: () =>
       set((s) => {
-        s.findOpen = true;
+        s.findTabId = getActiveTabId();
         s.findActiveMatch = 0;
         s.findTotalMatches = 0;
       }),
     closeFind: () =>
       set((s) => {
-        s.findOpen = false;
+        s.findTabId = null;
         s.findQuery = "";
         s.findActiveMatch = 0;
         s.findTotalMatches = 0;
@@ -182,20 +192,11 @@ export const useUIStore = create<UIStore>()(
       }),
     openApiTester: () =>
       set((s) => {
-        s.apiTesterOpen = true;
+        s.apiTesterWsId = getActiveWorkspaceId();
       }),
     closeApiTester: () =>
       set((s) => {
-        s.apiTesterOpen = false;
-      }),
-    openOverlay: (panel, height) =>
-      set((s) => {
-        s.overlayPanel = panel;
-        if (height !== undefined) s.overlayHeight = height;
-      }),
-    closeOverlay: () =>
-      set((s) => {
-        s.overlayPanel = "none";
+        s.apiTesterWsId = null;
       }),
     setOverlayHeight: (h) =>
       set((s) => {
@@ -224,7 +225,7 @@ export const useUIStore = create<UIStore>()(
 
     enterViewportMode: () =>
       set((s) => {
-        s.viewportMode = true;
+        s.viewportTabId = getActiveTabId();
       }),
     // Keeps the configured devices — leaving viewport mode used to wipe the
     // whole list, so an accidental toggle threw away your setup and you had to
@@ -232,7 +233,7 @@ export const useUIStore = create<UIStore>()(
     // on re-entry) by ViewportSurface's unmount cleanup.
     exitViewportMode: () =>
       set((s) => {
-        s.viewportMode = false;
+        s.viewportTabId = null;
       }),
     addViewport: (preset) =>
       set((s) => {
@@ -286,3 +287,17 @@ export const useUIStore = create<UIStore>()(
       }),
   })),
 );
+
+// ─── Is it open *here*? ───────────────────────────────────────────────
+// The only sanctioned way to read the owner-id fields above. Imperative pair
+// for event handlers and the webview bridge's ref-based paths, hooks for
+// components.
+
+export const isFindOpen = () => useUIStore.getState().findTabId === getActiveTabId();
+export const isViewportMode = () => useUIStore.getState().viewportTabId === getActiveTabId();
+export const isApiTesterOpen = () => useUIStore.getState().apiTesterWsId === getActiveWorkspaceId();
+
+export const useFindOpen = () => useUIStore((s) => s.findTabId) === useActiveTabId();
+export const useViewportMode = () => useUIStore((s) => s.viewportTabId) === useActiveTabId();
+export const useApiTesterOpen = () =>
+  useUIStore((s) => s.apiTesterWsId) === useWorkspacesStore((s) => s.activeWorkspaceId);

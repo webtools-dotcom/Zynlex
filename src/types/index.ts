@@ -122,10 +122,6 @@ export interface ApiHistoryEntry {
   createdAt: number;
 }
 
-// ─── Overlay Panel ────────────────────────────────────────────────
-
-export type OverlayPanelId = "none" | "api-tester";
-
 // ─── History ──────────────────────────────────────────────────────
 
 export interface HistoryEntry {

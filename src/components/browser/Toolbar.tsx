@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useSettingsStore } from "@/stores/settings";
-import { useUIStore } from "@/stores/ui";
+import { useUIStore, useViewportMode } from "@/stores/ui";
 import { useBookmarksStore } from "@/stores/bookmarks";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
@@ -89,7 +89,7 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
   const tabs = useTabsStore((s) => s.tabs);
   const searchEngine = useSettingsStore((s) => s.settings.searchEngine);
   const toggleSettingsPanel = useUIStore((s) => s.toggleSettingsPanel);
-  const viewportMode = useUIStore((s) => s.viewportMode);
+  const viewportMode = useViewportMode();
 
   const ws = workspaces[activeWorkspaceId];
   const activeTab = getLiveWorkspaceActiveTab(ws, tabs);

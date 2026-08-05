@@ -9,7 +9,16 @@ import { useEffect, useRef, useCallback, useMemo } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
-import { useUIStore } from "@/stores/ui";
+import {
+  useUIStore,
+  isApiTesterOpen,
+  isFindOpen,
+  isViewportMode,
+  useApiTesterOpen,
+  useFindOpen,
+  useViewportMode,
+} from "@/stores/ui";
+import { getActiveTabId } from "@/hooks/useActiveScope";
 import {
   createTab,
   navigateTab,
@@ -90,21 +99,16 @@ function getActiveBounds(
   if (!el) return null;
   const rect = el.getBoundingClientRect();
   if (rect.width < 10 || rect.height < 10) return null;
-  const ui = useUIStore.getState();
-  const overlayH = ui.overlayPanel !== "none" ? ui.overlayHeight * rect.height : 0;
+  // Only the API Tester belonging to the *current* workspace steals height —
+  // one left open in another workspace isn't on screen here.
+  const overlayH = isApiTesterOpen() ? useUIStore.getState().overlayHeight * rect.height : 0;
   return computeWebviewBounds(rect, overlayH);
 }
 
 /** Any React chrome overlay that must sit above the OS-level browser webview. */
 function isChromeOverlayOpen(): boolean {
   const ui = useUIStore.getState();
-  return (
-    ui.commandPaletteOpen ||
-    ui.shortcutHelpOpen ||
-    ui.settingsPanelOpen ||
-    ui.apiTesterOpen ||
-    ui.findOpen
-  );
+  return ui.commandPaletteOpen || ui.shortcutHelpOpen || ui.settingsPanelOpen || isFindOpen();
 }
 
 export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement | null>) {
@@ -116,7 +120,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   const ws = workspaces[activeWorkspaceId];
   const activeTab = getLiveWorkspaceActiveTab(ws, tabs);
   const activeTabId = activeTab?.id ?? null;
-  const viewportMode = useUIStore((s) => s.viewportMode);
+  const viewportMode = useViewportMode();
 
   // Track last bounds to avoid redundant Rust calls
   const lastBoundsRef = useRef<BrowserBounds | null>(null);
@@ -133,10 +137,8 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   const syncBoundsRef = useRef<() => void>(() => {});
   syncBoundsRef.current = () => {
     if (!IS_TAURI) return;
-    if (useUIStore.getState().viewportMode) return;
-    const tabId =
-      useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId]
-        ?.activeTabId;
+    if (isViewportMode()) return;
+    const tabId = getActiveTabId();
     if (!tabId) return;
     const bounds = getActiveBounds(contentAreaRef);
     if (!bounds) return;
@@ -161,11 +163,9 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   // Show the active tab's webview with fresh bounds.
   const ensureWebviewVisible = useCallback(
     (attempt = 0) => {
-      if (useUIStore.getState().viewportMode) return;
+      if (isViewportMode()) return;
       if (isChromeOverlayOpen()) return;
-      const tabId =
-        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId]
-          ?.activeTabId;
+      const tabId = getActiveTabId();
       if (!tabId) return;
       // Guard: don't try to show a webview that hasn't been created yet.
       // The browser_create_tab command is called lazily on first navigation.
@@ -257,24 +257,14 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
 
   const goBack = useCallback(async () => {
     if (!IS_TAURI) return;
-    const tabId =
-      activeTabId ??
-      getLiveWorkspaceActiveTabId(
-        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
-        useTabsStore.getState().tabs,
-      );
+    const tabId = activeTabId ?? getActiveTabId();
     if (!tabId) return;
     await webviewGoBack(tabId);
   }, [activeTabId]);
 
   const goForward = useCallback(async () => {
     if (!IS_TAURI) return;
-    const tabId =
-      activeTabId ??
-      getLiveWorkspaceActiveTabId(
-        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
-        useTabsStore.getState().tabs,
-      );
+    const tabId = activeTabId ?? getActiveTabId();
     if (!tabId) return;
     await webviewGoForward(tabId);
   }, [activeTabId]);
@@ -282,13 +272,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   const reload = useCallback(
     async (overrideTabId?: string) => {
       if (!IS_TAURI) return;
-      const tabId =
-        overrideTabId ??
-        activeTabId ??
-        getLiveWorkspaceActiveTabId(
-          useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
-          useTabsStore.getState().tabs,
-        );
+      const tabId = overrideTabId ?? activeTabId ?? getActiveTabId();
       if (!tabId) return;
       await webviewReload(tabId);
     },
@@ -297,12 +281,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
 
   const stopLoadingAction = useCallback(async () => {
     if (!IS_TAURI) return;
-    const tabId =
-      activeTabId ??
-      getLiveWorkspaceActiveTabId(
-        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId],
-        useTabsStore.getState().tabs,
-      );
+    const tabId = activeTabId ?? getActiveTabId();
     if (!tabId) return;
     await stopLoading(tabId);
   }, [activeTabId]);
@@ -608,9 +587,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     const interval = setInterval(() => {
       const now = Date.now();
       const tabsState = useTabsStore.getState().tabs;
-      const currentActiveTabId =
-        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId]
-          ?.activeTabId;
+      const currentActiveTabId = getActiveTabId();
 
       for (const [tabId, tab] of Object.entries(tabsState)) {
         // Skip: active tab, already discarded, pinned, no URL, still loading
@@ -703,9 +680,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       if (liveCount <= maxConcurrent) return;
 
       const tabsState = useTabsStore.getState().tabs;
-      const currentActiveTabId =
-        useWorkspacesStore.getState().workspaces[useWorkspacesStore.getState().activeWorkspaceId]
-          ?.activeTabId;
+      const currentActiveTabId = getActiveTabId();
 
       const candidates = Array.from(createdTabsRef.current)
         .filter((id) => id !== currentActiveTabId)
@@ -889,13 +864,11 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
-  const apiTesterOpen = useUIStore((s) => s.apiTesterOpen);
-  const findOpen = useUIStore((s) => s.findOpen);
-  const overlayPanel = useUIStore((s) => s.overlayPanel);
+  const findOpen = useFindOpen();
+  const apiTesterOpen = useApiTesterOpen();
   useEffect(() => {
     if (!IS_TAURI) return;
-    const overlayOpen =
-      commandPaletteOpen || shortcutHelpOpen || settingsPanelOpen || apiTesterOpen || findOpen;
+    const overlayOpen = commandPaletteOpen || shortcutHelpOpen || settingsPanelOpen || findOpen;
     const wsState = useWorkspacesStore.getState();
     const ws = wsState.workspaces[wsState.activeWorkspaceId];
     const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
@@ -914,7 +887,6 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     commandPaletteOpen,
     shortcutHelpOpen,
     settingsPanelOpen,
-    apiTesterOpen,
     findOpen,
     activeTabId,
     ensureWebviewVisible,
@@ -931,7 +903,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       syncBounds();
     }, 50);
     return () => clearTimeout(timer);
-  }, [overlayPanel, syncBounds]);
+  }, [apiTesterOpen, syncBounds]);
 
   // ── Sync bounds when overlay is drag-resized ─────────────────────
   // rAF-throttled, not debounced — same reasoning as the ResizeObserver sync
@@ -941,8 +913,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   const overlayHeight = useUIStore((s) => s.overlayHeight);
   useEffect(() => {
     if (!IS_TAURI) return;
-    const ui = useUIStore.getState();
-    if (ui.overlayPanel === "none") return;
+    if (!isApiTesterOpen()) return;
     const wsState = useWorkspacesStore.getState();
     const ws = wsState.workspaces[wsState.activeWorkspaceId];
     const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
