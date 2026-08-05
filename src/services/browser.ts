@@ -189,6 +189,14 @@ export function onFindResult(callback: (result: FindResult) => void): Promise<Un
   return listen<FindResult>("browser://find-result", (e) => callback(e.payload));
 }
 
+export function onHoveredUrlChanged(
+  callback: (tabId: string, url: string | null) => void,
+): Promise<UnlistenFn> {
+  return listen<{ tabId: string; url: string | null }>("zynlex://hovered-url", (e) =>
+    callback(e.payload.tabId, e.payload.url),
+  );
+}
+
 export function onBookmarkRequest(callback: () => void): Promise<UnlistenFn> {
   return listen("browser://bookmark-request", () => callback());
 }

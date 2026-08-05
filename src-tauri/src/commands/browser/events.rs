@@ -57,8 +57,9 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
             use webview2_com::{
                 AcceleratorKeyPressedEventHandler, ContainsFullScreenElementChangedEventHandler,
-                DocumentTitleChangedEventHandler,
+                DocumentTitleChangedEventHandler, StatusBarTextChangedEventHandler,
             };
+            use windows_core::Interface;
 
             let core = match platform.controller().CoreWebView2() {
                 Ok(core) => core,
@@ -86,6 +87,39 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                 }));
             let mut title_token: i64 = 0;
             let _ = core.add_DocumentTitleChanged(&title_handler, &mut title_token);
+
+            // WebView2 exposes the resolved target URL whenever the pointer moves
+            // onto or off a link. Using the native event avoids page-originated IPC,
+            // which remote pages are not allowed to invoke.
+            if let Ok(core12) =
+                core.cast::<webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_12>()
+            {
+                let app_hover = app.clone();
+                let tab_id_hover = tab_id.clone();
+                let core_hover = core12.clone();
+                let hover_handler =
+                    StatusBarTextChangedEventHandler::create(Box::new(move |_webview, _args| {
+                        let hovered_url = pwstr_to_string(|p| {
+                            let _ = core_hover.StatusBarText(p);
+                        });
+                        let _ = app_hover.emit(
+                            "zynlex://hovered-url",
+                            serde_json::json!({
+                                "tabId": tab_id_hover,
+                                "url": if hovered_url.is_empty() {
+                                    None
+                                } else {
+                                    Some(hovered_url)
+                                },
+                            }),
+                        );
+                        Ok(())
+                    }));
+                let mut hover_token: i64 = 0;
+                if let Err(e) = core12.add_StatusBarTextChanged(&hover_handler, &mut hover_token) {
+                    zynlex_log!("[zynlex] StatusBarTextChanged registration failed: {e:?}");
+                }
+            }
 
             let app_key = app.clone();
             let controller = platform.controller();

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { usePortScanner } from "@/hooks/usePortScanner";
 import { WorkspaceSwitcher } from "@/components/sidebar/WorkspaceSwitcher";
 import { Sidebar } from "@/components/sidebar/Sidebar";
@@ -21,6 +21,7 @@ import { useTabsStore } from "@/stores/tabs";
 import { useSettingsStore } from "@/stores/settings";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
+import { onHoveredUrlChanged } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
 function PortScannerMount() {
@@ -29,6 +30,7 @@ function PortScannerMount() {
 }
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
+const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export function RootLayout() {
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
@@ -44,6 +46,22 @@ export function RootLayout() {
   const isLoading = activeTab?.isLoading ?? false;
   const loadTime = activeTab?.loadTime ?? null;
   const url = activeTab?.url ?? "";
+  const activeTabId = activeTab?.id ?? null;
+  const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setHoveredUrl(null);
+    if (!IS_TAURI || !activeTabId) return;
+
+    let cancelled = false;
+    const unlisten = onHoveredUrlChanged((tabId, hovered) => {
+      if (!cancelled && tabId === activeTabId) setHoveredUrl(hovered);
+    });
+    return () => {
+      cancelled = true;
+      unlisten.then((fn) => fn());
+    };
+  }, [activeTabId]);
 
   const bookmarkBarVisible = useSettingsStore((s) => s.settings.bookmarkBarVisible);
   const verticalTabs = useSettingsStore((s) => s.settings.tabBarPosition) === "left";
@@ -126,7 +144,7 @@ export function RootLayout() {
           isLoading={isLoading}
           loadTime={loadTime}
           url={url}
-          hoveredUrl={null}
+          hoveredUrl={hoveredUrl}
           zoom={activeTab?.zoom ?? 1}
         />
 
