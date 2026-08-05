@@ -24,6 +24,8 @@
     "core:window:allow-is-maximized",
     "core:window:allow-unmaximize",
     "core:window:allow-is-minimized",
-    "core:window:allow-is-visible"
+    "core:window:allow-is-visible",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

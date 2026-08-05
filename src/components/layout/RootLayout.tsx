@@ -13,6 +13,7 @@ import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutHelp } from "@/components/ShortcutHelp";
 import { Toast } from "@/components/Toast";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ViewportSurface } from "@/components/panels/ViewportPanel";
 import { useUIStore, useViewportMode } from "@/stores/ui";
@@ -152,6 +153,7 @@ export function RootLayout() {
         {commandPaletteOpen && <CommandPalette />}
         {shortcutHelpOpen && <ShortcutHelp />}
         <Toast />
+        <UpdateBanner />
       </div>
     </ErrorBoundary>
   );

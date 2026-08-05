@@ -144,6 +144,8 @@ pub fn run() {
                 .open_js_links_on_click(false)
                 .build(),
         )
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|_app| {
             // The minimize/restore/orphan-recovery apparatus that used to live
             // here is gone. It existed because each tab was a top-level *owner*
