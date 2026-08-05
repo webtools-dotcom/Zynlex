@@ -5368,7 +5368,7 @@ dependencies = [
 
 [[package]]
 name = "zynlex"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",

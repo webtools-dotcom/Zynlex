@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-05
+
+### Added
+
+- The status bar now shows the target URL of a hovered link. Thanks to
+  [@terminalchai](https://github.com/terminalchai) for the implementation, which
+  uses WebView2's `StatusBarTextChanged` rather than an injected listener.
+
+### Changed
+
+- Find, the viewport panel and the API tester are now scoped to the tab or
+  workspace that opened them. They were global booleans, so opening find in one
+  tab showed it in all of them and the API tester leaked across workspaces.
+
+
 ## [0.9.1] - 2026-08-03
 
 ### Fixed
@@ -61,6 +76,7 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.10.0
 [0.9.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.9.1
 [0.9.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.9.0
