@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-05
+
+### Added
+
+- ZYNLEX now checks for a newer release on launch and offers to install it.
+  Nothing is downloaded until you agree, and dismissing the prompt lasts for
+  that session only. Updates are signed, and a build will refuse an update it
+  cannot verify.
+
+### Note
+
+Builds before this one have no updater. If you are on 0.10.0 or earlier you
+need to install this version manually, once.
+
+
 ## [0.10.0] - 2026-08-05
 
 ### Added
@@ -76,7 +91,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.11.0
 [0.10.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.10.0
 [0.9.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.9.1
 [0.9.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.9.0

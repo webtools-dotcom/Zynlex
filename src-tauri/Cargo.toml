@@ -1,6 +1,6 @@
 [package]
 name = "zynlex"
-version = "0.10.0"
+version = "0.11.0"
 description = "A lightweight desktop browser built for web developers"
 authors = ["Zynlex contributors"]
 license = "Apache-2.0"

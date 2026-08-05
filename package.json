@@ -1,7 +1,7 @@
 {
   "name": "zynlex",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.11.0",
   "packageManager": "pnpm@11.18.0",
   "description": "A lightweight desktop browser built for web developers",
   "license": "Apache-2.0",
