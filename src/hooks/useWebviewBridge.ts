@@ -12,10 +12,8 @@ import { useTabsStore } from "@/stores/tabs";
 import {
   useUIStore,
   isApiTesterOpen,
-  isFindOpen,
   isViewportMode,
   useApiTesterOpen,
-  useFindOpen,
   useViewportMode,
 } from "@/stores/ui";
 import { getActiveTabId } from "@/hooks/useActiveScope";
@@ -108,7 +106,7 @@ function getActiveBounds(
 /** Any React chrome overlay that must sit above the OS-level browser webview. */
 function isChromeOverlayOpen(): boolean {
   const ui = useUIStore.getState();
-  return ui.commandPaletteOpen || ui.shortcutHelpOpen || ui.settingsPanelOpen || isFindOpen();
+  return ui.commandPaletteOpen || ui.shortcutHelpOpen || ui.settingsPanelOpen;
 }
 
 export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement | null>) {
@@ -864,11 +862,10 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
-  const findOpen = useFindOpen();
   const apiTesterOpen = useApiTesterOpen();
   useEffect(() => {
     if (!IS_TAURI) return;
-    const overlayOpen = commandPaletteOpen || shortcutHelpOpen || settingsPanelOpen || findOpen;
+    const overlayOpen = commandPaletteOpen || shortcutHelpOpen || settingsPanelOpen;
     const wsState = useWorkspacesStore.getState();
     const ws = wsState.workspaces[wsState.activeWorkspaceId];
     const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
@@ -887,7 +884,6 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     commandPaletteOpen,
     shortcutHelpOpen,
     settingsPanelOpen,
-    findOpen,
     activeTabId,
     ensureWebviewVisible,
   ]);

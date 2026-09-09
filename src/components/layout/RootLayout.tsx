@@ -6,6 +6,7 @@ import { TabBar } from "@/components/browser/TabBar";
 import { WindowControls } from "@/components/browser/WindowControls";
 import { Toolbar } from "@/components/browser/Toolbar";
 import { BrowserChrome } from "@/components/browser/BrowserChrome";
+import { FindBar } from "@/components/browser/FindBar";
 import { LoadingBar } from "@/components/browser/LoadingBar";
 import { StatusBar } from "@/components/browser/StatusBar";
 import { BookmarkBar } from "@/components/browser/BookmarkBar";
@@ -130,6 +131,7 @@ export function RootLayout() {
           <Sidebar />
           {verticalTabs && <TabBar bridge={bridge} vertical />}
           <div className="relative flex flex-col flex-1 overflow-hidden min-w-0">
+            <FindBar />
             <BrowserChrome onBridgeReady={handleBridgeReady} />
             {viewportMode && (
               <div className="absolute inset-0 z-10 bg-[var(--color-base)]">

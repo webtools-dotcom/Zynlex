@@ -1,5 +1,4 @@
 import { ContentArea } from "./ContentArea";
-import { FindBar } from "./FindBar";
 import { OverlayPanel } from "@/components/overlay/OverlayPanel";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 
@@ -14,7 +13,6 @@ export function BrowserChrome({ onBridgeReady }: BrowserChromeProps) {
     <div className="relative flex-1 overflow-hidden">
       <ContentArea onBridgeReady={onBridgeReady} />
       <OverlayPanel />
-      <FindBar />
     </div>
   );
 }

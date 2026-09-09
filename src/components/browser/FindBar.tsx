@@ -1,16 +1,21 @@
 /**
- * FindBar — Ctrl+F floating search bar for the active webview.
+ * FindBar — Ctrl+F search bar for the active webview.
  *
- * Sits at the top-right of the content area, overlaying the webview
- * (positioned via fixed, doesn't disturb webview bounds). Search
- * updates flow through the Rust `browser_find` command, which
- * injects a JS-based find (since Tauri 2.11.2 stable does not
- * expose a native WebviewWindow::find API). Match counts arrive
- * via the `browser://find-result` event.
+ * Docks as a row above the content area rather than floating over it. It cannot
+ * float: the tab is a native child webview composited above this document, so
+ * anything drawn under it is invisible. Taking layout height instead shrinks the
+ * content area, and the bridge's ResizeObserver re-syncs the webview bounds to
+ * match.
+ *
+ * Search runs through the Rust `browser_find` command, which injects a JS-based
+ * find (Tauri 2.11.2 stable exposes no native WebviewWindow::find API). Match
+ * counts come back as that command's return value, read out of the page with
+ * ExecuteScript — a page cannot invoke IPC back into the app, so the old
+ * `browser://find-result` event was never emitted and the counter never moved.
  */
 import { useEffect, useRef, useCallback } from "react";
 import { Search, X, ChevronUp, ChevronDown } from "lucide-react";
-import { webviewFind, webviewFindNext, webviewStopFind, onFindResult } from "@/services/browser";
+import { webviewFind, webviewFindNext, webviewStopFind } from "@/services/browser";
 import { useUIStore, useFindOpen } from "@/stores/ui";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 
@@ -30,40 +35,25 @@ export function FindBar() {
   const lastQueriedRef = useRef<string>("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const runFind = useCallback(async (q: string) => {
-    if (!IS_TAURI) return;
-    if (q === lastQueriedRef.current) return;
-    const tabId = getActiveTabId();
-    if (!tabId) return;
-    lastQueriedRef.current = q;
-    try {
-      await webviewFind(tabId, q);
-    } catch (e) {
-      if (import.meta.env.DEV) {
-        console.error("[zynlex] webviewFind failed:", e);
+  const runFind = useCallback(
+    async (q: string) => {
+      if (!IS_TAURI) return;
+      if (q === lastQueriedRef.current) return;
+      const tabId = getActiveTabId();
+      if (!tabId) return;
+      lastQueriedRef.current = q;
+      try {
+        const r = await webviewFind(tabId, q);
+        setFindResult(r.activeMatch, r.totalMatches);
+      } catch (e) {
+        setFindResult(0, 0);
+        if (import.meta.env.DEV) {
+          console.error("[zynlex] webviewFind failed:", e);
+        }
       }
-    }
-  }, []);
-
-  // Subscribe to find-result events (active/total match counts).
-  useEffect(() => {
-    if (!IS_TAURI) return;
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-    onFindResult((result) => {
-      setFindResult(result.active_match, result.total_matches);
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unlisten = fn;
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [setFindResult]);
+    },
+    [setFindResult],
+  );
 
   // Focus the input whenever the bar opens, and clear the highlights on the way
   // out. Stopping the find in a *cleanup* keyed on the searched tab is what
@@ -99,16 +89,25 @@ export function FindBar() {
     };
   }, [findQuery, findOpen, runFind]);
 
+  const step = useCallback(
+    (forward: boolean) => {
+      if (!IS_TAURI) return;
+      const tabId = getActiveTabId();
+      if (!tabId) return;
+      webviewFindNext(tabId, forward)
+        .then((r) => setFindResult(r.activeMatch, r.totalMatches))
+        .catch(() => {});
+    },
+    [setFindResult],
+  );
+
   // Local keydown handler: Enter cycles matches, Shift+Enter goes back,
   // Escape closes the bar. The global Ctrl+F is handled in
   // useKeyboardShortcuts.
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
-      if (IS_TAURI) {
-        const tabId = getActiveTabId();
-        if (tabId) webviewFindNext(tabId, !e.shiftKey).catch(() => {});
-      }
+      step(!e.shiftKey);
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -127,7 +126,7 @@ export function FindBar() {
 
   return (
     <div
-      className="absolute top-2 right-2 z-50 flex items-center gap-1 h-9 px-2.5 rounded-[4px] border"
+      className="flex-shrink-0 flex items-center justify-end gap-1 h-9 px-2.5 border-b"
       style={{
         background: "var(--color-elevated)",
         borderColor: "var(--color-border)",
@@ -159,11 +158,7 @@ export function FindBar() {
         </span>
       )}
       <button
-        onClick={() => {
-          if (!IS_TAURI) return;
-          const tabId = getActiveTabId();
-          if (tabId) webviewFindNext(tabId, false).catch(() => {});
-        }}
+        onClick={() => step(false)}
         disabled={!hasQuery || findTotalMatches === 0}
         title="Previous match (Shift+Enter)"
         aria-label="Previous match"
@@ -172,11 +167,7 @@ export function FindBar() {
         <ChevronUp size={13} />
       </button>
       <button
-        onClick={() => {
-          if (!IS_TAURI) return;
-          const tabId = getActiveTabId();
-          if (tabId) webviewFindNext(tabId, true).catch(() => {});
-        }}
+        onClick={() => step(true)}
         disabled={!hasQuery || findTotalMatches === 0}
         title="Next match (Enter)"
         aria-label="Next match"

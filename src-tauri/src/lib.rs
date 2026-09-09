@@ -276,7 +276,6 @@ pub fn run() {
             commands::browser::browser_find,
             commands::browser::browser_find_next,
             commands::browser::browser_stop_find,
-            commands::browser::browser_find_callback,
             commands::browser::browser_set_theme,
             commands::browser::browser_set_network_capture,
             commands::browser::browser_hide_tab,

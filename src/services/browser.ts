@@ -26,9 +26,8 @@ interface TabInfo {
 }
 
 export interface FindResult {
-  active_match: number;
-  total_matches: number;
-  final_update: boolean;
+  activeMatch: number;
+  totalMatches: number;
 }
 
 // ─── Per-tab commands ────────────────────────────────────────────────
@@ -115,12 +114,15 @@ export async function showTabWebview(tabId: string, bounds: BrowserBounds): Prom
 
 // ─── Find (per-tab) ──────────────────────────────────────────────────
 
-export async function webviewFind(tabId: string, query: string): Promise<void> {
-  await invoke<void>("browser_find", { tabId, query });
+export async function webviewFind(tabId: string, query: string): Promise<FindResult> {
+  return await invoke<FindResult>("browser_find", { tabId, query });
 }
 
-export async function webviewFindNext(tabId: string, forward: boolean = true): Promise<void> {
-  await invoke<void>("browser_find_next", { tabId, forward });
+export async function webviewFindNext(
+  tabId: string,
+  forward: boolean = true,
+): Promise<FindResult> {
+  return await invoke<FindResult>("browser_find_next", { tabId, forward });
 }
 
 export async function webviewStopFind(tabId: string): Promise<void> {
@@ -183,10 +185,6 @@ export function onTabInfoChanged(
         favicon: e.payload.favicon,
       }),
   );
-}
-
-export function onFindResult(callback: (result: FindResult) => void): Promise<UnlistenFn> {
-  return listen<FindResult>("browser://find-result", (e) => callback(e.payload));
 }
 
 export function onHoveredUrlChanged(
