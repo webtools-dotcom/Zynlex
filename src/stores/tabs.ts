@@ -16,8 +16,8 @@ function buildTab(workspaceId: string, opts: NewTabOptions = {}): Tab {
     createdAt: Date.now(),
     savedFormState: null,
     zoom: 1,
-    historyBack: [],
-    historyForward: [],
+    canGoBack: false,
+    canGoForward: false,
     loadTime: null,
     discardedAt: null,
     lastActiveAt: Date.now(),
@@ -34,9 +34,6 @@ interface TabsStore {
   pinTab: (tabId: string) => void;
   setLoading: (tabId: string, val: boolean) => void;
   setFavicon: (tabId: string, favicon: string) => void;
-  recordNavigation: (tabId: string, fromUrl: string) => void;
-  popBack: (tabId: string) => string | null;
-  popForward: (tabId: string) => string | null;
   clearLastClosedTab: () => void;
   discardTab: (tabId: string) => void;
   restoreTab: (tabId: string) => void;
@@ -116,57 +113,6 @@ export const useTabsStore = create<TabsStore>()(
         set((s) => {
           if (s.tabs[tabId]) s.tabs[tabId].favicon = favicon;
         });
-      },
-
-      recordNavigation: (tabId, fromUrl) => {
-        if (!fromUrl) return;
-        set((s) => {
-          const tab = s.tabs[tabId];
-          if (!tab) return;
-          const back = tab.historyBack ?? [];
-          if (back.length > 0 && back[back.length - 1] === fromUrl) return;
-          back.push(fromUrl);
-          while (back.length > 50) back.shift();
-          tab.historyBack = back;
-          tab.historyForward = [];
-          tab.loadTime = null;
-        });
-      },
-
-      popBack: (tabId) => {
-        let prevUrl: string | null = null;
-        set((s) => {
-          const tab = s.tabs[tabId];
-          if (!tab) return;
-          const back = tab.historyBack ?? [];
-          if (back.length === 0) return;
-          prevUrl = back[back.length - 1];
-          back.pop();
-          const forward = tab.historyForward ?? [];
-          forward.unshift(tab.url);
-          tab.historyBack = back;
-          tab.historyForward = forward;
-          tab.url = prevUrl;
-        });
-        return prevUrl;
-      },
-
-      popForward: (tabId) => {
-        let nextUrl: string | null = null;
-        set((s) => {
-          const tab = s.tabs[tabId];
-          if (!tab) return;
-          const forward = tab.historyForward ?? [];
-          if (forward.length === 0) return;
-          nextUrl = forward[0];
-          forward.shift();
-          const back = tab.historyBack ?? [];
-          back.push(tab.url);
-          tab.historyBack = back;
-          tab.historyForward = forward;
-          tab.url = nextUrl;
-        });
-        return nextUrl;
       },
 
       clearLastClosedTab: () =>
@@ -256,8 +202,8 @@ export const useTabsStore = create<TabsStore>()(
             id,
             isLoading: false,
             savedFormState: null,
-            historyBack: [],
-            historyForward: [],
+            canGoBack: false,
+            canGoForward: false,
             loadTime: null,
             lastActiveAt: Date.now(),
             discardedAt: Date.now(),

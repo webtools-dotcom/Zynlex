@@ -188,6 +188,15 @@ export function onTabInfoChanged(
   );
 }
 
+export function onHistoryState(
+  callback: (tabId: string, canGoBack: boolean, canGoForward: boolean) => void,
+): Promise<UnlistenFn> {
+  return listen<{ tabId: string; canGoBack: boolean; canGoForward: boolean }>(
+    "browser://history-state",
+    (e) => callback(e.payload.tabId, e.payload.canGoBack, e.payload.canGoForward),
+  );
+}
+
 export function onHoveredUrlChanged(
   callback: (tabId: string, url: string | null) => void,
 ): Promise<UnlistenFn> {

@@ -153,8 +153,8 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
     };
   }, []);
 
-  const canGoBack = (activeTab?.historyBack?.length ?? 0) > 0;
-  const canGoForward = (activeTab?.historyForward?.length ?? 0) > 0;
+  const canGoBack = activeTab?.canGoBack ?? false;
+  const canGoForward = activeTab?.canGoForward ?? false;
 
   return (
     <div

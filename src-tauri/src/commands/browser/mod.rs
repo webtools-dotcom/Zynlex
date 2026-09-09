@@ -581,24 +581,57 @@ pub async fn browser_set_bounds(
 
 // ─── Navigation (per-tab) ────────────────────────────────────────────
 
+/// Back/forward through WebView2's own history rather than
+/// `eval("window.history.back()")`: a strict page CSP can refuse an injected
+/// script, and the eval acts on whichever frame it lands in instead of the
+/// top-level navigation the button means.
+#[cfg(target_os = "windows")]
+fn navigate_history(app: &AppHandle, tab_id: &str, back: bool) -> Result<(), String> {
+    let label = webview_label_for_tab(tab_id);
+    let wv = match find_tab_webview(app, &label) {
+        Some(wv) => wv,
+        None => return Ok(()),
+    };
+    wv.with_webview(move |platform| {
+        #[cfg(windows)]
+        unsafe {
+            let core = match platform.controller().CoreWebView2() {
+                Ok(c) => c,
+                Err(e) => {
+                    zynlex_log!("[zynlex] navigate_history: CoreWebView2 failed: {e:?}");
+                    return;
+                }
+            };
+            let _ = if back { core.GoBack() } else { core.GoForward() };
+        }
+    })
+    .map_err(|e| format!("navigate_history failed: {e}"))
+}
+
 #[tauri::command]
 pub async fn browser_go_back(app: AppHandle, tab_id: String) -> Result<(), String> {
-    let label = webview_label_for_tab(&tab_id);
-    if let Some(wv) = find_tab_webview(&app, &label) {
-        wv.eval("window.history.back()")
-            .map_err(|e| format!("browser_go_back eval failed: {e}"))?;
+    #[cfg(target_os = "windows")]
+    {
+        navigate_history(&app, &tab_id, true)
     }
-    Ok(())
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, tab_id);
+        Err("Back navigation is only supported on Windows".to_string())
+    }
 }
 
 #[tauri::command]
 pub async fn browser_go_forward(app: AppHandle, tab_id: String) -> Result<(), String> {
-    let label = webview_label_for_tab(&tab_id);
-    if let Some(wv) = find_tab_webview(&app, &label) {
-        wv.eval("window.history.forward()")
-            .map_err(|e| format!("browser_go_forward eval failed: {e}"))?;
+    #[cfg(target_os = "windows")]
+    {
+        navigate_history(&app, &tab_id, false)
     }
-    Ok(())
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, tab_id);
+        Err("Forward navigation is only supported on Windows".to_string())
+    }
 }
 
 #[tauri::command]

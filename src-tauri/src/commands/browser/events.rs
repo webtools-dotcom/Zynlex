@@ -41,6 +41,25 @@ fn update_tab_info(
     Ok(())
 }
 
+/// Called from the native HistoryChanged handler — never exposed as an IPC
+/// command, since it would let any page lie about another tab's nav state.
+fn update_history_state(
+    app: AppHandle,
+    tab_id: String,
+    can_go_back: bool,
+    can_go_forward: bool,
+) -> Result<(), String> {
+    app.emit(
+        "browser://history-state",
+        serde_json::json!({
+            "tabId": tab_id,
+            "canGoBack": can_go_back,
+            "canGoForward": can_go_forward,
+        }),
+    )
+    .map_err(|e| e.to_string())
+}
+
 pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandle, tab_id: &str) {
     let app = app.clone();
     let tab_id = tab_id.to_string();
@@ -50,7 +69,8 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
             use webview2_com::{
                 AcceleratorKeyPressedEventHandler, ContainsFullScreenElementChangedEventHandler,
-                DocumentTitleChangedEventHandler, StatusBarTextChangedEventHandler,
+                DocumentTitleChangedEventHandler, HistoryChangedEventHandler,
+                StatusBarTextChangedEventHandler,
             };
             use windows_core::Interface;
 
@@ -80,6 +100,32 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                 }));
             let mut title_token: i64 = 0;
             let _ = core.add_DocumentTitleChanged(&title_handler, &mut title_token);
+
+            // Back/forward state, straight from the webview. The app used to keep
+            // its own URL stack and infer this from url-changed events, which
+            // cannot distinguish a back navigation from a forward one — so going
+            // back cleared the forward stack and Forward could never enable.
+            // WebView2 tracks pushState, redirects and subframes correctly; we
+            // only mirror its answer.
+            let app_hist = app.clone();
+            let tab_id_hist = tab_id.clone();
+            let core_hist = core.clone();
+            let hist_handler =
+                HistoryChangedEventHandler::create(Box::new(move |_webview, _args| {
+                    let mut can_back = windows_core::BOOL(0);
+                    let mut can_forward = windows_core::BOOL(0);
+                    let _ = core_hist.CanGoBack(&mut can_back);
+                    let _ = core_hist.CanGoForward(&mut can_forward);
+                    let _ = update_history_state(
+                        app_hist.clone(),
+                        tab_id_hist.clone(),
+                        can_back.as_bool(),
+                        can_forward.as_bool(),
+                    );
+                    Ok(())
+                }));
+            let mut hist_token: i64 = 0;
+            let _ = core.add_HistoryChanged(&hist_handler, &mut hist_token);
 
             // WebView2 exposes the resolved target URL whenever the pointer moves
             // onto or off a link. Using the native event avoids page-originated IPC,

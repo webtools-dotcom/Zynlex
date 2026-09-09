@@ -13,8 +13,11 @@ export interface Tab {
   createdAt: number;
   savedFormState: string | null;
   zoom: number;
-  historyBack: string[];
-  historyForward: string[];
+  /** Mirrors WebView2's own navigation state, pushed by `browser://history-state`.
+   *  Never inferred from url-changed events — that could not tell a back
+   *  navigation from a forward one. */
+  canGoBack: boolean;
+  canGoForward: boolean;
   loadTime: number | null;
   /** Timestamp when the tab's webview was destroyed to save memory. null = alive. */
   discardedAt: number | null;

@@ -32,6 +32,7 @@ import {
   onUrlChanged,
   onLoadingChanged,
   onTabInfoChanged,
+  onHistoryState,
   onNewTabRequested,
   onInspectorData,
   setMemoryTarget,
@@ -289,6 +290,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     let unUrl: (() => void) | null = null;
     let unLoading: (() => void) | null = null;
     let unTabInfo: (() => void) | null = null;
+    let unHistory: (() => void) | null = null;
     let unNewTab: (() => void) | null = null;
     let unInspectorData: (() => void) | null = null;
 
@@ -307,11 +309,6 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     });
 
     onUrlChanged((tabId, url) => {
-      const prevTab = useTabsStore.getState().tabs[tabId];
-      const prevUrl = prevTab?.url;
-      if (prevUrl && prevUrl !== url) {
-        useTabsStore.getState().recordNavigation(tabId, prevUrl);
-      }
       useTabsStore.getState().updateTab(tabId, { url });
       // Record to global history — use the tab's own workspace, not the active one
       const wsState = useWorkspacesStore.getState();
@@ -335,7 +332,10 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     onLoadingChanged((tabId, loading) => {
       if (loading) {
         loadStartRef.current = Date.now();
-        useTabsStore.getState().updateTab(tabId, { isLoading: true });
+        // loadTime belongs to the page that is finishing, not the one starting —
+        // clear it so the status bar doesn't show the previous page's number
+        // while the new one loads. (Was a side effect of recordNavigation.)
+        useTabsStore.getState().updateTab(tabId, { isLoading: true, loadTime: null });
         // Fires on reload too, not just fresh navigation — so the network log
         // resets per page load instead of accumulating for the tab's whole
         // lifetime (it was hitting the 500-entry cap after a handful of reloads).
@@ -371,6 +371,16 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         return;
       }
       unTabInfo = fn;
+    });
+
+    onHistoryState((tabId, canGoBack, canGoForward) => {
+      useTabsStore.getState().updateTab(tabId, { canGoBack, canGoForward });
+    }).then((fn) => {
+      if (cancelled) {
+        fn();
+        return;
+      }
+      unHistory = fn;
     });
 
     // Inspector data from browser_eval_inspector
@@ -422,6 +432,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       unUrl?.();
       unLoading?.();
       unTabInfo?.();
+      unHistory?.();
       unNewTab?.();
       unInspectorData?.();
     };
