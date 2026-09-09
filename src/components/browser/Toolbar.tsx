@@ -20,6 +20,7 @@ import { useBookmarksStore } from "@/stores/bookmarks";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { resolveInput } from "@/lib/url";
+import { focusAppWebview } from "@/services/browser";
 
 /**
  * Address-bar security indicator, derived purely from the URL scheme.
@@ -127,9 +128,13 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
   }
 
   useEffect(() => {
+    // focusAppWebview() first — Ctrl+L is forwarded from a focused page, whose
+    // child webview holds OS keyboard focus until this document claims it.
     function focusInput() {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      void focusAppWebview().then(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
     }
     function handler(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === "l") {

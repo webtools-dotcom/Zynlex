@@ -32,7 +32,6 @@ import {
   onUrlChanged,
   onLoadingChanged,
   onTabInfoChanged,
-  onBookmarkRequest,
   onNewTabRequested,
   onInspectorData,
   setMemoryTarget,
@@ -50,7 +49,6 @@ import { useHistoryStore } from "@/stores/history";
 import { useInspectorStore } from "@/stores/inspector";
 import type { MetaInfo, CookieEntry, StorageEntry } from "@/types";
 import { getLiveWorkspaceActiveTab, getLiveWorkspaceActiveTabId } from "@/lib/workspaceTabs";
-import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { useNetworkStore } from "@/stores/network";
 import { useHeadersStore } from "@/stores/headers";
 import { setHeaderRules } from "@/services/browser";
@@ -291,19 +289,8 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     let unUrl: (() => void) | null = null;
     let unLoading: (() => void) | null = null;
     let unTabInfo: (() => void) | null = null;
-    let unBookmark: (() => void) | null = null;
     let unNewTab: (() => void) | null = null;
     let unInspectorData: (() => void) | null = null;
-
-    onBookmarkRequest(() => {
-      toggleBookmarkForActiveTab();
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unBookmark = fn;
-    });
 
     onNewTabRequested((url) => {
       const wsId = useWorkspacesStore.getState().activeWorkspaceId;
@@ -435,7 +422,6 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       unUrl?.();
       unLoading?.();
       unTabInfo?.();
-      unBookmark?.();
       unNewTab?.();
       unInspectorData?.();
     };

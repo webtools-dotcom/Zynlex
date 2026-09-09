@@ -271,7 +271,6 @@ pub fn run() {
             commands::browser::browser_stop_loading,
             commands::browser::browser_set_zoom,
             commands::browser::browser_hard_reload,
-            commands::browser::browser_bookmark_request,
             commands::browser::open_download,
             commands::browser::browser_find,
             commands::browser::browser_find_next,

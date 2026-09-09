@@ -2,6 +2,7 @@
  * target a specific child webview via tabId — see docs/architecture.md. */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 export interface BrowserBounds {
   x: number;
@@ -193,10 +194,6 @@ export function onHoveredUrlChanged(
   return listen<{ tabId: string; url: string | null }>("zynlex://hovered-url", (e) =>
     callback(e.payload.tabId, e.payload.url),
   );
-}
-
-export function onBookmarkRequest(callback: () => void): Promise<UnlistenFn> {
-  return listen("browser://bookmark-request", () => callback());
 }
 
 export function onNewTabRequested(callback: (url: string) => void): Promise<UnlistenFn> {
@@ -411,4 +408,27 @@ export async function setHeaderRules(
   rulesByTab: Record<string, HeaderRulePayload[]>,
 ): Promise<void> {
   await invoke<void>("browser_set_header_rules", { rulesByTab });
+}
+
+// ─── Focus ───────────────────────────────────────────────────────────
+
+/**
+ * Pull OS keyboard focus back to the app's own webview.
+ *
+ * A tab is a native child webview with its own HWND. While it holds focus,
+ * calling `.focus()` on an input in this document marks it focused here but
+ * does not move OS focus — keystrokes keep going to the page. Any UI opened by
+ * a shortcut forwarded from a focused page has to ask for focus explicitly.
+ *
+ * Not needed for the command palette, shortcut help or settings panel: the
+ * bridge hides the tab webview when those open, and hiding it hands focus back
+ * to the parent on its own.
+ */
+export async function focusAppWebview(): Promise<void> {
+  try {
+    await getCurrentWebview().setFocus();
+  } catch {
+    // Best-effort. A failure here costs the caller its keyboard focus, not
+    // correctness, and there is nothing useful to tell the user.
+  }
 }

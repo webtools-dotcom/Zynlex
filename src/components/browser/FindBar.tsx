@@ -15,7 +15,12 @@
  */
 import { useEffect, useRef, useCallback } from "react";
 import { Search, X, ChevronUp, ChevronDown } from "lucide-react";
-import { webviewFind, webviewFindNext, webviewStopFind } from "@/services/browser";
+import {
+  webviewFind,
+  webviewFindNext,
+  webviewStopFind,
+  focusAppWebview,
+} from "@/services/browser";
 import { useUIStore, useFindOpen } from "@/stores/ui";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 
@@ -61,10 +66,15 @@ export function FindBar() {
   // an `else` branch would never run — leaving the old tab highlighted forever.
   useEffect(() => {
     if (!findTabId) return;
-    // Defer one tick so the input is mounted.
+    // Defer one tick so the input is mounted. focusAppWebview() first: Ctrl+F
+    // is usually pressed with the page focused, and the tab's child webview
+    // keeps OS keyboard focus until this document asks for it — without it the
+    // bar opens but every keystroke still goes to the page.
     setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      void focusAppWebview().then(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
     }, 0);
     return () => {
       lastQueriedRef.current = "";

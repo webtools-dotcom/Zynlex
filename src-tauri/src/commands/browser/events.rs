@@ -9,14 +9,7 @@ use super::{pwstr_to_string, webview_label_for_tab};
 use crate::zynlex_log;
 use tauri::{AppHandle, Emitter, Manager};
 
-// ─── Bookmark & Shortcut forwarding (global, not tab-specific) ───────
-
-#[tauri::command]
-pub fn browser_bookmark_request(app: AppHandle) -> Result<(), String> {
-    app.emit("browser://bookmark-request", ())
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
+// ─── Shortcut forwarding (global, not tab-specific) ──────────────────
 
 /// Called from the native accelerator-key handler — never exposed as an
 /// IPC command, since it would let any page spoof a keyboard shortcut.
@@ -137,8 +130,10 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                     let mut vkey: u32 = 0;
                     let _ = args.VirtualKey(&mut vkey);
 
-                    // Mirrors the key set the old injected CORE_SCRIPT mapped
-                    // (ctrl+t/w/b/,/l/1-9, ctrl+shift+t, ctrl+shift+tab, ctrl+?, alt+left/right, escape).
+                    // The full set of shortcuts reachable while a page has focus.
+                    // ShortcutHelp.tsx is what users are shown; anything listed
+                    // there needs an entry here or it only works when the React
+                    // chrome happens to have focus.
                     let ctrl = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
                         windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL.0 as i32,
                     ) < 0;
@@ -181,12 +176,18 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                     } else if ctrl && !shift && !alt {
                         match vkey {
                             0x4B => Some("ctrl+k"),
+                            0x44 => Some("ctrl+d"),
+                            0x46 => Some("ctrl+f"),
                             0x54 => Some("ctrl+t"),
                             0x57 => Some("ctrl+w"),
                             0x42 => Some("ctrl+b"),
                             0xBC => Some("ctrl+,"),
                             0x4C => Some("ctrl+l"),
                             0x48 => Some("ctrl+h"),
+                            // Plain Ctrl+Tab. Ctrl+Shift+Tab is already handled
+                            // above; without this, tab cycling from a focused page
+                            // worked backwards but not forwards.
+                            0x09 => Some("ctrl+tab"),
                             0x31 => Some("ctrl+1"),
                             0x32 => Some("ctrl+2"),
                             0x33 => Some("ctrl+3"),
@@ -210,7 +211,15 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
 
                     if let Some(s) = shortcut {
                         let _ = forward_shortcut(app_key.clone(), s.to_string());
-                        let _ = args.SetHandled(true);
+                        // Escape is observed, never consumed. SetHandled(true) stops
+                        // WebView2 delivering the key to the page, and the app only
+                        // wants Escape in two narrow cases (close the find bar, stop
+                        // a load) — so suppressing it unconditionally meant no page
+                        // could ever see an Escape keydown. Every other entry here is
+                        // a browser accelerator the page is not entitled to.
+                        if s != "escape" {
+                            let _ = args.SetHandled(true);
+                        }
                     }
                     Ok(())
                 }));

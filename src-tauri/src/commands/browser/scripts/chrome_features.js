@@ -146,38 +146,3 @@
     window.__zynlexFindState = { query: "", matches: [], currentIndex: -1 };
   });
 })();
-
-// ── BOOKMARK SHORTCUT ────────────────────────────────────────────
-(function() {
-  function isEditableTarget(t) {
-    if (!t) return false;
-    var tag = (t.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "select") return true;
-    if (t.isContentEditable) return true;
-    return false;
-  }
-
-  function onKeyDown(e) {
-    var mod = e.ctrlKey || e.metaKey;
-    if (!mod) return;
-    if (e.shiftKey || e.altKey) return;
-    if (e.key !== "d" && e.key !== "D") return;
-    if (isEditableTarget(e.target)) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-
-    try {
-      if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-        window.__TAURI_INTERNALS__.invoke("browser_bookmark_request")
-          .catch(function() {});
-      }
-    } catch (err) {}
-  }
-
-  if (!window.__zynlexBookmarkReady) {
-    window.__zynlexBookmarkReady = true;
-    document.addEventListener("keydown", onKeyDown, true);
-  }
-})();
