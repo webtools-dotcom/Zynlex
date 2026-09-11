@@ -157,6 +157,31 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
 
   const syncBounds = useCallback(() => syncBoundsRef.current(), []);
 
+  // ── Ref-based reconcileVisibility ─────────────────────────────────
+  /**
+   * Force the native layer back in step with whatever tab is active *now*.
+   *
+   * Every show path is asynchronous, and Rust calls `show()` on the webview
+   * before the JS promise resolves. So a slow `browser_create_tab` can land
+   * after the user has already switched away, painting the old tab's webview
+   * over the new tab's page. The symptom: click + while a page is still
+   * opening, and the new tab's content area keeps showing the old site until
+   * you close the old tab entirely.
+   *
+   * The switch effect's sequence guard cannot fix this on its own — by the time
+   * a superseded promise resolves, Rust has already shown the webview. Nor can
+   * the empty-tab branch's hide loop, which fires *before* the webview exists
+   * and so finds nothing to hide.
+   *
+   * The fix is to re-assert after any operation that may have shown something:
+   * if the active tab has no webview it is entitled to show — a new empty tab,
+   * or one not created yet — then nothing may be visible.
+   *
+   * A ref, not a useCallback, for the same reason syncBounds is one: it is
+   * called from effects whose dependency arrays must not grow.
+   */
+  const reconcileVisibilityRef = useRef<() => void>(() => {});
+
   // Show the active tab's webview with fresh bounds.
   const ensureWebviewVisible = useCallback(
     (attempt = 0) => {
@@ -183,6 +208,24 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     },
     [contentAreaRef],
   );
+
+  reconcileVisibilityRef.current = () => {
+    if (!IS_TAURI) return;
+    if (isViewportMode()) return;
+    const tabId = getActiveTabId();
+    const tab = tabId ? useTabsStore.getState().tabs[tabId] : null;
+    if (!tabId || !tab?.url || !createdTabsRef.current.has(tabId)) {
+      // Nothing is entitled to be on screen. Hide everything rather than
+      // trusting that whatever Rust last showed was the right thing.
+      for (const tid of createdTabsRef.current) {
+        hideTabWebview(tid).catch(() => {});
+      }
+      return;
+    }
+    // showTabWebview hides every other browser webview in Rust, so showing the
+    // right one is also what hides a wrongly-shown one.
+    ensureWebviewVisible();
+  };
 
   useEffect(() => {
     if (!IS_TAURI) return;
@@ -230,6 +273,10 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
             reservedNewSlot = true;
             await createTab(activeTabId, url, bounds);
           }
+          // Rust shows the new webview before this promise resolves, so a slow
+          // create can land after the user has already opened or switched to
+          // another tab — leaving the old page composited over the new one.
+          reconcileVisibilityRef.current();
         }
         useHistoryStore.getState().addEntry({
           url,
@@ -491,7 +538,10 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     // may already have finished, reconcile to whatever tab is actually active now.
     const settle = () => {
       if (isStale()) {
-        ensureWebviewVisible();
+        // Not just "show the right tab" — the right tab may be an empty one
+        // with nothing to show, in which case the superseded create/show has
+        // left a webview on screen that has to be hidden.
+        reconcileVisibilityRef.current();
         return;
       }
       setNormal();
