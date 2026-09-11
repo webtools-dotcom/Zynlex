@@ -446,6 +446,13 @@ export function ViewportSurface() {
   }, [device?.id]);
 
   useEffect(() => {
+    // Reset on every setup, not just the first. React.StrictMode runs effects
+    // setup → cleanup → setup in development, on the *same* instance — and refs
+    // survive that. Without this the cleanup's `true` was still set when the
+    // second setup ran, so the create chain below saw "we unmounted" and
+    // destroyed the webview the instant it finished building. The card rendered
+    // with no page behind it and no error, because the destroy itself succeeded.
+    unmountedRef.current = false;
     return () => {
       unmountedRef.current = true;
       destroyViewport(VIEWPORT_LABEL).catch(() => {});
