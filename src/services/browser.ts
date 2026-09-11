@@ -93,7 +93,11 @@ export async function setTabZoom(tabId: string, factor: number): Promise<void> {
 
 // ─── Theme ───────────────────────────────────────────────────────────
 
-export async function setWebviewTheme(theme: "light" | "dark"): Promise<void> {
+/** `"system"` maps to WebView2's Auto scheme, which follows the OS. It must not be
+ *  resolved to light/dark on this side: the scheme is set on the shared WebView2
+ *  profile, so forcing a value also pins `prefers-color-scheme` in this window and
+ *  the OS reading we would resolve from becomes our own last answer. */
+export async function setWebviewTheme(theme: "light" | "dark" | "system"): Promise<void> {
   await invoke<void>("browser_set_theme", { theme });
 }
 

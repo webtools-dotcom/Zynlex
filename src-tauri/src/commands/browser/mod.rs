@@ -189,10 +189,12 @@ fn create_webview_for_tab(
     // Flash colour for the strip a resize exposes before the page repaints it.
     // Matches the chrome: #0f0f0f dark (tauri.conf.json's window backgroundColor),
     // #faf8f3 light (--color-base in index.css).
-    let flash = if state.preferred_dark.load(Ordering::SeqCst) {
-        tauri::webview::Color(15, 15, 15, 255)
-    } else {
+    // Auto counts as dark here: it is only the one-frame colour a resize exposes,
+    // and #0f0f0f is what the window itself is painted with (tauri.conf.json).
+    let flash = if state.preferred_scheme.load(Ordering::SeqCst) == SCHEME_LIGHT {
         tauri::webview::Color(250, 248, 243, 255)
+    } else {
+        tauri::webview::Color(15, 15, 15, 255)
     };
 
     // decorations/resizable/inner_size/position are window concepts — a child
@@ -309,7 +311,7 @@ fn create_webview_for_tab(
 
     // Adopt the current app theme immediately, so a page's prefers-color-scheme
     // matches from first paint instead of defaulting to the OS scheme.
-    apply_color_scheme(&webview, state.preferred_dark.load(Ordering::SeqCst));
+    apply_color_scheme(&webview, state.preferred_scheme.load(Ordering::SeqCst));
 
     // Navigate to the real URL now that network handlers are registered
     let _ = webview.navigate(target_url);
@@ -738,6 +740,22 @@ pub fn open_download(app: AppHandle, path: String, reveal: bool) -> Result<(), S
 
 // ─── Theme (apply to all webviews) ───────────────────────────────────
 
+/// Colour scheme values, mirroring `COREWEBVIEW2_PREFERRED_COLOR_SCHEME`. Kept as
+/// plain ints so `BrowserState` can hold the current one in an atomic.
+pub const SCHEME_AUTO: i32 = 0;
+pub const SCHEME_LIGHT: i32 = 1;
+pub const SCHEME_DARK: i32 = 2;
+
+/// Map the frontend's theme string onto one of the above. "system" must stay
+/// auto rather than being resolved here — see `BrowserState::preferred_scheme`.
+pub fn scheme_for_theme(theme: &str) -> i32 {
+    match theme {
+        "light" => SCHEME_LIGHT,
+        "system" => SCHEME_AUTO,
+        _ => SCHEME_DARK,
+    }
+}
+
 /// Set a webview's preferred color scheme natively via WebView2's
 /// `ICoreWebView2Profile::PreferredColorScheme`. This is what actually drives
 /// the `prefers-color-scheme` media query that sites (Google, YouTube, …) use to
@@ -745,13 +763,12 @@ pub fn open_download(app: AppHandle, path: String, reveal: bool) -> Result<(), S
 /// .colorScheme` + a `<meta color-scheme>` via eval, which only affects UA
 /// widget rendering — it never changed `prefers-color-scheme`, so pages stayed
 /// dark regardless of the app theme.
-pub fn apply_color_scheme(wv: &tauri::Webview, dark: bool) {
+pub fn apply_color_scheme(wv: &tauri::Webview, scheme: i32) {
     let _ = wv.with_webview(move |platform| {
         #[cfg(windows)]
         unsafe {
             use webview2_com::Microsoft::Web::WebView2::Win32::{
-                ICoreWebView2_13, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK,
-                COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT,
+                ICoreWebView2_13, COREWEBVIEW2_PREFERRED_COLOR_SCHEME,
             };
             use windows_core::Interface;
 
@@ -765,11 +782,7 @@ pub fn apply_color_scheme(wv: &tauri::Webview, dark: bool) {
             match core.cast::<ICoreWebView2_13>() {
                 Ok(c13) => match c13.Profile() {
                     Ok(profile) => {
-                        let scheme = if dark {
-                            COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK
-                        } else {
-                            COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT
-                        };
+                        let scheme = COREWEBVIEW2_PREFERRED_COLOR_SCHEME(scheme);
                         if let Err(e) = profile.SetPreferredColorScheme(scheme) {
                             zynlex_log!("[zynlex] SetPreferredColorScheme failed: {e:?}");
                         }
@@ -786,11 +799,11 @@ pub fn apply_color_scheme(wv: &tauri::Webview, dark: bool) {
 
 #[tauri::command]
 pub async fn browser_set_theme(app: AppHandle, theme: String) -> Result<(), String> {
-    let dark = theme != "light";
+    let scheme = scheme_for_theme(&theme);
     // Remember it so a tab created later adopts the current theme on creation.
     app.state::<BrowserState>()
-        .preferred_dark
-        .store(dark, Ordering::SeqCst);
+        .preferred_scheme
+        .store(scheme, Ordering::SeqCst);
     // Apply to ALL browser webviews. Collect labels from Tauri's registry *and*
     // our persistent handle map, then resolve each through find_tab_webview —
     // iterating the registry alone skipped any tab that only lives in the map,
@@ -812,7 +825,7 @@ pub async fn browser_set_theme(app: AppHandle, theme: String) -> Result<(), Stri
     }
     for label in labels {
         if let Some(wv) = find_tab_webview(&app, &label) {
-            apply_color_scheme(&wv, dark);
+            apply_color_scheme(&wv, scheme);
         }
     }
     Ok(())

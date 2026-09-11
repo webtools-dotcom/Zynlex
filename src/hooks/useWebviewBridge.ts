@@ -1028,21 +1028,15 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   const theme = useSettingsStore((s) => s.settings.theme);
   useEffect(() => {
     if (!IS_TAURI) return;
-    if (theme !== "system") {
-      setWebviewTheme(theme === "light" ? "light" : "dark").catch(() => {});
-      return;
-    }
-    // "system" has to keep following the OS, not resolve once. App.tsx already
-    // listens for this to drive the chrome's own data-theme; without the same
-    // listener here the chrome flipped and the pages inside it did not, which
-    // looks worse than either being stale on its own.
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const push = () => {
-      setWebviewTheme(mq.matches ? "dark" : "light").catch(() => {});
-    };
-    push();
-    mq.addEventListener("change", push);
-    return () => mq.removeEventListener("change", push);
+    // "system" is pushed through as-is, for WebView2's own Auto scheme to follow
+    // the OS. Resolving it here with matchMedia — which is what this did — could
+    // never work: the scheme is applied to the shared WebView2 profile, which
+    // this window's webview belongs to too, so forcing a value pinned
+    // `prefers-color-scheme` here and the next read returned our own last answer
+    // rather than the OS. Auto left the whole "System" setting inert.
+    setWebviewTheme(theme === "light" ? "light" : theme === "system" ? "system" : "dark").catch(
+      () => {},
+    );
   }, [theme]);
 
   return useMemo(

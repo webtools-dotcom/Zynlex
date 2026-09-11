@@ -1,7 +1,7 @@
 mod commands;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 /// Opt-in trace logging: silent unless `ZYNLEX_TRACE=1` is set, even in debug
@@ -53,10 +53,17 @@ pub struct BrowserState {
     /// user switched away from (or closed) the fullscreen tab — which made
     /// `browser_show_tab` early-return and silently stop switching tabs.
     pub fullscreen_tab: Mutex<Option<String>>,
-    /// Last preferred color scheme pushed to webviews (true = dark). Stored so a
-    /// newly-created tab can adopt the current theme immediately, before any
-    /// theme toggle. Default dark = the app's default theme.
-    pub preferred_dark: AtomicBool,
+    /// Last colour scheme pushed to webviews, as a
+    /// `COREWEBVIEW2_PREFERRED_COLOR_SCHEME` value: 0 auto, 1 light, 2 dark. Stored
+    /// so a newly-created tab adopts the current theme immediately, before any
+    /// toggle. Default dark = the app's default theme.
+    ///
+    /// Auto has to be representable, not resolved to light/dark here: the scheme is
+    /// set on the shared WebView2 *profile*, which the main window's own webview
+    /// belongs to as well. Forcing a value pinned `prefers-color-scheme` there, so
+    /// the "System" setting read back whatever had last been forced instead of the
+    /// OS, and could never change.
+    pub preferred_scheme: AtomicI32,
 }
 
 /// Re-apply the active child webview's bounds from the current window size and
@@ -258,7 +265,7 @@ pub fn run() {
             content_insets: Mutex::new(None),
             resync_pending: AtomicBool::new(false),
             fullscreen_tab: Mutex::new(None),
-            preferred_dark: AtomicBool::new(true),
+            preferred_scheme: AtomicI32::new(commands::browser::SCHEME_DARK),
         })
         .invoke_handler(tauri::generate_handler![
             commands::browser::browser_create_tab,
