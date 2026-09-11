@@ -301,13 +301,32 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                         };
                     }
                     if let Some(main) = app_fs.get_window("main") {
-                        // Set it and stop. The OS fullscreen transition is
-                        // asynchronous, so reading inner_size() on the next line
-                        // returned the *pre*-transition size and sized the child to
-                        // it. The WindowEvent::Resized handler in lib.rs fires once
-                        // the transition actually lands and re-applies from the
-                        // real size — it is the only place that can know it.
                         let _ = main.set_fullscreen(entering);
+                        // Apply bounds here as well as in lib.rs's Resized handler,
+                        // and do NOT remove this as redundant — it is the only path
+                        // that runs when the window's size does not change.
+                        //
+                        // `Resized` fires on a size *change*. A window that is
+                        // already the size of the screen — maximized with the
+                        // taskbar hidden, or still fullscreen from a previous video
+                        // — transitions without changing size, so no event arrives,
+                        // nothing re-applies the bounds, and the child webview stays
+                        // pinned to the inset content area: the page goes fullscreen
+                        // inside a box with the tab bar and sidebar still around it.
+                        //
+                        // The size read here can be the pre-transition one when the
+                        // size *is* changing, which is what makes the Resized
+                        // handler the authority in that case. The two cases are
+                        // disjoint, so both are needed.
+                        if let Ok(sz) = main.inner_size() {
+                            let scale = main.scale_factor().unwrap_or(1.0);
+                            crate::apply_active_child_bounds(
+                                &app_fs,
+                                sz.width as f64 / scale,
+                                sz.height as f64 / scale,
+                                false,
+                            );
+                        }
                     }
                     Ok(())
                 },

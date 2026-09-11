@@ -59,11 +59,16 @@ transition completes — never from an independently computed monitor rect. The
 app's window has no decorations, so its client rect *is* the fullscreen rect once
 the transition finishes, with no title bar or border to account for.
 
-The `ContainsFullScreenElementChanged` handler therefore only calls
-`set_fullscreen` and returns. It deliberately does **not** apply bounds itself:
-the transition is asynchronous, so a size read immediately afterwards is the
-pre-transition one. `WindowEvent::Resized` fires when the transition lands and is
-the only place that sees the real size.
+Bounds are applied in **two** places on the fullscreen path, and both are load
+bearing. `WindowEvent::Resized` is the authority whenever the size actually
+changes, because the OS transition is asynchronous and a size read taken
+immediately after `set_fullscreen` can still be the pre-transition one. But
+`Resized` only fires on a size *change* — a window already the size of the screen
+(maximized with the taskbar hidden, or still fullscreen from a previous video)
+transitions without one. So `ContainsFullScreenElementChanged` applies bounds
+itself too, which is the only thing that runs in that case. Removing either leaves
+a case where the child webview never resizes and the page goes fullscreen inside
+the inset content area, chrome still visible around it.
 
 Fullscreen state is tracked per-tab (the owning tab's label), not as a global
 flag. A global flag would stay set after switching away from or closing the
