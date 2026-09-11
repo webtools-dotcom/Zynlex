@@ -292,12 +292,23 @@ export const useUIStore = create<UIStore>()(
 // The only sanctioned way to read the owner-id fields above. Imperative pair
 // for event handlers and the webview bridge's ref-based paths, hooks for
 // components.
+//
+// A null owner id means closed, and must be checked explicitly: `getActiveTabId()`
+// also returns null when the workspace has no live tabs, so a bare
+// `viewportTabId === getActiveTabId()` evaluated to `null === null` → true and
+// reported *every* one of these as open the moment the last tab was closed.
 
-export const isFindOpen = () => useUIStore.getState().findTabId === getActiveTabId();
-export const isViewportMode = () => useUIStore.getState().viewportTabId === getActiveTabId();
-export const isApiTesterOpen = () => useUIStore.getState().apiTesterWsId === getActiveWorkspaceId();
+const isOpenFor = (ownerId: string | null, scopeId: string | null) =>
+  ownerId !== null && ownerId === scopeId;
 
-export const useFindOpen = () => useUIStore((s) => s.findTabId) === useActiveTabId();
-export const useViewportMode = () => useUIStore((s) => s.viewportTabId) === useActiveTabId();
+export const isFindOpen = () => isOpenFor(useUIStore.getState().findTabId, getActiveTabId());
+export const isViewportMode = () =>
+  isOpenFor(useUIStore.getState().viewportTabId, getActiveTabId());
+export const isApiTesterOpen = () =>
+  isOpenFor(useUIStore.getState().apiTesterWsId, getActiveWorkspaceId());
+
+export const useFindOpen = () => isOpenFor(useUIStore((s) => s.findTabId), useActiveTabId());
+export const useViewportMode = () =>
+  isOpenFor(useUIStore((s) => s.viewportTabId), useActiveTabId());
 export const useApiTesterOpen = () =>
-  useUIStore((s) => s.apiTesterWsId) === useWorkspacesStore((s) => s.activeWorkspaceId);
+  isOpenFor(useUIStore((s) => s.apiTesterWsId), useWorkspacesStore((s) => s.activeWorkspaceId));
