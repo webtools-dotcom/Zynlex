@@ -3,6 +3,15 @@
 // value through ExecuteScript (see find.rs) — the page has no way to call back
 // into the app, so nothing here reports results by invoking IPC.
 (function() {
+  // Every match becomes a <mark> via surroundContents, which is a real DOM
+  // mutation with layout cost. A one- or two-letter query on a large page
+  // matches tens of thousands of times, and wrapping them all locks the page up
+  // for seconds — during which each further keystroke queues another
+  // ExecuteScript behind the first, so the freeze compounds as you type.
+  // A thousand hits is already far past the point of being useful to scroll
+  // through.
+  var MAX_MATCHES = 1000;
+
   function result(active, total) {
     return { activeMatch: active, totalMatches: total };
   }
@@ -51,12 +60,13 @@
       }
     });
     var n;
-    while ((n = walker.nextNode())) {
+    outer: while ((n = walker.nextNode())) {
       var lt = n.nodeValue.toLowerCase();
       var idx = 0;
       while ((idx = lt.indexOf(q, idx)) !== -1) {
         results.push({ node: n, offset: idx, length: query.length });
         idx += q.length;
+        if (results.length >= MAX_MATCHES) break outer;
       }
     }
     return results;
