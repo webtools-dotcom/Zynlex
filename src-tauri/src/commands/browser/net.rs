@@ -99,7 +99,11 @@ fn url_matches(pattern: &str, uri: &str) -> bool {
         }
     }
 
-    let mut middle: &[&str] = if anchored_start { &parts[1..] } else { &parts[..] };
+    let mut middle: &[&str] = if anchored_start {
+        &parts[1..]
+    } else {
+        &parts[..]
+    };
 
     if anchored_end {
         if let Some((last, head)) = middle.split_last() {

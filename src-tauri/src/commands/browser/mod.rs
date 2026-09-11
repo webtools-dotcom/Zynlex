@@ -615,7 +615,11 @@ fn navigate_history(app: &AppHandle, tab_id: &str, back: bool) -> Result<(), Str
                     return;
                 }
             };
-            let _ = if back { core.GoBack() } else { core.GoForward() };
+            let _ = if back {
+                core.GoBack()
+            } else {
+                core.GoForward()
+            };
         }
     })
     .map_err(|e| format!("navigate_history failed: {e}"))
@@ -1039,7 +1043,11 @@ pub async fn browser_save_tab_state(
         let label = webview_label_for_tab(&tab_id);
         let wv = find_tab_webview(&app, &label)
             .ok_or_else(|| format!("no webview for tab {}", tab_id))?;
-        let value = eval_json(&wv, include_str!("scripts/capture_tab_state.js").to_string()).await?;
+        let value = eval_json(
+            &wv,
+            include_str!("scripts/capture_tab_state.js").to_string(),
+        )
+        .await?;
         Ok(value.as_str().map(|s| s.to_string()))
     }
     #[cfg(not(target_os = "windows"))]

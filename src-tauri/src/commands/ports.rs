@@ -269,8 +269,14 @@ mod tests {
             extract_title("<TITLE>Shouty</TITLE>"),
             Some("Shouty".to_string())
         );
-        assert_eq!(extract_title("<title>  Trimmed  </title>"), Some("Trimmed".to_string()));
-        assert_eq!(extract_title("<title>&amp;co</title>"), Some("&co".to_string()));
+        assert_eq!(
+            extract_title("<title>  Trimmed  </title>"),
+            Some("Trimmed".to_string())
+        );
+        assert_eq!(
+            extract_title("<title>&amp;co</title>"),
+            Some("&co".to_string())
+        );
         // Non-ASCII before the tag: the offsets index back into the original
         // string, so a full Unicode lowering here would slice at a bad boundary.
         assert_eq!(
