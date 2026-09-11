@@ -301,16 +301,13 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                         };
                     }
                     if let Some(main) = app_fs.get_window("main") {
+                        // Set it and stop. The OS fullscreen transition is
+                        // asynchronous, so reading inner_size() on the next line
+                        // returned the *pre*-transition size and sized the child to
+                        // it. The WindowEvent::Resized handler in lib.rs fires once
+                        // the transition actually lands and re-applies from the
+                        // real size — it is the only place that can know it.
                         let _ = main.set_fullscreen(entering);
-                        if let Ok(sz) = main.inner_size() {
-                            let scale = main.scale_factor().unwrap_or(1.0);
-                            crate::apply_active_child_bounds(
-                                &app_fs,
-                                sz.width as f64 / scale,
-                                sz.height as f64 / scale,
-                                false,
-                            );
-                        }
                     }
                     Ok(())
                 },

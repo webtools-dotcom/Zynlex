@@ -55,7 +55,16 @@ export function resolveInput(raw: string, searchEngine: string): string {
   const s = raw.trim();
   if (!s) return "";
   if (/^https?:\/\//i.test(s)) return s;
-  if (/^localhost(:\d+)?(\/.*)?$/i.test(s) || /^127\.0\.0\.1/.test(s)) return `http://${s}`;
-  if (/^[\w-]+\.[\w.-]+(\/.*)?$/.test(s) && !s.includes(" ")) return `https://${s}`;
+  if (/^localhost(:\d+)?([/?#].*)?$/i.test(s)) return `http://${s}`;
+  // Bare IPv4, with optional port and path. This used to be a `127.0.0.1` prefix
+  // test; it has to be a branch of its own now, because the hostname rule below
+  // requires a letters-only TLD and would otherwise send `192.168.1.50:3000` to
+  // the search engine. http, like localhost — these are not TLS hosts in practice.
+  if (/^\d{1,3}(\.\d{1,3}){3}(:\d+)?([/?#].*)?$/.test(s)) return `http://${s}`;
+  // Require a real TLD — at least two letters, not digits — so `1.5` and `3.14`
+  // are searches rather than navigations. The tail allows `?` and `#` as well as
+  // `/`, so `example.com?q=1` is recognised as a URL instead of being searched for.
+  if (/^[\w-]+(\.[\w-]+)*\.[a-z]{2,}(:\d+)?([/?#].*)?$/i.test(s) && !s.includes(" "))
+    return `https://${s}`;
   return searchUrl(s, searchEngine);
 }

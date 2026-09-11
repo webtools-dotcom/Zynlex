@@ -59,6 +59,12 @@ transition completes — never from an independently computed monitor rect. The
 app's window has no decorations, so its client rect *is* the fullscreen rect once
 the transition finishes, with no title bar or border to account for.
 
+The `ContainsFullScreenElementChanged` handler therefore only calls
+`set_fullscreen` and returns. It deliberately does **not** apply bounds itself:
+the transition is asynchronous, so a size read immediately afterwards is the
+pre-transition one. `WindowEvent::Resized` fires when the transition lands and is
+the only place that sees the real size.
+
 Fullscreen state is tracked per-tab (the owning tab's label), not as a global
 flag. A global flag would stay set after switching away from or closing the
 fullscreen tab, silently breaking tab switching for the rest of the session.

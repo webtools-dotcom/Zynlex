@@ -89,10 +89,11 @@ fn hide_all_browser_webviews_except(
 /// fullscreen (clearing the flag and dropping the window out of OS fullscreen)
 /// and returns `false`, so the caller proceeds normally.
 ///
-/// Pass `keep: None` to unconditionally exit — used when the fullscreen tab is
-/// being closed, which would otherwise strand the flag set forever (its
-/// `ContainsFullScreenElementChanged` handler dies with the webview, so nothing
-/// would ever clear it and every later show/bounds call would no-op).
+/// `browser_close_tab` passes the closing tab's own label: if that tab owns
+/// fullscreen the flag is cleared here, because its
+/// `ContainsFullScreenElementChanged` handler dies with the webview and nothing
+/// else would ever clear it — and while set, every later show/bounds call no-ops.
+/// If a *different* tab owns it, its fullscreen is left alone.
 fn exit_fullscreen_unless(
     app: &AppHandle,
     state: &crate::BrowserState,
@@ -436,7 +437,11 @@ pub async fn browser_close_tab(
     // ContainsFullScreenElementChanged handler dies with the webview, so nothing
     // else would ever clear the flag — and while set, every later show/bounds
     // call no-ops, i.e. tab switching stops working permanently.
-    exit_fullscreen_unless(&app, &state, None);
+    //
+    // Scoped to *this* tab: passing None exited unconditionally, so closing any
+    // background tab kicked whichever tab was actually fullscreen back out of it.
+    // The return value is irrelevant here — only the side effect matters.
+    exit_fullscreen_unless(&app, &state, Some(&label));
     // Remove from our persistent map FIRST — this is the authoritative source
     // of strong references. The handle will drop after removal, allowing the
     // OS window to be destroyed naturally (confirming the close on Rust's side).

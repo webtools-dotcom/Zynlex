@@ -59,7 +59,11 @@ function sanitizeWorkspaceMap(
     next[workspaceId] = sanitizeWorkspace(workspaceId, workspace);
   });
 
-  if (!next[INITIAL_WORKSPACE.id]) {
+  // Only when there is nothing at all. Re-adding ws-default whenever it was
+  // absent meant a deleted "Personal" workspace reappeared empty on the next
+  // launch. The invariant worth keeping is "at least one workspace exists",
+  // which deleteWorkspace already enforces — not "this particular id exists".
+  if (Object.keys(next).length === 0) {
     next[INITIAL_WORKSPACE.id] = sanitizeWorkspace(INITIAL_WORKSPACE.id, INITIAL_WORKSPACE);
   }
 
@@ -187,12 +191,20 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
             : undefined,
         );
 
-        const workspaceOrder = isStringArray(state.workspaceOrder)
+        // Empty, not [ws-default], when the persisted order is unusable: the
+        // sanitiser above no longer guarantees ws-default exists, so naming it
+        // here could seed the order with an id that is not in the map. The loop
+        // below fills the order from the map itself, which cannot disagree.
+        const workspaceOrder: string[] = isStringArray(state.workspaceOrder)
           ? state.workspaceOrder.filter((id) => id in workspaces)
-          : [INITIAL_WORKSPACE.id];
+          : [];
 
-        if (!workspaceOrder.includes(INITIAL_WORKSPACE.id)) {
-          workspaceOrder.unshift(INITIAL_WORKSPACE.id);
+        // Any workspace that survived sanitisation but is missing from the order
+        // would otherwise be unreachable. Previously this only ever re-added
+        // ws-default, which both resurrected a deleted one and left genuinely
+        // orphaned workspaces hidden.
+        for (const id of Object.keys(workspaces)) {
+          if (!workspaceOrder.includes(id)) workspaceOrder.push(id);
         }
 
         const activeWorkspaceId =

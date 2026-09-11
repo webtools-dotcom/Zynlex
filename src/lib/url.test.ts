@@ -35,6 +35,31 @@ describe("resolveInput", () => {
   it("returns an empty string for blank input", () => {
     expect(resolveInput("   ", "google")).toBe("");
   });
+
+  it("treats bare decimals as searches, not hosts", () => {
+    expect(resolveInput("1.5", "google")).toBe(searchUrl("1.5", "google"));
+    expect(resolveInput("3.14", "google")).toBe(searchUrl("3.14", "google"));
+    expect(resolveInput("v1.2", "google")).toBe(searchUrl("v1.2", "google"));
+  });
+
+  it("recognises a URL with a query or fragment but no path", () => {
+    expect(resolveInput("example.com?q=1", "google")).toBe("https://example.com?q=1");
+    expect(resolveInput("example.com#top", "google")).toBe("https://example.com#top");
+    expect(resolveInput("example.com:8080", "google")).toBe("https://example.com:8080");
+  });
+
+  it("still recognises multi-label hosts", () => {
+    expect(resolveInput("docs.rs", "google")).toBe("https://docs.rs");
+    expect(resolveInput("a.b.example.co.uk/x", "google")).toBe("https://a.b.example.co.uk/x");
+  });
+
+  it("navigates to bare IP addresses over http", () => {
+    // Regression guard: requiring a letters-only TLD would otherwise send these
+    // to the search engine.
+    expect(resolveInput("192.168.1.1", "google")).toBe("http://192.168.1.1");
+    expect(resolveInput("192.168.1.50:3000", "google")).toBe("http://192.168.1.50:3000");
+    expect(resolveInput("10.0.0.5:8080/api", "google")).toBe("http://10.0.0.5:8080/api");
+  });
 });
 
 describe("searchUrl", () => {

@@ -858,12 +858,18 @@ export function InspectorPanel() {
     refresh(activeSubTab);
   }, [activeTabId, activeSubTab, storageSubTab]);
 
-  // Auto-refresh every 3 seconds
+  // Auto-refresh. Every tick is an ExecuteScript round trip into the page — for
+  // storage that is the whole store serialised to JSON, which eval_json already
+  // documents as a slow path for large stores, and for cookies a full GetCookies
+  // enumeration. At three seconds that ran continuously for as long as the panel
+  // was open, against data that changes rarely. The header's refresh button covers
+  // the "I just changed something, show me now" case.
+  const REFRESH_INTERVAL_MS = 10_000;
   useEffect(() => {
     if (!activeTabId || !activeTab?.url) return;
     const id = setInterval(() => {
       refresh(activeSubTab);
-    }, 3000);
+    }, REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [activeTabId, activeTab?.url, activeSubTab, storageSubTab]);
 
