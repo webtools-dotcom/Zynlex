@@ -572,6 +572,28 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     };
   }, [activeTabId, viewportMode]);
 
+  // ── Prune the live-webview set when tabs disappear ────────────────
+  // createdTabsRef records which tabs have a webview. Ids are added on create and
+  // removed on discard, but tab *close* happens in four different places (the tab
+  // bar's ×, ctrl+w, the tab context menu, and deleting a whole workspace) and none
+  // of them can reach this ref. Left unpruned the set only grows, which broke the
+  // concurrency cap below — it reads `.size` as the live count, so closing tabs
+  // inflated the number and made the cap discard real, in-use background tabs to
+  // get under a limit it was never over. It also meant every tab switch fired a
+  // hideTabWebview IPC call for each long-dead id.
+  //
+  // Deriving it from the store instead of patching the four call sites means any
+  // close path added later is covered for free: a tab that is gone from the store
+  // cannot have a live webview.
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    return useTabsStore.subscribe((state) => {
+      for (const id of createdTabsRef.current) {
+        if (!state.tabs[id]) createdTabsRef.current.delete(id);
+      }
+    });
+  }, []);
+
   // ── TAB DISCARD TIMER: discard inactive tabs after 10 minutes ─────
   useEffect(() => {
     if (!IS_TAURI) return;
@@ -668,9 +690,11 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   useEffect(() => {
     if (!IS_TAURI) return;
 
-    const maxConcurrent = useSettingsStore.getState().settings.maxConcurrentWebviews;
-
     const interval = setInterval(() => {
+      // Read per tick, not once at mount: the effect's dep array is empty, so a
+      // value captured out here stayed frozen at whatever it was when the bridge
+      // mounted and Settings changes did nothing until restart.
+      const maxConcurrent = useSettingsStore.getState().settings.maxConcurrentWebviews;
       const liveCount = createdTabsRef.current.size;
       if (liveCount <= maxConcurrent) return;
 
