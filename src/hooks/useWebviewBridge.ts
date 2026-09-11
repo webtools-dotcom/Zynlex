@@ -121,8 +121,12 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
 
   // Track last bounds to avoid redundant Rust calls
   const lastBoundsRef = useRef<BrowserBounds | null>(null);
-  // Track when loading started so we can report load time on completion.
-  const loadStartRef = useRef<number | null>(null);
+  // When each tab's current load started, keyed by tabId. One shared slot could
+  // not survive two tabs loading at once: whichever started last overwrote the
+  // other's start time, so the first to finish reported the wrong duration and
+  // the second reported none at all. Background loads are routine here —
+  // restored tabs, discarded tabs being recreated — so overlap is the norm.
+  const loadStartRef = useRef<Map<string, number>>(new Map());
   const createdTabsRef = useRef<Set<string>>(new Set());
   const prevActiveTabIdRef = useRef<string | null>(null);
   // Bumped on every tab-switch attempt. An async show/create that resolves after
@@ -378,7 +382,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
 
     onLoadingChanged((tabId, loading) => {
       if (loading) {
-        loadStartRef.current = Date.now();
+        loadStartRef.current.set(tabId, Date.now());
         // loadTime belongs to the page that is finishing, not the one starting —
         // clear it so the status bar doesn't show the previous page's number
         // while the new one loads. (Was a side effect of recordNavigation.)
@@ -390,8 +394,9 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
           useNetworkStore.getState().clearTab(tabId);
         }
       } else {
-        const elapsed = loadStartRef.current !== null ? Date.now() - loadStartRef.current : null;
-        loadStartRef.current = null;
+        const startedAt = loadStartRef.current.get(tabId);
+        loadStartRef.current.delete(tabId);
+        const elapsed = startedAt !== undefined ? Date.now() - startedAt : null;
         useTabsStore.getState().updateTab(tabId, {
           isLoading: false,
           loadTime: elapsed,
@@ -642,6 +647,11 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     return useTabsStore.subscribe((state) => {
       for (const id of createdTabsRef.current) {
         if (!state.tabs[id]) createdTabsRef.current.delete(id);
+      }
+      // Same reasoning for in-flight load timings: a tab closed mid-load never
+      // gets its "finished" event, so its entry would sit here forever.
+      for (const id of loadStartRef.current.keys()) {
+        if (!state.tabs[id]) loadStartRef.current.delete(id);
       }
     });
   }, []);
@@ -1034,11 +1044,21 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   const theme = useSettingsStore((s) => s.settings.theme);
   useEffect(() => {
     if (!IS_TAURI) return;
-    let resolved: "light" | "dark" = theme === "light" ? "light" : "dark";
-    if (theme === "system") {
-      resolved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    if (theme !== "system") {
+      setWebviewTheme(theme === "light" ? "light" : "dark").catch(() => {});
+      return;
     }
-    setWebviewTheme(resolved).catch(() => {});
+    // "system" has to keep following the OS, not resolve once. App.tsx already
+    // listens for this to drive the chrome's own data-theme; without the same
+    // listener here the chrome flipped and the pages inside it did not, which
+    // looks worse than either being stale on its own.
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const push = () => {
+      setWebviewTheme(mq.matches ? "dark" : "light").catch(() => {});
+    };
+    push();
+    mq.addEventListener("change", push);
+    return () => mq.removeEventListener("change", push);
   }, [theme]);
 
   return useMemo(

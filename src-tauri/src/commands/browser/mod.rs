@@ -780,9 +780,27 @@ pub async fn browser_set_theme(app: AppHandle, theme: String) -> Result<(), Stri
     app.state::<BrowserState>()
         .preferred_dark
         .store(dark, Ordering::SeqCst);
-    // Apply to ALL browser webviews (all labels starting with "browser-").
-    for (_, wv) in app.webviews() {
-        if wv.label().starts_with("browser-") {
+    // Apply to ALL browser webviews. Collect labels from Tauri's registry *and*
+    // our persistent handle map, then resolve each through find_tab_webview —
+    // iterating the registry alone skipped any tab that only lives in the map,
+    // which is the whole reason that map exists (Tauri #14843), and those tabs
+    // silently kept the previous colour scheme.
+    let mut labels: Vec<String> = app
+        .webviews()
+        .into_keys()
+        .filter(|label| label.starts_with("browser-"))
+        .collect();
+    {
+        let state = app.state::<BrowserState>();
+        let guard = state.webviews.lock().unwrap_or_else(|e| e.into_inner());
+        for label in guard.keys() {
+            if label.starts_with("browser-") && !labels.contains(label) {
+                labels.push(label.clone());
+            }
+        }
+    }
+    for label in labels {
+        if let Some(wv) = find_tab_webview(&app, &label) {
             apply_color_scheme(&wv, dark);
         }
     }
