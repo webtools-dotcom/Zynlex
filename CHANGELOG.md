@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-12
+
+A correctness release. Several features turned out never to have worked at all —
+find in page, forward navigation, and tab state restore among them — and a few
+long-standing rough edges are gone with them.
+
+### Fixed
+
+- **Find in page works.** The match counter stayed on "No results" and the
+  next/previous buttons were permanently disabled, a search term containing a
+  capital letter matched nothing at all, only the first occurrence in each
+  paragraph was highlighted, and opening the bar hid the page you were searching.
+- **Forward navigation works.** Going back silently cleared the forward history,
+  so the Forward button could never become available. Back and forward now come
+  from the webview itself, which also means in-page navigation on single-page
+  apps is tracked correctly.
+- **Escape reaches web pages.** It was being consumed by the browser on every
+  page, so nothing on a site could respond to it.
+- **Ctrl+D, Ctrl+F and Ctrl+Tab work while a page has focus.** All three were
+  listed in the shortcut help but did nothing unless the surrounding UI happened
+  to be focused.
+- **Fullscreen video fills the screen** when the window is already maximized.
+  The page went fullscreen inside the content area with the tab bar and sidebar
+  still visible around it.
+- **Closing a tab no longer drops another tab's fullscreen.**
+- **Opening a new tab while a page is still loading** no longer leaves the old
+  page drawn over the new tab until you close the old one.
+- **Closing the last tab in a workspace** shows the home page instead of briefly
+  opening the device-emulation surface.
+- **Discarded tabs restore their scroll position and form values.** Passwords are
+  deliberately not captured.
+- **Background tabs are no longer discarded early.** Closed tabs kept counting
+  toward the concurrent-webview limit, so live tabs were reclaimed to get under a
+  limit that was never exceeded. That limit also now takes effect without a
+  restart.
+- **The System theme follows the operating system**, and a theme change reaches
+  background tabs rather than only the visible one.
+- **Load time is measured per tab.** Two tabs loading at once reported each
+  other's timings, and one of them reported none.
+- **The address bar tells URLs from searches more carefully.** `1.5` is a search,
+  `example.com?q=1` is a URL, and IP addresses such as `192.168.1.50:3000` are
+  navigated to.
+- **A deleted workspace stays deleted** instead of reappearing empty on the next
+  launch.
+- **API Tester:** requests time out after 30 seconds instead of hanging forever
+  with no way to cancel; very large responses are capped rather than growing
+  until the app dies; a binary response says so instead of arriving as
+  replacement characters; and repeated response headers, `Set-Cookie` above all,
+  are no longer collapsed to one.
+- **Network panel:** repeated `Set-Cookie` headers are kept, the size column is
+  populated regardless of how the server capitalised `Content-Length`, and a body
+  cut short at the capture limit says so instead of looking complete.
+- **Header injection:** patterns like `*api.example.com` match again. A pattern
+  whose last segment also appeared earlier in the URL silently matched nothing.
+- **Viewport mode:** the device frame renders reliably when switching devices or
+  re-entering the mode, and the command palette and shortcut help open above it
+  rather than behind.
+- **Live Servers:** a server that stops is shown as stopped rather than staying
+  green indefinitely, and page titles are read correctly from tags carrying
+  attributes.
+- **Inspector:** image diagnostics work for images served over plain http, which
+  is the usual case for a local dev server.
+
+### Changed
+
+- Find highlights at most 1000 matches per page. A one- or two-letter query on a
+  large page could freeze it for several seconds.
+- The Network panel keeps response bodies for the 50 most recent requests and
+  drops older ones, saying so when you open them. Metadata is kept for all of
+  them.
+- The Inspector refreshes every 10 seconds rather than every 3. The refresh
+  button covers the immediate case.
+- The port scanner opens one connection per probe instead of two, and bounds how
+  many it opens at once.
+
 ## [0.11.0] - 2026-08-05
 
 ### Added
@@ -91,7 +166,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.12.0
 [0.11.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.11.0
 [0.10.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.10.0
 [0.9.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.9.1
