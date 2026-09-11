@@ -912,6 +912,12 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   // workspace's rules. ──
   useEffect(() => {
     if (!IS_TAURI) return;
+    // The payload of the last push. The tabs store fires on every title, favicon,
+    // loading flag, zoom, lastActiveAt and history-state change, so this
+    // subscription runs dozens of times per page load — and the rule map is
+    // identical almost every time. Only a real change is worth an IPC round trip
+    // and a lock on the map the request handler reads per request.
+    let lastSent: string | null = null;
     const sync = () => {
       const { rulesByWs } = useHeadersStore.getState();
       const rulesByTab: Record<
@@ -922,6 +928,12 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         const rules = rulesByWs[tab.workspaceId];
         if (rules?.length) rulesByTab[tab.id] = rules;
       }
+      // Comparing the serialised payload rather than diffing by hand: it is the
+      // exact thing being sent, so it cannot disagree with what a hand-written
+      // comparison thinks matters.
+      const serialised = JSON.stringify(rulesByTab);
+      if (serialised === lastSent) return;
+      lastSent = serialised;
       setHeaderRules(rulesByTab).catch((err) =>
         console.error("[zynlex] Failed to sync header rules:", err),
       );

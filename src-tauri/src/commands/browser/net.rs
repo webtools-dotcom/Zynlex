@@ -76,27 +76,49 @@ fn url_matches(pattern: &str, uri: &str) -> bool {
         return uri.starts_with(pattern);
     }
 
+    // Anchored, not greedily-leftmost. The segment before the first `*` is a
+    // prefix and the segment after the last `*` is a suffix; only the ones in
+    // between are "find the next occurrence". Searching for the final segment
+    // instead of anchoring it meant `*a` failed against `abca` — it matched the
+    // first `a`, then demanded the rest be empty — so a rule like
+    // `*api.example.com` silently never fired on `staging.api.example.com`.
+    let parts: Vec<&str> = pattern.split('*').filter(|p| !p.is_empty()).collect();
+    if parts.is_empty() {
+        // Pattern was nothing but wildcards.
+        return true;
+    }
+    let anchored_start = !pattern.starts_with('*');
+    let anchored_end = !pattern.ends_with('*');
+
     let mut rest = uri;
-    let mut trailing_star = false;
-    for (i, part) in pattern.split('*').enumerate() {
-        if part.is_empty() {
-            trailing_star = true;
-            continue;
-        }
-        trailing_star = false;
-        if i == 0 {
-            match rest.strip_prefix(part) {
-                Some(r) => rest = r,
-                None => return false,
-            }
-        } else {
-            match rest.find(part) {
-                Some(j) => rest = &rest[j + part.len()..],
-                None => return false,
-            }
+
+    if anchored_start {
+        match rest.strip_prefix(parts[0]) {
+            Some(r) => rest = r,
+            None => return false,
         }
     }
-    trailing_star || rest.is_empty()
+
+    let mut middle: &[&str] = if anchored_start { &parts[1..] } else { &parts[..] };
+
+    if anchored_end {
+        if let Some((last, head)) = middle.split_last() {
+            if !rest.ends_with(last) {
+                return false;
+            }
+            // `ends_with` matched, so this is a valid char boundary.
+            rest = &rest[..rest.len() - last.len()];
+            middle = head;
+        }
+    }
+
+    for part in middle {
+        match rest.find(part) {
+            Some(j) => rest = &rest[j + part.len()..],
+            None => return false,
+        }
+    }
+    true
 }
 
 // ─── Network Capture ──────────────────────────────────────────────
@@ -491,5 +513,34 @@ mod tests {
             "localhost:5000",
             "https://evil.com/?next=localhost:5000"
         ));
+    }
+
+    #[test]
+    fn glob_anchors_the_last_segment() {
+        // The bug: the final segment was searched for rather than anchored, so a
+        // pattern matched its own first occurrence and then demanded the rest be
+        // empty.
+        assert!(url_matches("*a", "abca"));
+        assert!(url_matches("*/api", "http://x/api/api"));
+        assert!(url_matches(
+            "*api.example.com*",
+            "https://staging.api.example.com/v1"
+        ));
+
+        // Anchored at both ends.
+        assert!(url_matches("a*c", "abc"));
+        assert!(url_matches("a*c", "abxyzc"));
+        assert!(!url_matches("a*c", "abcd"));
+
+        // The wildcard may match nothing at all.
+        assert!(url_matches("a*a", "aa"));
+        assert!(!url_matches("a*a", "a"));
+
+        // Nothing but wildcards matches everything.
+        assert!(url_matches("**", "http://localhost:3000/"));
+
+        // Middle segments still have to appear in order.
+        assert!(url_matches("*/api/*/users", "http://x/api/v2/users"));
+        assert!(!url_matches("*/api/*/users", "http://x/users/v2/api"));
     }
 }
