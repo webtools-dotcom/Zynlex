@@ -290,7 +290,6 @@ pub fn run() {
             commands::browser::resize_viewport,
             commands::browser::show_viewport,
             commands::browser::browser_save_tab_state,
-            commands::browser::browser_tab_state_saved,
             commands::browser::browser_restore_tab_state,
             commands::browser::browser_set_header_rules,
             commands::http::api_fetch,

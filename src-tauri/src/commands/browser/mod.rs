@@ -978,38 +978,33 @@ pub async fn browser_set_memory_target(
 
 // ─── Tab State Save/Restore ────────────────────────────────────────
 
-/// Ask a tab's webview to capture its state (scroll + forms).
-/// The webview's init script will call browser_tab_state_saved back with the result.
+/// Capture a tab's scroll position and form values.
+///
+/// Reads the result back through `ExecuteScript` (`eval_json`) rather than having
+/// the page invoke a command with it — page-originated IPC is rejected for every
+/// remote page, so the old `browser_tab_state_saved` callback never arrived and
+/// the whole feature silently did nothing.
+///
+/// `Ok(None)` means the page had nothing to give (a blank tab, or a capture that
+/// threw) — not an error worth surfacing.
 #[tauri::command]
-pub async fn browser_save_tab_state(app: AppHandle, tab_id: String) -> Result<(), String> {
-    let label = webview_label_for_tab(&tab_id);
-    let wv =
-        find_tab_webview(&app, &label).ok_or_else(|| format!("no webview for tab {}", tab_id))?;
-
-    let capture_script = include_str!("scripts/capture_tab_state.js");
-
-    wv.eval(capture_script)
-        .map_err(|e| format!("browser_save_tab_state eval failed: {}", e))?;
-
-    Ok(())
-}
-
-/// Called by the webview's JS after capturing state.
-/// Emits the state to the frontend for storage.
-#[tauri::command]
-pub fn browser_tab_state_saved(
+pub async fn browser_save_tab_state(
     app: AppHandle,
     tab_id: String,
-    state_json: String,
-) -> Result<(), String> {
-    app.emit(
-        "browser://tab-state-saved",
-        serde_json::json!({
-            "tabId": tab_id,
-            "stateJson": state_json,
-        }),
-    )
-    .map_err(|e| e.to_string())
+) -> Result<Option<String>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let label = webview_label_for_tab(&tab_id);
+        let wv = find_tab_webview(&app, &label)
+            .ok_or_else(|| format!("no webview for tab {}", tab_id))?;
+        let value = eval_json(&wv, include_str!("scripts/capture_tab_state.js").to_string()).await?;
+        Ok(value.as_str().map(|s| s.to_string()))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, tab_id);
+        Err("Tab state capture is only supported on Windows".to_string())
+    }
 }
 
 /// Restore a tab's scroll position and form input values from a JSON string.
@@ -1023,7 +1018,14 @@ pub async fn browser_restore_tab_state(
     let wv =
         find_tab_webview(&app, &label).ok_or_else(|| format!("no webview for tab {}", tab_id))?;
 
-    // ponytail: state_json is already valid JSON — embed directly as JS expression, no string escaping
+    // Parse and re-serialise instead of interpolating the caller's string into a
+    // JS source template. The values inside came from a web page's form fields, and
+    // this decides they are well-formed JSON before any of it becomes code.
+    // serde_json's output is valid JS: JSON has been a strict subset since ES2019.
+    let state: serde_json::Value =
+        serde_json::from_str(&state_json).map_err(|e| format!("invalid tab state: {e}"))?;
+    let state_json = state.to_string();
+
     let restore_script = format!(
         r#"(function() {{
             try {{

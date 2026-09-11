@@ -255,8 +255,9 @@ export async function setMemoryTarget(tabId: string, low: boolean): Promise<void
 
 // ─── Tab State Save/Restore ──────────────────────────────────────
 
-export async function saveTabState(tabId: string): Promise<void> {
-  await invoke<void>("browser_save_tab_state", { tabId });
+/** Returns the captured state as a JSON string, or null if the page gave nothing. */
+export async function saveTabState(tabId: string): Promise<string | null> {
+  return await invoke<string | null>("browser_save_tab_state", { tabId });
 }
 
 export async function restoreTabState(tabId: string, stateJson: string): Promise<void> {

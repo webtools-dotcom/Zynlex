@@ -396,6 +396,17 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
           isLoading: false,
           loadTime: elapsed,
         });
+
+        // Restore scroll/form state captured when this tab was discarded. It has to
+        // happen here, not when createTab resolves: that resolves as soon as the
+        // webview exists, long before the document it is navigating to has loaded,
+        // and writing scroll position into a blank document does nothing.
+        const saved = useTabsStore.getState().tabs[tabId]?.savedFormState;
+        if (saved) {
+          restoreTabState(tabId, saved)
+            .then(() => useTabsStore.getState().saveTabState(tabId, null))
+            .catch(() => {});
+        }
       }
     }).then((fn) => {
       if (cancelled) {
@@ -582,15 +593,6 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         createTab(activeTabId, tabUrl, bounds)
           .then(() => {
             useTabsStore.getState().restoreTab(activeTabId);
-            // Restore saved form state if available
-            const updatedTab = useTabsStore.getState().tabs[activeTabId];
-            if (updatedTab?.savedFormState) {
-              restoreTabState(activeTabId, updatedTab.savedFormState)
-                .then(() => {
-                  useTabsStore.getState().saveTabState(activeTabId, null);
-                })
-                .catch(() => {});
-            }
             settle();
           })
           .catch(() => {
@@ -644,6 +646,36 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     });
   }, []);
 
+  // Capture-then-close, shared by all three discard paths (the inactivity timer,
+  // the concurrency cap, and a user-agent change). The capture has to be awaited:
+  // every site used to fire `saveTabState(id).catch(…)` and then destroy the
+  // webview on the next line, so there was never a webview left to read from.
+  const discardWebviewRef = useRef<(tabId: string) => Promise<void>>(async () => {});
+  discardWebviewRef.current = async (tabId: string) => {
+    try {
+      // Bounded, because the close below now waits on this. The capture runs as
+      // ExecuteScript on the page's own JS thread and `eval_json` awaits it with
+      // no timeout, so a tab wedged in a busy loop would never resolve — and that
+      // is exactly the tab discard exists to reclaim. Give up on the state rather
+      // than on the discard.
+      const json = await Promise.race([
+        saveTabState(tabId),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+      ]);
+      if (json) useTabsStore.getState().saveTabState(tabId, json);
+    } catch {
+      // Capture failed — discard anyway. Losing scroll position is much cheaper
+      // than leaking the webview this was called to reclaim.
+    }
+    try {
+      await closeTabWebview(tabId);
+      useTabsStore.getState().discardTab(tabId);
+      createdTabsRef.current.delete(tabId);
+    } catch {
+      // Leave it in createdTabsRef: the webview may still be alive.
+    }
+  };
+
   // ── TAB DISCARD TIMER: discard inactive tabs after 10 minutes ─────
   useEffect(() => {
     if (!IS_TAURI) return;
@@ -669,13 +701,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         }
 
         if (now - tab.lastActiveAt > DISCARD_TIMEOUT_MS) {
-          saveTabState(tabId).catch(() => {});
-          closeTabWebview(tabId)
-            .then(() => {
-              useTabsStore.getState().discardTab(tabId);
-              createdTabsRef.current.delete(tabId);
-            })
-            .catch(() => {});
+          void discardWebviewRef.current(tabId);
         }
       }
     }, DISCARD_CHECK_INTERVAL_MS);
@@ -697,16 +723,24 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       const createdIds = Array.from(createdTabsRef.current);
       createdTabsRef.current.clear();
 
-      // Mark all non-active tabs as discarded so their store state is consistent
+      // Mark all non-active tabs as discarded so their store state is consistent.
+      // Captures are awaited before anything is closed — a webview that is already
+      // gone has no scroll position left to read.
       const tabsState = useTabsStore.getState().tabs;
-      for (const id of createdIds) {
-        if (id !== activeTabId && tabsState[id]) {
-          saveTabState(id).catch(() => {});
-          useTabsStore.getState().discardTab(id);
-        }
-      }
+      const toCapture = createdIds.filter((id) => id !== activeTabId && tabsState[id]);
 
-      Promise.all(createdIds.map((id) => closeTabWebview(id).catch(() => {})))
+      Promise.all(
+        toCapture.map(async (id) => {
+          try {
+            const json = await saveTabState(id);
+            if (json) useTabsStore.getState().saveTabState(id, json);
+          } catch {
+            // Capture failed — discard anyway.
+          }
+          useTabsStore.getState().discardTab(id);
+        }),
+      )
+        .then(() => Promise.all(createdIds.map((id) => closeTabWebview(id).catch(() => {}))))
         .then(
           () =>
             new Promise<void>((resolve) => {
@@ -759,13 +793,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
 
       const toDiscard = candidates.slice(0, liveCount - maxConcurrent);
       for (const tabId of toDiscard) {
-        saveTabState(tabId).catch(() => {});
-        closeTabWebview(tabId)
-          .then(() => {
-            useTabsStore.getState().discardTab(tabId);
-            createdTabsRef.current.delete(tabId);
-          })
-          .catch(() => {});
+        void discardWebviewRef.current(tabId);
       }
     }, 5000);
 
