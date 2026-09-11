@@ -67,25 +67,24 @@ async fn scan_single_port(port: u16) -> ScannedPort {
 async fn scan_single_host(port: u16, host: &'static str) -> ScannedPort {
     let addr = loopback_addr(host, port);
 
-    // Step 1: TCP connect with 350ms timeout
-    let tcp_result = timeout(Duration::from_millis(350), TcpStream::connect(&addr)).await;
+    // One connection, not two. The liveness check used to connect, drop the
+    // socket, and let http_get_title dial the same port again — doubling the
+    // connect rate of a scan that repeats every 10 seconds for the life of the
+    // app, and doubling the noise in the logs of whatever is listening.
+    let stream = match timeout(Duration::from_millis(350), TcpStream::connect(&addr)).await {
+        Ok(Ok(stream)) => stream,
+        _ => {
+            return ScannedPort {
+                port,
+                alive: false,
+                protocol: "http".to_string(),
+                title: None,
+                status: None,
+            }
+        }
+    };
 
-    let alive = matches!(tcp_result, Ok(Ok(_)));
-
-    if !alive {
-        return ScannedPort {
-            port,
-            alive: false,
-            protocol: "http".to_string(),
-            title: None,
-            status: None,
-        };
-    }
-
-    // Step 2: HTTP GET to check status + extract title (800ms total timeout)
-    let http_result = timeout(Duration::from_millis(800), http_get_title(host, port)).await;
-
-    match http_result {
+    match timeout(Duration::from_millis(800), http_get_title(stream, port)).await {
         Ok(Ok((status, title, is_tls))) => ScannedPort {
             port,
             alive: true,
@@ -117,10 +116,11 @@ fn looks_like_tls_record(buf: &[u8]) -> bool {
 }
 
 /// Send a basic HTTP GET and return (status_code, Option<title>, looks_like_tls).
-async fn http_get_title(host: &str, port: u16) -> Result<(u16, Option<String>, bool), String> {
-    let addr = loopback_addr(host, port);
-    let mut stream = TcpStream::connect(&addr).await.map_err(|e| e.to_string())?;
-
+/// Takes an already-connected stream — the caller's liveness probe opened it.
+async fn http_get_title(
+    mut stream: TcpStream,
+    port: u16,
+) -> Result<(u16, Option<String>, bool), String> {
     // Send minimal HTTP/1.0 GET request
     let request = format!(
         "GET / HTTP/1.0\r\nHost: localhost:{}\r\nConnection: close\r\n\r\n",
@@ -167,9 +167,19 @@ async fn http_get_title(host: &str, port: u16) -> Result<(u16, Option<String>, b
 
 /// Extract text content of <title> tag from HTML string.
 fn extract_title(html: &str) -> Option<String> {
-    let lower = html.to_lowercase();
-    let start = lower.find("<title>")? + 7;
-    let end = lower.find("</title>")?;
+    // `to_ascii_lowercase`, not `to_lowercase`: the byte offsets found here index
+    // back into `html`, and a full Unicode lowering can change a string's byte
+    // length (U+0130 becomes two chars), which would make those offsets wrong —
+    // and slicing `html` on a non-boundary panics. ASCII-only lowering is
+    // byte-for-byte, and tag names are ASCII anyway.
+    let lower = html.to_ascii_lowercase();
+    // Match the tag, not the exact string `<title>` — a server emitting
+    // `<title lang="en">` showed no title at all. The closing tag is searched
+    // from the opening one so a stray `</title` earlier in the document cannot
+    // produce a backwards range.
+    let open = lower.find("<title")?;
+    let start = lower[open..].find('>')? + open + 1;
+    let end = lower[start..].find("</title")? + start;
     if start < end {
         let raw = html[start..end].trim();
         // Decode common HTML entities
@@ -194,23 +204,30 @@ fn extract_title(html: &str) -> Option<String> {
 /// Typically completes in ~400ms regardless of list size.
 #[tauri::command]
 pub async fn scan_ports(ports: Vec<u16>) -> Result<Vec<ScannedPort>, String> {
+    // Each port costs two tasks and two sockets (one per loopback family), and
+    // the list arrives from the frontend where custom ports are never validated.
+    // Spawning the whole list at once could exhaust sockets, so cap the list and
+    // run it in bounded waves rather than all at once.
+    const MAX_PORTS: usize = 256;
+    const PORTS_IN_FLIGHT: usize = 32;
+
     // Deduplicate ports
     let mut unique_ports = ports;
     unique_ports.sort_unstable();
     unique_ports.dedup();
+    unique_ports.truncate(MAX_PORTS);
 
-    // Spawn all scans concurrently
-    let mut handles = Vec::with_capacity(unique_ports.len());
-    for port in unique_ports {
-        handles.push(tokio::spawn(async move { scan_single_port(port).await }));
-    }
-
-    // Collect results
-    let mut results = Vec::with_capacity(handles.len());
-    for handle in handles {
-        // A panicked task is skipped — the port is just left unreported.
-        if let Ok(result) = handle.await {
-            results.push(result);
+    let mut results = Vec::with_capacity(unique_ports.len());
+    for wave in unique_ports.chunks(PORTS_IN_FLIGHT) {
+        let handles: Vec<_> = wave
+            .iter()
+            .map(|&port| tokio::spawn(async move { scan_single_port(port).await }))
+            .collect();
+        for handle in handles {
+            // A panicked task is skipped — the port is just left unreported.
+            if let Ok(result) = handle.await {
+                results.push(result);
+            }
         }
     }
 
@@ -234,5 +251,33 @@ mod tests {
         // Too short to inspect.
         assert!(!looks_like_tls_record(&[0x16]));
         assert!(!looks_like_tls_record(&[]));
+    }
+
+    #[test]
+    fn title_with_attributes() {
+        use super::extract_title;
+        assert_eq!(
+            extract_title("<html><head><title>Vite App</title></head>"),
+            Some("Vite App".to_string())
+        );
+        // The bug: an attribute on the tag meant no title at all.
+        assert_eq!(
+            extract_title("<title lang=\"en\">Docs</title>"),
+            Some("Docs".to_string())
+        );
+        assert_eq!(
+            extract_title("<TITLE>Shouty</TITLE>"),
+            Some("Shouty".to_string())
+        );
+        assert_eq!(extract_title("<title>  Trimmed  </title>"), Some("Trimmed".to_string()));
+        assert_eq!(extract_title("<title>&amp;co</title>"), Some("&co".to_string()));
+        // Non-ASCII before the tag: the offsets index back into the original
+        // string, so a full Unicode lowering here would slice at a bad boundary.
+        assert_eq!(
+            extract_title("<!-- café İstanbul --><title>Ok</title>"),
+            Some("Ok".to_string())
+        );
+        assert_eq!(extract_title("<title></title>"), None);
+        assert_eq!(extract_title("no title here"), None);
     }
 }

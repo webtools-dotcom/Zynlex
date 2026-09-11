@@ -30,7 +30,14 @@ export const useServersStore = create<ServersStore>()(
 
           s.servers.forEach((server: LocalServer) => {
             const found = scannedMap.get(server.port);
-            if (!found) return;
+            if (!found) {
+              // Not in this scan's port list at all — typically because it was
+              // removed from customPorts. There is no evidence it is running, and
+              // leaving the last known `isAlive: true` in place meant the panel
+              // claimed it was up indefinitely.
+              server.isAlive = false;
+              return;
+            }
 
             server.isAlive = found.alive;
             server.protocol = found.protocol === "https" ? "https" : "http";
@@ -56,6 +63,19 @@ export const useServersStore = create<ServersStore>()(
               isPinned: false,
             });
           });
+
+          // Anything the user marked keeps its place. The rest is a cache of what
+          // happened to be listening, and without this the persisted list only ever
+          // grew: every port ever seen alive stayed forever.
+          const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+          s.servers = s.servers.filter(
+            (sv: LocalServer) =>
+              sv.isPinned ||
+              sv.label !== null ||
+              sv.isAlive ||
+              sv.lastSeen === null ||
+              now - sv.lastSeen < STALE_AFTER_MS,
+          );
         });
       },
 
