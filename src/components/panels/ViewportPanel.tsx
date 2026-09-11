@@ -169,7 +169,7 @@ function ViewportToolbar() {
     if (!selected) return;
     const w = parseInt(widthInput, 10);
     const h = parseInt(heightInput, 10);
-    if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
+    if (!Number.isNaN(w) && !Number.isNaN(h) && w > 0 && h > 0) {
       resizeViewportDimensions(selected.id, w, h);
     }
   }

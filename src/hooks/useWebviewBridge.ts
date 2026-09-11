@@ -282,13 +282,6 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
           // another tab — leaving the old page composited over the new one.
           reconcileVisibilityRef.current();
         }
-        useHistoryStore.getState().addEntry({
-          url,
-          title: displayTitle,
-          favicon: null,
-          timestamp: Date.now(),
-          workspaceId: useWorkspacesStore.getState().activeWorkspaceId,
-        });
       } catch {
         // If createTab failed, release the reserved slot — otherwise the tab
         // is marked "created" with no webview behind it, permanently blank.
@@ -958,25 +951,16 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   }, []);
 
   // ── Reposition on sidebar toggle ────────────────────────────────
+  // The ResizeObserver already tracks the content area through the sidebar's
+  // animation; this is the settle push once it has finished. It goes through
+  // syncBounds rather than calling setWebviewBounds by hand: doing it by hand
+  // left lastBoundsRef stale, so the next real sync saw a delta that was not
+  // there and pushed again, and it skipped the viewport-mode guard and aimed
+  // bounds at a tab webview that is hidden in that mode.
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   useEffect(() => {
     if (!IS_TAURI) return;
-    const timer = setTimeout(() => {
-      const wsState = useWorkspacesStore.getState();
-      const ws = wsState.workspaces[wsState.activeWorkspaceId];
-      const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
-      if (!tab?.url) return;
-      const bounds = getActiveBounds(contentAreaRef);
-      if (!bounds) return;
-      setWebviewBounds(tab.id, {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-      }).catch((err) => {
-        console.error("[zynlex] setWebviewBounds failed (sidebar toggle):", err);
-      });
-    }, 80);
+    const timer = setTimeout(() => syncBoundsRef.current(), 80);
     return () => clearTimeout(timer);
   }, [sidebarOpen]);
 

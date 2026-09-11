@@ -186,6 +186,15 @@ fn create_webview_for_tab(
 
     let main_window = app.get_window("main").ok_or("main window not found")?;
 
+    // Flash colour for the strip a resize exposes before the page repaints it.
+    // Matches the chrome: #0f0f0f dark (tauri.conf.json's window backgroundColor),
+    // #faf8f3 light (--color-base in index.css).
+    let flash = if state.preferred_dark.load(Ordering::SeqCst) {
+        tauri::webview::Color(15, 15, 15, 255)
+    } else {
+        tauri::webview::Color(250, 248, 243, 255)
+    };
+
     // decorations/resizable/inner_size/position are window concepts — a child
     // webview gets its geometry from add_child's position/size arguments below.
     // No .data_directory() — a data directory that differs from the main window's
@@ -198,12 +207,9 @@ fn create_webview_for_tab(
     // Ctrl +/- and Ctrl+mousewheel zoom natively inside the page (WebView2
     // IsZoomControlEnabled). Builder attribute — only affects new webviews.
     .zoom_hotkeys_enabled(true)
-    // Matches tauri.conf.json's backgroundColor (#0f0f0f). Without this,
-    // WebView2's own default paints the strip newly exposed by a resize
-    // before the page repaints it — a flash against the dark chrome.
-    // Hardcoded to dark: in light theme this becomes a dark flash instead
-    // of a light one — wiring it to the theme store is a separate change.
-    .background_color(tauri::webview::Color(15, 15, 15, 255))
+    // Without this, WebView2's own default paints the strip newly exposed by a
+    // resize before the page repaints it — a flash against the chrome.
+    .background_color(flash)
     .initialization_script(&tab_id_init)
     .initialization_script(CHROME_FEATURES_SCRIPT)
     .initialization_script(JSON_VIEWER_SCRIPT);
