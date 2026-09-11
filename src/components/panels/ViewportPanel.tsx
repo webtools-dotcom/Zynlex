@@ -334,9 +334,15 @@ export function ViewportSurface() {
           urlRef.current = activeUrl;
           return showViewport(VIEWPORT_LABEL).catch(() => {});
         })
-        .catch(() => {
+        .catch((err) => {
           // Leave it unbuilt so the next sync retries.
           builtForRef.current = null;
+          // Say so. Swallowing this is why a failed build looked like a frame that
+          // simply never appeared: nothing re-runs sync() unless the window
+          // resizes or the device changes, so the placeholder just sat there.
+          useUIStore
+            .getState()
+            .pushToast(`Viewport failed to open: ${String(err)}`, "danger");
         })
         .finally(() => {
           busyRef.current = false;

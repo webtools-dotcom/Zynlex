@@ -155,8 +155,23 @@ pub async fn create_viewport(
     let parent = app.get_window("main").ok_or("main window not found")?;
     let target_url = url::Url::parse(&url).map_err(|e| e.to_string())?;
 
+    // `close()` is async on Windows: the webview stays findable for a few ms after
+    // `destroy_viewport` has returned. Without this wait, every rebuild — switching
+    // device, or leaving and re-entering viewport mode — raced its own teardown and
+    // hit the guard below. The frontend swallows that error and blanks builtForRef,
+    // and nothing re-runs `sync()` unless the window resizes, so the frame stayed
+    // stuck on its placeholder for the rest of the session.
+    //
+    // Same wait `browser_create_tab` already does for tab labels, and for the same
+    // reason — see `wait_until_absent` in mod.rs.
+    for _ in 0..25 {
+        if find_tab_webview(&app, &label).is_none() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
     if find_tab_webview(&app, &label).is_some() {
-        return Err(format!("viewport {label} already exists"));
+        return Err(format!("viewport {label} did not release in time"));
     }
 
     let mut builder = WebviewBuilder::new(
