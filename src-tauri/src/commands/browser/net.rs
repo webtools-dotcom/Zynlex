@@ -3,7 +3,7 @@ use crate::zynlex_log;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 
 /// Gates the network-capture work inside the WebResourceRequested/Received
@@ -225,6 +225,21 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                         map.entry(meta_key)
                             .or_default()
                             .push_back((now, resource_type.to_string()));
+
+                        // Sweep on insert. A request that never produces a response —
+                        // aborted fetch, abandoned navigation, WebSocket upgrade,
+                        // blocked request — leaves its entry here forever, and the
+                        // only other cleanup is a full wipe on tab close. Nothing
+                        // legitimately waits a minute between request and response,
+                        // so anything older than that is never going to be claimed.
+                        if map.len() > 512 {
+                            map.retain(|_, queue| {
+                                queue.retain(|(t, _)| {
+                                    now.duration_since(*t) < Duration::from_secs(60)
+                                });
+                                !queue.is_empty()
+                            });
+                        }
                     }
 
                     Ok(())
@@ -309,7 +324,9 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                         let _ = response.ReasonPhrase(p);
                     });
 
-                    let mut headers: HashMap<String, String> = HashMap::new();
+                    // A list, not a map: repeated headers are the point. Set-Cookie
+                    // arrives once per cookie and a map showed only the last one.
+                    let mut headers: Vec<(String, String)> = Vec::new();
                     if let Ok(headers_obj) = response.Headers() {
                         if let Ok(iter) = headers_obj.GetIterator() {
                             let mut has_current = BOOL(0);
@@ -326,7 +343,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                     && !value.is_null()
                                 {
                                     if let (Ok(n), Ok(v)) = (name.to_string(), value.to_string()) {
-                                        headers.insert(n, v);
+                                        headers.push((n, v));
                                     }
                                 }
                                 let mut has_next = BOOL(0);
@@ -337,10 +354,13 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                         }
                     }
 
+                    // Case-insensitive: WebView2 hands back whatever casing the
+                    // server sent, so matching two hardcoded spellings missed
+                    // `Content-length` and showed no size at all.
                     let content_length: i64 = headers
-                        .get("Content-Length")
-                        .or_else(|| headers.get("content-length"))
-                        .and_then(|v| v.parse().ok())
+                        .iter()
+                        .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
+                        .and_then(|(_, v)| v.parse().ok())
                         .unwrap_or(-1);
 
                     let now = Instant::now();
@@ -373,6 +393,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                     let body_handler = WebResourceResponseViewGetContentCompletedHandler::create(
                         Box::new(move |_errorcode, stream| {
                             let mut body_bytes: Vec<u8> = Vec::new();
+                            let mut body_truncated = false;
                             if let Some(stream) = stream {
                                 let mut buffer = vec![0u8; 8192];
                                 loop {
@@ -388,6 +409,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                     body_bytes.extend_from_slice(&buffer[..bytes_read as usize]);
                                     if body_bytes.len() > 65536 {
                                         body_bytes.truncate(65536);
+                                        body_truncated = true;
                                         break;
                                     }
                                 }
@@ -408,6 +430,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                     "referrer": referrer,
                                     "headers": headers,
                                     "body": body_str,
+                                    "bodyTruncated": body_truncated,
                                 }),
                             );
                             Ok(())

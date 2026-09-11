@@ -400,8 +400,11 @@ interface NetworkEntryPayload {
   contentLength: number;
   /** Request Referer header — WebView2 exposes no true initiator. */
   referrer: string;
-  headers: Record<string, string>;
+  /** A list, not a map — repeated headers (notably `Set-Cookie`) are the point. */
+  headers: [string, string][];
   body: string;
+  /** Body hit the 64 KB capture cap and this is the leading slice. */
+  bodyTruncated: boolean;
 }
 
 export function onNetworkEntry(

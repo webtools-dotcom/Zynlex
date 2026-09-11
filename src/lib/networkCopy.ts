@@ -4,7 +4,7 @@ import type { NetworkLogEntry } from "@/stores/network";
 export function entryToCurl(entry: NetworkLogEntry, compact = false): string {
   const skip = compact ? ["content-length", "cookie", "set-cookie"] : ["content-length"];
   const parts: string[] = [`curl -X ${entry.method} "${entry.url.replace(/"/g, '\\"')}"`];
-  for (const [k, v] of Object.entries(entry.headers)) {
+  for (const [k, v] of entry.headers) {
     if (!skip.includes(k.toLowerCase())) {
       parts.push(`-H "${k}: ${v.replace(/"/g, '\\"')}"`);
     }
@@ -18,7 +18,7 @@ export function entryToCurl(entry: NetworkLogEntry, compact = false): string {
 
 export function entryToFetch(entry: NetworkLogEntry): string {
   const headers: Record<string, string> = {};
-  for (const [k, v] of Object.entries(entry.headers)) {
+  for (const [k, v] of entry.headers) {
     if (k.toLowerCase() !== "content-length") {
       headers[k] = v;
     }

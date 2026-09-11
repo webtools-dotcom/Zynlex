@@ -177,12 +177,14 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
             )}
             <div className="pt-2 border-t border-[var(--color-border)]">
               <div className="text-[var(--color-text-muted)] mb-1">Response Headers:</div>
-              {Object.keys(entry.headers).length === 0 ? (
+              {entry.headers.length === 0 ? (
                 <div className="text-[var(--color-text-muted)] italic">(none)</div>
               ) : (
                 <div className="space-y-0.5">
-                  {Object.entries(entry.headers).map(([k, v]) => (
-                    <div key={k} className="flex gap-2 text-micro">
+                  {/* Index in the key: repeated headers are exactly what this list
+                      exists to show, so names are not unique. */}
+                  {entry.headers.map(([k, v], i) => (
+                    <div key={`${k}-${i}`} className="flex gap-2 text-micro">
                       <span className="text-[var(--color-text-muted)] shrink-0">{k}:</span>
                       <span className="truncate">{v}</span>
                     </div>
@@ -195,9 +197,20 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
         {tab === "body" && (
           <div>
             {entry.body ? (
-              <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-40 overflow-y-auto">
-                {bodyPreview(entry.body)}
-              </pre>
+              <>
+                <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-40 overflow-y-auto">
+                  {bodyPreview(entry.body)}
+                </pre>
+                {entry.bodyTruncated && (
+                  <div className="mt-1 text-micro text-[var(--color-text-muted)] italic">
+                    (truncated at 64 KB — the response was larger)
+                  </div>
+                )}
+              </>
+            ) : entry.bodyEvicted ? (
+              <div className="text-[var(--color-text-muted)] italic">
+                (body dropped to save memory — reload to capture it again)
+              </div>
             ) : (
               <div className="text-[var(--color-text-muted)] italic">(no response body)</div>
             )}

@@ -14,8 +14,13 @@ function makeEntry(overrides: Partial<NetworkLogEntry> = {}): NetworkLogEntry {
     durationMs: 42,
     contentLength: 100,
     referrer: "",
-    headers: { "Content-Length": "100", "Content-Type": "application/json" },
+    headers: [
+      ["Content-Length", "100"],
+      ["Content-Type", "application/json"],
+    ],
     body: "",
+    bodyTruncated: false,
+    bodyEvicted: false,
     ...overrides,
   };
 }
@@ -33,7 +38,11 @@ describe("entryToCurl", () => {
 
   it("also drops Cookie/Set-Cookie headers in compact mode", () => {
     const entry = makeEntry({
-      headers: { "Content-Length": "100", Cookie: "session=abc", "X-Custom": "1" },
+      headers: [
+        ["Content-Length", "100"],
+        ["Cookie", "session=abc"],
+        ["X-Custom", "1"],
+      ],
     });
     const compact = entryToCurl(entry, true);
     expect(compact).not.toContain("Cookie");
