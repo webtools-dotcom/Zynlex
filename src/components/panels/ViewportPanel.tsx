@@ -10,6 +10,7 @@ import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportP
 import {
   createViewport,
   destroyViewport,
+  hideViewport,
   navigateViewport,
   resizeViewport,
   showViewport,
@@ -258,6 +259,9 @@ export function ViewportSurface() {
   const builtForRef = useRef<string | null>(null);
   const urlRef = useRef<string | null>(null);
   const busyRef = useRef(false);
+  // Set when the surface unmounts. A create already in flight at that moment has
+  // to tear its own webview down — see the check in the create chain below.
+  const unmountedRef = useRef(false);
 
   const [probe, setProbe] = useState<ViewportProbe | null>(null);
   // The size we last handed to the webview. The probe is checked against this,
@@ -319,6 +323,14 @@ export function ViewportSurface() {
       start
         .then(() => createViewport(VIEWPORT_LABEL, activeUrl, x, y, width, height, spec))
         .then(() => {
+          if (unmountedRef.current) {
+            // Viewport mode was turned off while this webview was being built.
+            // The unmount cleanup already ran and found nothing to destroy, so
+            // this is the only remaining chance: showing it now would strand a
+            // native webview over the whole app with nothing mounted that could
+            // reach it.
+            return destroyViewport(VIEWPORT_LABEL).catch(() => {});
+          }
           urlRef.current = activeUrl;
           return showViewport(VIEWPORT_LABEL).catch(() => {});
         })
@@ -429,11 +441,31 @@ export function ViewportSurface() {
 
   useEffect(() => {
     return () => {
+      unmountedRef.current = true;
       destroyViewport(VIEWPORT_LABEL).catch(() => {});
       builtForRef.current = null;
       urlRef.current = null;
     };
   }, []);
+
+  // The device frame is a native child webview, so it composites above this
+  // document — the command palette and shortcut help would open behind it and be
+  // neither visible nor clickable. Hide it for as long as one of them is open,
+  // the same thing useWebviewBridge does for tab webviews.
+  //
+  // SettingsPanel is not in this list on purpose: RootLayout already refuses to
+  // render it while viewport mode is on.
+  const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
+  const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    if (!builtForRef.current) return;
+    if (commandPaletteOpen || shortcutHelpOpen) {
+      hideViewport(VIEWPORT_LABEL).catch(() => {});
+    } else {
+      showViewport(VIEWPORT_LABEL).catch(() => {});
+    }
+  }, [commandPaletteOpen, shortcutHelpOpen]);
 
   return (
     <div className="flex flex-col h-full">

@@ -380,6 +380,11 @@ export function onViewportLoaded(callback: () => void): Promise<UnlistenFn> {
   return listen("viewport://loaded", () => callback());
 }
 
+/** Hide without destroying — the loaded page and its emulation survive. */
+export async function hideViewport(label: string): Promise<void> {
+  await invoke<void>("hide_viewport", { label });
+}
+
 export async function showViewport(label: string): Promise<void> {
   await invoke<void>("show_viewport", { label });
 }

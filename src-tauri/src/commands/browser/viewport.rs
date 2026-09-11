@@ -274,6 +274,21 @@ pub async fn resize_viewport(
     Ok(())
 }
 
+/// Hide the viewport webview without destroying it.
+///
+/// A native child webview composites above everything this app's own document
+/// draws, so a React overlay opened while viewport mode is on (the command
+/// palette, the shortcut help) renders behind the device frame and cannot be
+/// seen or clicked. Hiding is what the tab path already does for the same
+/// reason; destroying would throw away the loaded page and its emulation.
+#[tauri::command]
+pub async fn hide_viewport(app: AppHandle, label: String) -> Result<(), String> {
+    if let Some(webview) = find_tab_webview(&app, &label) {
+        webview.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Show a viewport webview
 #[tauri::command]
 pub async fn show_viewport(app: AppHandle, label: String) -> Result<(), String> {
