@@ -103,3 +103,38 @@ describe("a dead owner id is simply never open", () => {
     expect(isViewportMode()).toBe(false);
   });
 });
+
+describe("with no live tabs at all, nothing is open", () => {
+  // The regression this guards: these helpers used to compare the owner id
+  // against getActiveTabId() directly. Both are null when the workspace has no
+  // tabs, and `null === null` is true — so closing the last tab reported find,
+  // viewport mode and the API tester as simultaneously open, and RootLayout
+  // mounted the device-emulation surface over the page.
+  beforeEach(() => {
+    const ws = useWorkspacesStore.getState();
+    ws.removeTabFromWorkspace(WS_A, tab1);
+    ws.removeTabFromWorkspace(WS_A, tab2);
+    useTabsStore.getState().closeTab(tab1);
+    useTabsStore.getState().closeTab(tab2);
+  });
+
+  it("reports viewport mode closed", () => {
+    expect(isViewportMode()).toBe(false);
+  });
+
+  it("reports the find bar closed", () => {
+    expect(isFindOpen()).toBe(false);
+  });
+
+  it("reports the api tester closed", () => {
+    expect(isApiTesterOpen()).toBe(false);
+  });
+
+  it("still reports them closed after their owners were explicitly cleared", () => {
+    useUIStore.setState({ apiTesterWsId: null, viewportTabId: null, findTabId: null });
+    expect(isViewportMode()).toBe(false);
+    expect(isFindOpen()).toBe(false);
+    expect(isApiTesterOpen()).toBe(false);
+  });
+});
+

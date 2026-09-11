@@ -68,3 +68,29 @@ describe("entryToFetch", () => {
     expect(fetchCall).toContain('body: {"a":1},');
   });
 });
+
+describe("repeated headers survive the copy helpers", () => {
+  // The reason headers are a list and not a map: a login response sets one
+  // Set-Cookie per cookie, and a map kept only the last.
+  const multiCookie = makeEntry({
+    headers: [
+      ["Set-Cookie", "a=1; Path=/"],
+      ["Set-Cookie", "b=2; Path=/"],
+      ["Content-Type", "application/json"],
+    ],
+  });
+
+  it("emits one -H per header, including repeats", () => {
+    const curl = entryToCurl(multiCookie);
+    expect(curl).toContain('-H "Set-Cookie: a=1; Path=/"');
+    expect(curl).toContain('-H "Set-Cookie: b=2; Path=/"');
+  });
+
+  it("still drops them in compact mode", () => {
+    const compact = entryToCurl(multiCookie, true);
+    expect(compact).not.toContain("a=1");
+    expect(compact).not.toContain("b=2");
+    expect(compact).toContain("Content-Type");
+  });
+});
+
