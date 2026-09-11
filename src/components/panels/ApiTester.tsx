@@ -227,10 +227,12 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
   const [response, setResponse] = useState<{
     status: number;
     statusText: string;
-    headers: Record<string, string>;
+    headers: [string, string][];
     body: string;
     durationMs: number;
     size: number;
+    binary: boolean;
+    truncated: boolean;
     isJson: boolean;
     formattedBody: string;
   } | null>(null);
@@ -318,7 +320,11 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
         headers: res.headers,
         body: res.body,
         durationMs: res.durationMs,
-        size: new Blob([res.body]).size,
+        // Bytes on the wire, which is what Rust counted. `new Blob([body]).size`
+        // measured the decoded string and was simply wrong for a binary response.
+        size: res.byteLength,
+        binary: res.binary,
+        truncated: res.truncated,
         isJson: formatResult.ok,
         formattedBody: formatted,
       });
@@ -463,10 +469,12 @@ interface BodySharedProps {
   response: {
     status: number;
     statusText: string;
-    headers: Record<string, string>;
+    headers: [string, string][];
     body: string;
     durationMs: number;
     size: number;
+    binary: boolean;
+    truncated: boolean;
     isJson: boolean;
     formattedBody: string;
   } | null;
@@ -771,7 +779,7 @@ function ResponseViewer(p: BodySharedProps) {
           active={p.responseTab === "headers"}
           onClick={() => p.setResponseTab("headers")}
           label="Headers"
-          badge={String(Object.keys(r.headers).length)}
+          badge={String(r.headers.length)}
         />
         <button
           onClick={p.copyResponse}
@@ -785,18 +793,33 @@ function ResponseViewer(p: BodySharedProps) {
       {/* Tab content */}
       <div className="flex-1 overflow-auto p-3">
         {p.responseTab === "body" ? (
-          <pre className="text-sm font-mono text-[var(--color-text-primary)] whitespace-pre-wrap break-all">
-            {r.formattedBody}
-          </pre>
+          r.binary ? (
+            <p className="text-sm text-[var(--color-text-disabled)]">
+              Binary response — {formatBytes(r.size)} not shown.
+            </p>
+          ) : (
+            <>
+              <pre className="text-sm font-mono text-[var(--color-text-primary)] whitespace-pre-wrap break-all">
+                {r.formattedBody}
+              </pre>
+              {r.truncated && (
+                <p className="mt-2 text-sm text-[var(--color-text-disabled)]">
+                  Truncated at 10 MB — the response was larger.
+                </p>
+              )}
+            </>
+          )
         ) : (
           <div className="space-y-0.5">
-            {Object.entries(r.headers).map(([k, v]) => (
-              <div key={k} className="flex text-sm font-mono">
+            {r.headers.map(([k, v], i) => (
+              // Index in the key, not just the name: repeated headers are exactly
+              // what this list exists to show, so names are not unique.
+              <div key={`${k}-${i}`} className="flex text-sm font-mono">
                 <span className="text-[var(--color-accent)] mr-2 flex-shrink-0">{k}:</span>
                 <span className="text-[var(--color-text-primary)] break-all">{v}</span>
               </div>
             ))}
-            {Object.keys(r.headers).length === 0 && (
+            {r.headers.length === 0 && (
               <p className="text-sm text-[var(--color-text-disabled)]">No headers</p>
             )}
           </div>

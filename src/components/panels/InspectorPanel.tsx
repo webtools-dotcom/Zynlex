@@ -113,16 +113,12 @@ function MetaSubTab() {
       let sizeKB: number | undefined;
       try {
         const resp = await apiFetch({ method: "HEAD", url, headers: {} });
-        const ct = Object.entries(resp.headers).find(
-          ([k]) => k.toLowerCase() === "content-type",
-        )?.[1];
+        const ct = resp.headers.find(([k]) => k.toLowerCase() === "content-type")?.[1];
         if (ct && !ct.startsWith("image/")) {
           setDiagResult({ status: "error", message: `Not an image (${ct})` });
           return;
         }
-        const len = Object.entries(resp.headers).find(
-          ([k]) => k.toLowerCase() === "content-length",
-        )?.[1];
+        const len = resp.headers.find(([k]) => k.toLowerCase() === "content-length")?.[1];
         if (len) sizeKB = parseInt(len, 10) / 1024;
       } catch {
         // HEAD failed — still report dimensions below

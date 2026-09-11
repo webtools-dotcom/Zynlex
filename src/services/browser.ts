@@ -142,8 +142,15 @@ interface ApiFetchRequest {
 interface ApiFetchResponse {
   status: number;
   statusText: string;
-  headers: Record<string, string>;
+  /** A list, not a map — repeated headers (notably `Set-Cookie`) are the point. */
+  headers: [string, string][];
+  /** Empty when `binary` is true. */
   body: string;
+  /** Response was not valid UTF-8; `byteLength` still reports its size. */
+  binary: boolean;
+  /** Body hit the 10 MB cap and this is the leading slice. */
+  truncated: boolean;
+  byteLength: number;
   durationMs: number;
 }
 
