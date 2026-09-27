@@ -128,6 +128,8 @@ h2 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4.4vw
 section > .wrap > p.intro { color: var(--text-2); max-width: 62ch; margin: 0; }
 
 /* Text above, screenshot full width below — at half width the UI is unreadable. */
+.tour { padding: 56px 0 96px; }
+.tour video { display: block; width: 100%; height: auto; margin-top: 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .feature { margin-top: 96px; }
 .feature .copy { display: grid; gap: 4px 56px; margin-bottom: 28px; }
 @media (min-width: 900px) {
@@ -234,6 +236,16 @@ footer a { color: var(--muted); }
       </div>
     </div>
   </div>
+
+  <section class="tour" aria-label="Video tour">
+    <div class="wrap">
+      <div class="eyebrow">55-second tour</div>
+      <video controls preload="none" playsinline poster="assets/tour-poster.jpg" width="1920" height="1080">
+        <source src="assets/zynlex-tour.mp4" type="video/mp4">
+        <a href="assets/zynlex-tour.mp4">Watch the tour (MP4)</a>
+      </video>
+    </div>
+  </section>
 
   <section id="features">
     <div class="wrap">
