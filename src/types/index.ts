@@ -66,6 +66,7 @@ export type PanelId =
   | "jwt"
   | "base64"
   | "headers"
+  | "mocks"
   | "inspector"
   | "ua"
   | "viewport";

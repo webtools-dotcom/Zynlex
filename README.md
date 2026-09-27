@@ -30,6 +30,7 @@ The sidebar has the things you'd otherwise keep four apps around for:
 - **Network log**: per-tab capture with filters, URL search, pause, and response bodies
 - **Device viewports**: one device at a time, rendered at its real pixel size
 - **Header rules**: add, override or strip request headers, matched per URL pattern
+- **Mock responses**: serve a canned status, body and delay for any URL pattern, or one-click mock a captured request. No proxy, no certificate
 - **API client**: saved collections, cURL import, runs through Rust so page CORS doesn't apply
 - **Inspector**: meta tags, Open Graph previews, and cookies including HttpOnly
 - JWT decoder, Base64, user-agent switcher

@@ -10,10 +10,13 @@ import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { entryToCurl, entryToFetch } from "@/lib/networkCopy";
 import { copyToClipboard } from "@/lib/clipboard";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, statusColor } from "@/lib/format";
 import { hostOf } from "@/lib/url";
 import { useCopy } from "@/hooks/useCopy";
 import { setNetworkCapture, webviewReload } from "@/services/browser";
+import { useMocksStore, mockRuleFromEntry } from "@/stores/mocks";
+import { useUIStore } from "@/stores/ui";
+import { Ghost } from "lucide-react";
 
 const METHOD_COLORS: Record<string, string> = {
   GET: "text-method-get",
@@ -47,14 +50,6 @@ const TYPE_COLORS: Record<string, string> = {
   ping: "bg-rose-500/20 text-rose-300",
   other: "bg-gray-500/20 text-gray-400",
 };
-
-function statusColor(code: number): string {
-  if (code >= 200 && code < 300) return "text-status-2xx";
-  if (code >= 300 && code < 400) return "text-status-3xx";
-  if (code >= 400 && code < 500) return "text-status-4xx";
-  if (code >= 500) return "text-status-5xx";
-  return "text-[var(--color-text-disabled)]";
-}
 
 const SLOW_THRESHOLD_MS = 1000;
 
@@ -119,6 +114,13 @@ const STATUS_RANGES = [
 const SELECT_CLASS =
   "text-micro bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded outline-none border border-[var(--color-border)] px-1 py-0.5";
 
+/** Seed a mock from a captured response, then jump to it. */
+function mockEntry(entry: NetworkLogEntry) {
+  const wsId = useWorkspacesStore.getState().activeWorkspaceId;
+  useMocksStore.getState().addRule(wsId, mockRuleFromEntry(entry));
+  useUIStore.getState().setActivePanel("mocks");
+}
+
 function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () => void }) {
   const [tab, setTab] = useState<"headers" | "body" | "copy">("headers");
   const { copiedLabel: copied, copy: handleCopy } = useCopy();
@@ -137,12 +139,27 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
             </button>
           ))}
         </div>
-        <button
-          onClick={onClose}
-          className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-sm leading-none px-1"
-        >
-          &times;
-        </button>
+        <div className="flex items-center gap-1">
+          {!entry.mocked && (
+            <button
+              onClick={() => mockEntry(entry)}
+              title={
+                entry.bodyTruncated || entry.bodyEvicted
+                  ? "Create a mock from this response (body is incomplete — edit it in Mock Responses)"
+                  : "Create a mock from this response and open Mock Responses"
+              }
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-micro text-[var(--color-accent)] hover:bg-[var(--color-accent-dim)]"
+            >
+              <Ghost size={11} /> Mock this
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] text-sm leading-none px-1"
+          >
+            &times;
+          </button>
+        </div>
       </div>
       <div className="max-h-48 overflow-y-auto p-3">
         {tab === "headers" && (
@@ -290,9 +307,9 @@ function EntryRow({
         {entry.statusCode !== undefined ? entry.statusCode : "---"}
       </span>
       <span
-        className={`text-micro px-1 rounded-[var(--radius-sm)] justify-self-start truncate ${TYPE_COLORS[entry.resourceType] ?? "bg-gray-500/20 text-gray-400"}`}
+        className={`text-micro px-1 rounded-[var(--radius-sm)] justify-self-start truncate ${entry.mocked ? "bg-fuchsia-500/20 text-fuchsia-300" : (TYPE_COLORS[entry.resourceType] ?? "bg-gray-500/20 text-gray-400")}`}
       >
-        {resourceTypeLabel(entry.resourceType)}
+        {entry.mocked ? "Mock" : resourceTypeLabel(entry.resourceType)}
       </span>
       <span
         className="truncate text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]"
