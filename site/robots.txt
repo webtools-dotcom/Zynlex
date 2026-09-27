@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://webtools-dotcom.github.io/Zynlex/sitemap.xml
