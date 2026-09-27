@@ -4,9 +4,9 @@
 
 # ZYNLEX
 
-**A 3.6 MB browser for web developers. Built in Rust and Tauri, not Electron.**
+**The minimal browser for web developers. 3.6 MB, built in Rust and Tauri, not Electron.**
 
-ZYNLEX is a lightweight Windows browser for local web development. It finds the dev servers running on your machine, and puts a network log, API response mocking, device viewports, request header rules and an API client in the sidebar — the things you'd otherwise open DevTools, Postman, Charles and a responsive tester for.
+ZYNLEX is a lightweight browser for local web development on Windows: the browser for `localhost`. It finds the dev servers running on your machine, and puts a network log, API response mocking, device viewports, request header rules and an API client in the sidebar. Those are the things you'd otherwise open DevTools, Postman, Charles and a responsive tester for.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![CI](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml/badge.svg)](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml)
@@ -18,6 +18,8 @@ ZYNLEX is a lightweight Windows browser for local web development. It finds the 
 <sub>Text hard to read? There's a [1080p version](https://github.com/webtools-dotcom/Zynlex/releases/download/v0.9.0/high_quality.mp4) of the same clip.</sub>
 
 ### [Download for Windows →](https://github.com/webtools-dotcom/Zynlex/releases/latest)
+
+3.6 MB installer · about a third less RAM than Chrome · no account, no telemetry · free and open source
 
 </div>
 
@@ -39,7 +41,7 @@ The sidebar has the things you'd otherwise keep four apps around for:
 
 Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it.
 
-No account. No telemetry. It makes no network calls of its own.
+No account. No telemetry. The only network call it makes on its own is an update check against this repo's GitHub releases.
 
 ## Who it's for
 
@@ -122,6 +124,29 @@ Worth knowing before you download:
 - The network log records every request type, but only keeps response bodies for text resources. Images, fonts and media show status, size and timing only. Use the type filter or the API chip to cut the asset noise.
 - JWT signatures are decoded, never verified.
 
+## FAQ
+
+**Is ZYNLEX a minimal browser I can use every day?**
+You can browse in it like any browser, and it is minimal: no sync, no extensions, no account. But it's built around development work, so it isn't trying to be your only browser. Most people keep it open next to their editor.
+
+**Will websites work in it?**
+Yes. Tabs render with WebView2, which is Microsoft's packaging of Chromium, the same engine as Chrome and Edge. Pages look and behave the same.
+
+**How is it different from Chrome DevTools?**
+DevTools is a drawer inside a general browser. ZYNLEX puts the network log, device viewports and header rules in the browser's own sidebar, per tab and per project workspace, and adds things DevTools doesn't have: localhost server detection, response mocking without a proxy, and an API client.
+
+**Do I need a proxy or a certificate to mock API responses?**
+No. Mocks are answered inside the browser, before the request reaches the network, so there's nothing to install or trust. Cross-origin requests work too. The trade-off: it only mocks requests made by pages open in ZYNLEX, not other apps on your machine.
+
+**Why is it so small? Is it Electron?**
+It's not Electron. It's built with Tauri and Rust, and uses the WebView2 runtime that already ships with Windows instead of bundling its own copy of Chromium. That's why the installer is 3.6 MB.
+
+**Does it work on macOS or Linux?**
+Not yet. Every developer feature is built on WebView2 APIs that only exist on Windows. See [ROADMAP.md](ROADMAP.md).
+
+**Is it free? Does it collect any data?**
+Free and open source under Apache-2.0. No account, no telemetry, and it makes no network calls of its own apart from checking GitHub for updates.
+
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md): process model, bounds and resize, viewport emulation, security boundary
@@ -130,6 +155,8 @@ Worth knowing before you download:
 - [ROADMAP.md](ROADMAP.md): what's open
 
 ## Contributing
+
+If ZYNLEX saves you a window or two, a star helps other developers find it.
 
 Issues and pull requests welcome. If you're picking up something non-trivial, open an issue first so we don't both write it.
 
