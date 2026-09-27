@@ -2,11 +2,11 @@ import { useMemo } from "react";
 import { Clock, Trash2, ExternalLink, Globe } from "lucide-react";
 import { useHistoryStore } from "@/stores/history";
 import { useWorkspacesStore } from "@/stores/workspaces";
-import { useTabsStore } from "@/stores/tabs";
 import { VirtualList } from "@/components/ui/VirtualList";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { HistoryEntry } from "@/types";
 import { titleFromUrl } from "@/lib/url";
+import { openTab } from "@/lib/tabActions";
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -39,9 +39,6 @@ export function HistoryPanel() {
   const removeEntry = useHistoryStore((s) => s.removeEntry);
   const clearAll = useHistoryStore((s) => s.clearAll);
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
-  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
-  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
-  const addTab = useTabsStore((s) => s.addTab);
 
   const flatItems = useMemo(() => {
     const grouped = groupByDate(entries);
@@ -56,9 +53,7 @@ export function HistoryPanel() {
   }, [entries]);
 
   function openEntry(url: string) {
-    const id = addTab(activeWorkspaceId, { url });
-    addTabToWorkspace(activeWorkspaceId, id);
-    setActiveTab(activeWorkspaceId, id);
+    openTab({ url }, { wsId: activeWorkspaceId });
   }
 
   return (

@@ -6,8 +6,8 @@ import { TabContextMenu } from "./TabContextMenu";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
-import { closeTabWebview } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
+import { openTab, closeTab } from "@/lib/tabActions";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
 
@@ -28,12 +28,8 @@ interface ContextMenuState {
 export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
   const workspaces = useWorkspacesStore((s) => s.workspaces);
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
-  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
-  const removeTabFromWorkspace = useWorkspacesStore((s) => s.removeTabFromWorkspace);
   const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
   const reorderTabs = useWorkspacesStore((s) => s.reorderTabs);
-  const addTab = useTabsStore((s) => s.addTab);
-  const closeTab = useTabsStore((s) => s.closeTab);
   const tabs = useTabsStore((s) => s.tabs);
 
   const ws = workspaces[activeWorkspaceId];
@@ -56,19 +52,10 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   const openNewTab = useCallback(() => {
-    const id = addTab(activeWorkspaceId, { url: "", title: "New Tab" });
-    addTabToWorkspace(activeWorkspaceId, id);
-    setActiveTab(activeWorkspaceId, id);
-  }, [activeWorkspaceId, addTab, addTabToWorkspace, setActiveTab]);
+    openTab({}, { wsId: activeWorkspaceId });
+  }, [activeWorkspaceId]);
 
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
-      removeTabFromWorkspace(activeWorkspaceId, tabId);
-      closeTab(tabId);
-      closeTabWebview(tabId).catch(() => {});
-    },
-    [activeWorkspaceId, removeTabFromWorkspace, closeTab],
-  );
+  const handleCloseTab = useCallback((tabId: string) => closeTab(tabId), []);
 
   const handleContextMenu = useCallback((tabId: string, e: React.MouseEvent) => {
     e.preventDefault();

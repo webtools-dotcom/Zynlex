@@ -17,8 +17,10 @@ import { useUIStore, isFindOpen } from "@/stores/ui";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
-import { closeTabWebview, setTabZoom, hardReload } from "@/services/browser";
+import { setTabZoom, hardReload } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
+import { openTab, closeTab, reopenLastClosedTab } from "@/lib/tabActions";
+import { getActiveTabId } from "@/hooks/useActiveScope";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
 
@@ -26,11 +28,7 @@ type BridgeType = ReturnType<typeof useWebviewBridge>;
 const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 
 function hardReloadActiveTab() {
-  const wsState = useWorkspacesStore.getState();
-  const tabId = getLiveWorkspaceActiveTabId(
-    wsState.workspaces[wsState.activeWorkspaceId],
-    useTabsStore.getState().tabs,
-  );
+  const tabId = getActiveTabId();
   if (tabId) hardReload(tabId).catch(() => {});
 }
 
@@ -42,9 +40,7 @@ function switchWorkspace(index: number) {
 
 /** dir: -1 zoom out, +1 zoom in, 0 reset to 100%. */
 function applyZoom(dir: -1 | 0 | 1) {
-  const wsState = useWorkspacesStore.getState();
-  const wsId = wsState.activeWorkspaceId;
-  const tabId = getLiveWorkspaceActiveTabId(wsState.workspaces[wsId], useTabsStore.getState().tabs);
+  const tabId = getActiveTabId();
   if (!tabId) return;
 
   let next = 1;
@@ -87,39 +83,18 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
   }
 
   if (shortcut === "ctrl+t") {
-    const wsState = useWorkspacesStore.getState();
-    const wsId = wsState.activeWorkspaceId;
-    const id = useTabsStore.getState().addTab(wsId, { url: "", title: "New Tab" });
-    useWorkspacesStore.getState().addTabToWorkspace(wsId, id);
-    useWorkspacesStore.getState().setActiveTab(wsId, id);
+    openTab();
     return;
   }
 
   if (shortcut === "ctrl+w") {
-    const wsState = useWorkspacesStore.getState();
-    const wsId = wsState.activeWorkspaceId;
-    const ws = wsState.workspaces[wsId];
-    const tabId = getLiveWorkspaceActiveTabId(ws, useTabsStore.getState().tabs);
-    if (tabId) {
-      useWorkspacesStore.getState().removeTabFromWorkspace(wsId, tabId);
-      useTabsStore.getState().closeTab(tabId);
-      closeTabWebview(tabId).catch(() => {});
-    }
+    const tabId = getActiveTabId();
+    if (tabId) closeTab(tabId);
     return;
   }
 
   if (shortcut === "ctrl+shift+t") {
-    const last = useTabsStore.getState().lastClosedTab;
-    if (!last) return;
-    const wsState = useWorkspacesStore.getState();
-    const wsId = wsState.activeWorkspaceId;
-    const newId = useTabsStore.getState().addTab(wsId, {
-      url: last.url,
-      title: last.title,
-    });
-    useWorkspacesStore.getState().addTabToWorkspace(wsId, newId);
-    useWorkspacesStore.getState().setActiveTab(wsId, newId);
-    useTabsStore.getState().clearLastClosedTab();
+    reopenLastClosedTab();
     return;
   }
 
@@ -149,12 +124,7 @@ function handleShortcut(shortcut: string, bridge: BridgeType | null) {
     if (isFindOpen()) {
       ui.closeFind();
     } else if (bridge) {
-      const wsState = useWorkspacesStore.getState();
-      const wsId = wsState.activeWorkspaceId;
-      const tabId = getLiveWorkspaceActiveTabId(
-        wsState.workspaces[wsId],
-        useTabsStore.getState().tabs,
-      );
+      const tabId = getActiveTabId();
       if (tabId) {
         const tab = useTabsStore.getState().tabs[tabId];
         if (tab?.isLoading) {
@@ -273,12 +243,7 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
           e.preventDefault();
           ui.closeFind();
         } else if (bridge) {
-          const wsState = useWorkspacesStore.getState();
-          const wsId = wsState.activeWorkspaceId;
-          const tabId = getLiveWorkspaceActiveTabId(
-            wsState.workspaces[wsId],
-            useTabsStore.getState().tabs,
-          );
+          const tabId = getActiveTabId();
           if (tabId) {
             const tab = useTabsStore.getState().tabs[tabId];
             if (tab?.isLoading) {
@@ -467,18 +432,9 @@ export function useKeyboardShortcuts(bridge: BridgeType | null) {
         const target = e.target as HTMLElement | null;
         const tag = target?.tagName?.toLowerCase();
         if (tag === "input" || tag === "textarea") return;
-        const last = useTabsStore.getState().lastClosedTab;
-        if (!last) return;
+        if (!useTabsStore.getState().lastClosedTab) return;
         e.preventDefault();
-        const wsState = useWorkspacesStore.getState();
-        const wsId = wsState.activeWorkspaceId;
-        const newId = useTabsStore.getState().addTab(wsId, {
-          url: last.url,
-          title: last.title,
-        });
-        useWorkspacesStore.getState().addTabToWorkspace(wsId, newId);
-        useWorkspacesStore.getState().setActiveTab(wsId, newId);
-        useTabsStore.getState().clearLastClosedTab();
+        reopenLastClosedTab();
         return;
       }
     }

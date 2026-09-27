@@ -19,7 +19,8 @@ import { useUIStore } from "@/stores/ui";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useServersStore } from "@/stores/servers";
 import { useTabsStore } from "@/stores/tabs";
-import { usePortScanner } from "@/hooks/usePortScanner";
+import { scanPortsOnce } from "@/hooks/usePortScanner";
+import { openTab } from "@/lib/tabActions";
 import { ViewportControlsPanel } from "@/components/panels/ViewportPanel";
 import { getLiveWorkspaceActiveTabId } from "@/lib/workspaceTabs";
 import type { PanelId } from "@/types";
@@ -67,11 +68,7 @@ const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
 
 function LiveServersPanel() {
   const { servers, isScanning, lastScanAt } = useServersStore();
-  const addTab = useTabsStore((s) => s.addTab);
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
-  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
-  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
-  const { scan } = usePortScanner();
   const [, setTick] = useState(0);
 
   // Force re-render every 30s so "Xs ago" timestamps stay current
@@ -91,13 +88,13 @@ function LiveServersPanel() {
   );
 
   function openServer(server: (typeof servers)[number]) {
-    const url = `${server.protocol}://localhost:${server.port}`;
-    const id = addTab(activeWorkspaceId, {
-      url,
-      title: server.label ?? server.title ?? `localhost:${server.port}`,
-    });
-    addTabToWorkspace(activeWorkspaceId, id);
-    setActiveTab(activeWorkspaceId, id);
+    openTab(
+      {
+        url: `${server.protocol}://localhost:${server.port}`,
+        title: server.label ?? server.title ?? `localhost:${server.port}`,
+      },
+      { wsId: activeWorkspaceId },
+    );
   }
 
   return (
@@ -108,7 +105,7 @@ function LiveServersPanel() {
         </p>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => scan()}
+            onClick={() => void scanPortsOnce()}
             disabled={isScanning}
             title="Rescan ports"
             className={cn(

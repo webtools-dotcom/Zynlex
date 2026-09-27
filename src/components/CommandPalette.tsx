@@ -27,8 +27,9 @@ import { useHistoryStore } from "@/stores/history";
 import { useServersStore } from "@/stores/servers";
 import { useApiCollectionsStore } from "@/stores/apiCollections";
 import { LOAD_REQUEST_EVENT } from "@/components/panels/ApiTester";
-import { closeTabWebview } from "@/services/browser";
-import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
+import { getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
+import { openTab, closeTab } from "@/lib/tabActions";
+import { getActiveTabId } from "@/hooks/useActiveScope";
 
 type PaletteType = "tab" | "command" | "bookmark" | "history" | "workspace" | "server" | "request";
 
@@ -103,10 +104,7 @@ export function CommandPalette() {
         sublabel: "Open a new empty tab",
         icon: <Plus size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
-          const wsId = activeWorkspaceId;
-          const newTabId = useTabsStore.getState().addTab(wsId, {});
-          useWorkspacesStore.getState().addTabToWorkspace(wsId, newTabId);
-          useWorkspacesStore.getState().setActiveTab(wsId, newTabId);
+          openTab({}, { wsId: activeWorkspaceId });
           useUIStore.getState().closeCommandPalette();
         },
       },
@@ -128,14 +126,8 @@ export function CommandPalette() {
         sublabel: "Close the active tab",
         icon: <X size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
-          const wsState = useWorkspacesStore.getState();
-          const ws = wsState.workspaces[activeWorkspaceId];
-          const activeTabId = getLiveWorkspaceActiveTabId(ws, useTabsStore.getState().tabs);
-          if (activeTabId) {
-            useTabsStore.getState().closeTab(activeTabId);
-            wsState.removeTabFromWorkspace(activeWorkspaceId, activeTabId);
-            closeTabWebview(activeTabId).catch(() => {});
-          }
+          const activeTabId = getActiveTabId();
+          if (activeTabId) closeTab(activeTabId);
           useUIStore.getState().closeCommandPalette();
         },
       },
@@ -176,10 +168,7 @@ export function CommandPalette() {
 
     /** Every non-command item ends up opening a URL in a new tab. */
     const openInNewTab = (url: string, title: string) => () => {
-      const wsId = useWorkspacesStore.getState().activeWorkspaceId;
-      const id = useTabsStore.getState().addTab(wsId, { url, title });
-      useWorkspacesStore.getState().addTabToWorkspace(wsId, id);
-      useWorkspacesStore.getState().setActiveTab(wsId, id);
+      openTab({ url, title });
       useUIStore.getState().closeCommandPalette();
     };
 

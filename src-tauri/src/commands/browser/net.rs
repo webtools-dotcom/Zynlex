@@ -140,8 +140,7 @@ pub fn browser_set_network_capture(active: bool) {
 pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHandle, tab_id: &str) {
     let app = app.clone();
     let tab_id = tab_id.to_string();
-    let _ = wv.with_webview(move |platform| {
-        #[cfg(windows)]
+    let _ = super::with_core(wv, "network capture", move |core| {
         unsafe {
             use webview2_com::Microsoft::Web::WebView2::Win32::{
                 ICoreWebView2_2, COREWEBVIEW2_WEB_RESOURCE_CONTEXT,
@@ -154,14 +153,6 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
             use windows::core::PWSTR;
             use windows_core::Interface;
             use windows_core::BOOL;
-
-            let core = match platform.controller().CoreWebView2() {
-                Ok(core) => core,
-                Err(e) => {
-                    zynlex_log!("[zynlex] CoreWebView2() failed for network capture: {e:?}");
-                    return;
-                }
-            };
 
             if let Err(e) = core.AddWebResourceRequestedFilter(
                 windows::core::w!("*"),
@@ -416,6 +407,35 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
 
                     let app_body = app_resp.clone();
                     let tab_id_body = tab_id_resp.clone();
+                    let binary = matches!(resource_type.as_str(), "image" | "media" | "font");
+                    let emit = move |body: String, body_truncated: bool| {
+                        let _ = app_body.emit(
+                            "browser://network-entry",
+                            serde_json::json!({
+                                "tabId": tab_id_body,
+                                "method": method,
+                                "url": uri,
+                                "statusCode": status_code,
+                                "reasonPhrase": reason_phrase,
+                                "resourceType": resource_type,
+                                "durationMs": duration_ms,
+                                "contentLength": content_length,
+                                "referrer": referrer,
+                                "headers": headers,
+                                "body": body,
+                                "bodyTruncated": body_truncated,
+                            }),
+                        );
+                    };
+
+                    // Binary bodies are never shown — the panel would render them as
+                    // lossy-UTF-8 garbage — so don't pay for a GetContent read (which
+                    // buffers the whole response) or ship 64 KB of noise over IPC.
+                    if binary {
+                        emit(String::new(), false);
+                        return Ok(());
+                    }
+
                     let body_handler = WebResourceResponseViewGetContentCompletedHandler::create(
                         Box::new(move |_errorcode, stream| {
                             let mut body_bytes: Vec<u8> = Vec::new();
@@ -441,23 +461,9 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                 }
                             }
 
-                            let body_str = String::from_utf8_lossy(&body_bytes).into_owned();
-                            let _ = app_body.emit(
-                                "browser://network-entry",
-                                serde_json::json!({
-                                    "tabId": tab_id_body,
-                                    "method": method,
-                                    "url": uri,
-                                    "statusCode": status_code,
-                                    "reasonPhrase": reason_phrase,
-                                    "resourceType": resource_type,
-                                    "durationMs": duration_ms,
-                                    "contentLength": content_length,
-                                    "referrer": referrer,
-                                    "headers": headers,
-                                    "body": body_str,
-                                    "bodyTruncated": body_truncated,
-                                }),
+                            emit(
+                                String::from_utf8_lossy(&body_bytes).into_owned(),
+                                body_truncated,
                             );
                             Ok(())
                         }),

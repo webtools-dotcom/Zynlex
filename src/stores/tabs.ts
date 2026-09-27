@@ -7,7 +7,7 @@ import { useNetworkStore } from "@/stores/network";
 function buildTab(workspaceId: string, opts: NewTabOptions = {}): Tab {
   return {
     id: crypto.randomUUID(),
-    title: opts.url ? opts.url : "New Tab",
+    title: opts.title || opts.url || "New Tab",
     url: opts.url ?? "",
     favicon: opts.favicon ?? null,
     isLoading: false,

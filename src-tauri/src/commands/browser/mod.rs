@@ -32,6 +32,46 @@ unsafe fn pwstr_to_string(f: impl FnOnce(*mut windows::core::PWSTR)) -> String {
     }
 }
 
+/// Run `f` against a webview's `ICoreWebView2` on its UI thread. Logs and skips
+/// when the core isn't available. Fire-and-forget, like `with_webview` itself —
+/// the `Err` only covers failing to dispatch to the UI thread.
+#[cfg(windows)]
+pub(crate) fn with_core(
+    wv: &tauri::Webview,
+    what: &'static str,
+    f: impl FnOnce(webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2) + Send + 'static,
+) -> Result<(), String> {
+    wv.with_webview(
+        move |platform| match unsafe { platform.controller().CoreWebView2() } {
+            Ok(core) => f(core),
+            Err(e) => zynlex_log!("[zynlex] {what}: CoreWebView2 failed: {e:?}"),
+        },
+    )
+    .map_err(|e| format!("{what} failed: {e}"))
+}
+
+/// Fire-and-forget DevTools protocol call. CDP reports completion, but none of
+/// the callers have anything to do with it.
+#[cfg(windows)]
+pub(crate) fn cdp(
+    core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
+    method: &str,
+    params: &str,
+) {
+    use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
+    use windows_core::HSTRING;
+    let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+        |_r: windows_core::Result<()>, _json: String| -> windows_core::Result<()> { Ok(()) },
+    ));
+    unsafe {
+        let _ = core.CallDevToolsProtocolMethod(
+            &HSTRING::from(method),
+            &HSTRING::from(params),
+            &handler,
+        );
+    }
+}
+
 // ─── Injected Scripts ────────────────────────────────────────────────
 
 const CHROME_FEATURES_SCRIPT: &str = include_str!("scripts/chrome_features.js");
@@ -605,24 +645,13 @@ fn navigate_history(app: &AppHandle, tab_id: &str, back: bool) -> Result<(), Str
         Some(wv) => wv,
         None => return Ok(()),
     };
-    wv.with_webview(move |platform| {
-        #[cfg(windows)]
-        unsafe {
-            let core = match platform.controller().CoreWebView2() {
-                Ok(c) => c,
-                Err(e) => {
-                    zynlex_log!("[zynlex] navigate_history: CoreWebView2 failed: {e:?}");
-                    return;
-                }
-            };
-            let _ = if back {
-                core.GoBack()
-            } else {
-                core.GoForward()
-            };
-        }
+    with_core(&wv, "navigate_history", move |core| unsafe {
+        let _ = if back {
+            core.GoBack()
+        } else {
+            core.GoForward()
+        };
     })
-    .map_err(|e| format!("navigate_history failed: {e}"))
 }
 
 #[tauri::command]
@@ -651,12 +680,15 @@ pub async fn browser_go_forward(app: AppHandle, tab_id: String) -> Result<(), St
     }
 }
 
+/// Native `Reload()`, not `eval("location.reload()")` — same reason as
+/// `navigate_history`: a strict page CSP can refuse an injected script.
 #[tauri::command]
 pub async fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
     if let Some(wv) = find_tab_webview(&app, &label) {
-        wv.eval("window.location.reload()")
-            .map_err(|e| format!("browser_reload eval failed: {e}"))?;
+        with_core(&wv, "browser_reload", |core| unsafe {
+            let _ = core.Reload();
+        })?;
     }
     Ok(())
 }
@@ -676,32 +708,9 @@ pub async fn browser_hard_reload(app: AppHandle, tab_id: String) -> Result<(), S
             Some(wv) => wv,
             None => return Ok(()),
         };
-        wv.with_webview(move |platform| {
-            #[cfg(windows)]
-            unsafe {
-                use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
-                use windows_core::HSTRING;
-                let core = match platform.controller().CoreWebView2() {
-                    Ok(c) => c,
-                    Err(e) => {
-                        zynlex_log!("[zynlex] hard reload: CoreWebView2 failed: {e:?}");
-                        return;
-                    }
-                };
-                let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
-                    |_result: windows_core::Result<()>,
-                     _json: String|
-                     -> windows_core::Result<()> { Ok(()) },
-                ));
-                let _ = core.CallDevToolsProtocolMethod(
-                    &HSTRING::from("Page.reload"),
-                    &HSTRING::from(r#"{"ignoreCache":true}"#),
-                    &handler,
-                );
-            }
+        with_core(&wv, "browser_hard_reload", |core| {
+            cdp(&core, "Page.reload", r#"{"ignoreCache":true}"#)
         })
-        .map_err(|e| format!("browser_hard_reload failed: {e}"))?;
-        Ok(())
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -724,7 +733,9 @@ pub async fn browser_set_zoom(app: AppHandle, tab_id: String, factor: f64) -> Re
 pub async fn browser_stop_loading(app: AppHandle, tab_id: String) -> Result<(), String> {
     let label = webview_label_for_tab(&tab_id);
     if let Some(wv) = find_tab_webview(&app, &label) {
-        wv.eval("window.stop()").map_err(|e| e.to_string())?;
+        with_core(&wv, "browser_stop_loading", |core| unsafe {
+            let _ = core.Stop();
+        })?;
     }
     Ok(())
 }
@@ -768,36 +779,24 @@ pub fn scheme_for_theme(theme: &str) -> i32 {
 /// widget rendering — it never changed `prefers-color-scheme`, so pages stayed
 /// dark regardless of the app theme.
 pub fn apply_color_scheme(wv: &tauri::Webview, scheme: i32) {
-    let _ = wv.with_webview(move |platform| {
-        #[cfg(windows)]
-        unsafe {
-            use webview2_com::Microsoft::Web::WebView2::Win32::{
-                ICoreWebView2_13, COREWEBVIEW2_PREFERRED_COLOR_SCHEME,
-            };
-            use windows_core::Interface;
+    let _ = with_core(wv, "color-scheme", move |core| unsafe {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_13, COREWEBVIEW2_PREFERRED_COLOR_SCHEME,
+        };
+        use windows_core::Interface;
 
-            let core = match platform.controller().CoreWebView2() {
-                Ok(c) => c,
-                Err(e) => {
-                    zynlex_log!("[zynlex] color-scheme: CoreWebView2() failed: {e:?}");
-                    return;
-                }
-            };
-            match core.cast::<ICoreWebView2_13>() {
-                Ok(c13) => match c13.Profile() {
-                    Ok(profile) => {
-                        let scheme = COREWEBVIEW2_PREFERRED_COLOR_SCHEME(scheme);
-                        if let Err(e) = profile.SetPreferredColorScheme(scheme) {
-                            zynlex_log!("[zynlex] SetPreferredColorScheme failed: {e:?}");
-                        }
+        match core.cast::<ICoreWebView2_13>() {
+            Ok(c13) => match c13.Profile() {
+                Ok(profile) => {
+                    let scheme = COREWEBVIEW2_PREFERRED_COLOR_SCHEME(scheme);
+                    if let Err(e) = profile.SetPreferredColorScheme(scheme) {
+                        zynlex_log!("[zynlex] SetPreferredColorScheme failed: {e:?}");
                     }
-                    Err(e) => zynlex_log!("[zynlex] Profile() unavailable: {e:?}"),
-                },
-                Err(e) => zynlex_log!("[zynlex] ICoreWebView2_13 unavailable: {e:?}"),
-            }
+                }
+                Err(e) => zynlex_log!("[zynlex] Profile() unavailable: {e:?}"),
+            },
+            Err(e) => zynlex_log!("[zynlex] ICoreWebView2_13 unavailable: {e:?}"),
         }
-        #[cfg(not(windows))]
-        let _ = (platform, dark);
     });
 }
 
@@ -967,32 +966,26 @@ pub async fn browser_set_user_agent(app: AppHandle, user_agent: String) -> Resul
 /// Best-effort — silently no-ops on non-Windows or older WebView2 runtimes,
 /// but logs which step failed so it's debuggable.
 pub fn apply_memory_target(wv: &tauri::Webview, low: bool) {
-    let _ = wv.with_webview(move |platform| {
-        #[cfg(windows)]
-        unsafe {
-            use webview2_com::Microsoft::Web::WebView2::Win32::{
-                ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
-                COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
-            };
-            use windows_core::Interface;
+    let _ = with_core(wv, "memory-target", move |core| unsafe {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+        };
+        use windows_core::Interface;
 
-            let level = if low {
-                COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
-            } else {
-                COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
-            };
+        let level = if low {
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+        } else {
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+        };
 
-            match platform.controller().CoreWebView2() {
-                Ok(core) => match core.cast::<ICoreWebView2_19>() {
-                    Ok(core19) => {
-                        if let Err(e) = core19.SetMemoryUsageTargetLevel(level) {
-                            zynlex_log!("[zynlex] SetMemoryUsageTargetLevel failed: {e:?}");
-                        }
-                    }
-                    Err(e) => zynlex_log!("[zynlex] ICoreWebView2_19 unavailable: {e:?}"),
-                },
-                Err(e) => zynlex_log!("[zynlex] CoreWebView2() failed: {e:?}"),
+        match core.cast::<ICoreWebView2_19>() {
+            Ok(core19) => {
+                if let Err(e) = core19.SetMemoryUsageTargetLevel(level) {
+                    zynlex_log!("[zynlex] SetMemoryUsageTargetLevel failed: {e:?}");
+                }
             }
+            Err(e) => zynlex_log!("[zynlex] ICoreWebView2_19 unavailable: {e:?}"),
         }
     });
 }
@@ -1093,8 +1086,6 @@ pub async fn browser_restore_tab_state(
                             el.checked = s.checked;
                         }} else if (s.tag === 'SELECT') {{
                             el.selectedIndex = s.selectedIndex;
-                        }} else if (el.isContentEditable && s.html !== undefined) {{
-                            el.innerHTML = s.html;
                         }} else {{
                             el.value = s.value;
                         }}

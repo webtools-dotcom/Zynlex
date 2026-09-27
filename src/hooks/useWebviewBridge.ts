@@ -49,11 +49,12 @@ import { useSettingsStore } from "@/stores/settings";
 import { useHistoryStore } from "@/stores/history";
 import { useInspectorStore } from "@/stores/inspector";
 import type { MetaInfo, CookieEntry, StorageEntry } from "@/types";
-import { getLiveWorkspaceActiveTab, getLiveWorkspaceActiveTabId } from "@/lib/workspaceTabs";
+import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { useNetworkStore } from "@/stores/network";
 import { useHeadersStore } from "@/stores/headers";
 import { setHeaderRules } from "@/services/browser";
 import { titleFromUrl } from "@/lib/url";
+import { openTab } from "@/lib/tabActions";
 
 let _netEntryId = 0;
 
@@ -100,6 +101,43 @@ function getActiveBounds(
   // one left open in another workspace isn't on screen here.
   const overlayH = isApiTesterOpen() ? useUIStore.getState().overlayHeight * rect.height : 0;
   return computeWebviewBounds(rect, overlayH);
+}
+
+/**
+ * Capture a tab's scroll/form state into the store before its webview is
+ * destroyed. Bounded: the capture runs as ExecuteScript on the page's own JS
+ * thread and `eval_json` awaits it with no timeout, so a tab wedged in a busy
+ * loop would never resolve — and that is exactly the tab a discard exists to
+ * reclaim. Give up on the state rather than on the discard.
+ */
+async function captureTabState(tabId: string): Promise<void> {
+  try {
+    const json = await Promise.race([
+      saveTabState(tabId),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+    ]);
+    if (json) useTabsStore.getState().saveTabState(tabId, json);
+  } catch {
+    // Capture failed — losing scroll position is much cheaper than leaking the
+    // webview the caller is about to close.
+  }
+}
+
+/** Subscribe-then-maybe-unsubscribe for `listen()` promises that can resolve after unmount. */
+function tracker() {
+  let cancelled = false;
+  const unlisteners: UnlistenFn[] = [];
+  return {
+    track: (p: Promise<UnlistenFn>) =>
+      p.then((fn) => {
+        if (cancelled) fn();
+        else unlisteners.push(fn);
+      }),
+    dispose: () => {
+      cancelled = true;
+      for (const fn of unlisteners) fn();
+    },
+  };
 }
 
 /** Any React chrome overlay that must sit above the OS-level browser webview. */
@@ -330,168 +368,123 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   // ── Subscribe to Rust events (per-tab) ──────────────────────────
   useEffect(() => {
     if (!IS_TAURI) return;
-    let cancelled = false;
-    let unUrl: (() => void) | null = null;
-    let unLoading: (() => void) | null = null;
-    let unTabInfo: (() => void) | null = null;
-    let unHistory: (() => void) | null = null;
-    let unNewTab: (() => void) | null = null;
-    let unInspectorData: (() => void) | null = null;
+    const { track, dispose } = tracker();
 
-    onNewTabRequested((url) => {
-      const wsId = useWorkspacesStore.getState().activeWorkspaceId;
-      if (!wsId) return;
-      const tabId = useTabsStore.getState().addTab(wsId, { url, title: "New Tab" });
-      useWorkspacesStore.getState().addTabToWorkspace(wsId, tabId);
-      useWorkspacesStore.getState().setActiveTab(wsId, tabId);
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unNewTab = fn;
-    });
+    track(onNewTabRequested((url) => openTab({ url })));
 
-    onUrlChanged((tabId, url) => {
-      useTabsStore.getState().updateTab(tabId, { url });
-      // Record to global history — use the tab's own workspace, not the active one
-      const wsState = useWorkspacesStore.getState();
-      const tab = useTabsStore.getState().tabs[tabId];
-      const wsId = tab?.workspaceId ?? wsState.activeWorkspaceId;
-      useHistoryStore.getState().addEntry({
-        url,
-        title: titleFromUrl(url),
-        favicon: null,
-        timestamp: Date.now(),
-        workspaceId: wsId,
-      });
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unUrl = fn;
-    });
-
-    onLoadingChanged((tabId, loading) => {
-      if (loading) {
-        loadStartRef.current.set(tabId, Date.now());
-        // loadTime belongs to the page that is finishing, not the one starting —
-        // clear it so the status bar doesn't show the previous page's number
-        // while the new one loads. (Was a side effect of recordNavigation.)
-        useTabsStore.getState().updateTab(tabId, { isLoading: true, loadTime: null });
-        // Fires on reload too, not just fresh navigation — so the network log
-        // resets per page load instead of accumulating for the tab's whole
-        // lifetime (it was hitting the 500-entry cap after a handful of reloads).
-        if (!useNetworkStore.getState().preserveLog) {
-          useNetworkStore.getState().clearTab(tabId);
-        }
-      } else {
-        const startedAt = loadStartRef.current.get(tabId);
-        loadStartRef.current.delete(tabId);
-        const elapsed = startedAt !== undefined ? Date.now() - startedAt : null;
-        useTabsStore.getState().updateTab(tabId, {
-          isLoading: false,
-          loadTime: elapsed,
+    track(
+      onUrlChanged((tabId, url) => {
+        useTabsStore.getState().updateTab(tabId, { url });
+        // Record to global history — use the tab's own workspace, not the active one
+        const wsState = useWorkspacesStore.getState();
+        const tab = useTabsStore.getState().tabs[tabId];
+        const wsId = tab?.workspaceId ?? wsState.activeWorkspaceId;
+        useHistoryStore.getState().addEntry({
+          url,
+          title: titleFromUrl(url),
+          favicon: null,
+          timestamp: Date.now(),
+          workspaceId: wsId,
         });
+      }),
+    );
 
-        // Restore scroll/form state captured when this tab was discarded. It has to
-        // happen here, not when createTab resolves: that resolves as soon as the
-        // webview exists, long before the document it is navigating to has loaded,
-        // and writing scroll position into a blank document does nothing.
-        const saved = useTabsStore.getState().tabs[tabId]?.savedFormState;
-        if (saved) {
-          restoreTabState(tabId, saved)
-            .then(() => useTabsStore.getState().saveTabState(tabId, null))
-            .catch(() => {});
+    track(
+      onLoadingChanged((tabId, loading) => {
+        if (loading) {
+          loadStartRef.current.set(tabId, Date.now());
+          // loadTime belongs to the page that is finishing, not the one starting —
+          // clear it so the status bar doesn't show the previous page's number
+          // while the new one loads. (Was a side effect of recordNavigation.)
+          useTabsStore.getState().updateTab(tabId, { isLoading: true, loadTime: null });
+          // Fires on reload too, not just fresh navigation — so the network log
+          // resets per page load instead of accumulating for the tab's whole
+          // lifetime (it was hitting the 500-entry cap after a handful of reloads).
+          if (!useNetworkStore.getState().preserveLog) {
+            useNetworkStore.getState().clearTab(tabId);
+          }
+        } else {
+          const startedAt = loadStartRef.current.get(tabId);
+          loadStartRef.current.delete(tabId);
+          const elapsed = startedAt !== undefined ? Date.now() - startedAt : null;
+          useTabsStore.getState().updateTab(tabId, {
+            isLoading: false,
+            loadTime: elapsed,
+          });
+
+          // Restore scroll/form state captured when this tab was discarded. It has to
+          // happen here, not when createTab resolves: that resolves as soon as the
+          // webview exists, long before the document it is navigating to has loaded,
+          // and writing scroll position into a blank document does nothing.
+          const saved = useTabsStore.getState().tabs[tabId]?.savedFormState;
+          if (saved) {
+            restoreTabState(tabId, saved)
+              .then(() => useTabsStore.getState().saveTabState(tabId, null))
+              .catch(() => {});
+          }
         }
-      }
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unLoading = fn;
-    });
+      }),
+    );
 
-    onTabInfoChanged((tabId, info) => {
-      useTabsStore
-        .getState()
-        .updateTab(tabId, { title: info.title, favicon: info.favicon ?? null });
-      if (info.url) {
-        useTabsStore.getState().updateTab(tabId, { url: info.url });
-      }
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unTabInfo = fn;
-    });
+    track(
+      onTabInfoChanged((tabId, info) => {
+        useTabsStore
+          .getState()
+          .updateTab(tabId, { title: info.title, favicon: info.favicon ?? null });
+        if (info.url) {
+          useTabsStore.getState().updateTab(tabId, { url: info.url });
+        }
+        // History is recorded on URL change, before the document has a title —
+        // this is the first moment the real one exists.
+        const tab = useTabsStore.getState().tabs[tabId];
+        if (tab && info.title) {
+          useHistoryStore.getState().setTitle(info.url || tab.url, tab.workspaceId, info.title);
+        }
+      }),
+    );
 
-    onHistoryState((tabId, canGoBack, canGoForward) => {
-      useTabsStore.getState().updateTab(tabId, { canGoBack, canGoForward });
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unHistory = fn;
-    });
+    track(
+      onHistoryState((tabId, canGoBack, canGoForward) => {
+        useTabsStore.getState().updateTab(tabId, { canGoBack, canGoForward });
+      }),
+    );
 
     // Inspector data from browser_eval_inspector
-    onInspectorData((event) => {
-      const store = useInspectorStore.getState();
-      store.setIsLoading(false);
+    track(
+      onInspectorData((event) => {
+        const store = useInspectorStore.getState();
+        store.setIsLoading(false);
 
-      // Ignore data from tabs that are not currently active
-      const wsState = useWorkspacesStore.getState();
-      const activeTabId = getLiveWorkspaceActiveTabId(
-        wsState.workspaces[wsState.activeWorkspaceId],
-        useTabsStore.getState().tabs,
-      );
-      if (event.tabId !== activeTabId) return;
+        // Ignore data from tabs that are not currently active
+        if (event.tabId !== getActiveTabId()) return;
 
-      // event.data arrives as an already-parsed object (Rust sends serde_json::Value,
-      // not a JSON string) — no JSON.parse needed here.
-      const parsed = event.data;
-      if (parsed.error) {
-        store.setError(parsed.error);
-        return;
-      }
-      store.setError(null);
+        // event.data arrives as an already-parsed object (Rust sends serde_json::Value,
+        // not a JSON string) — no JSON.parse needed here.
+        const parsed = event.data;
+        if (parsed.error) {
+          store.setError(parsed.error);
+          return;
+        }
+        store.setError(null);
 
-      switch (event.dataType) {
-        case "meta":
-          store.setMeta(parsed as unknown as MetaInfo);
-          break;
-        case "cookies":
-          store.setCookies(parsed.cookies as CookieEntry[]);
-          break;
-        case "localStorage":
-          store.setLocalStorage(parsed.items as StorageEntry[]);
-          break;
-        case "sessionStorage":
-          store.setSessionStorage(parsed.items as StorageEntry[]);
-          break;
-      }
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-        return;
-      }
-      unInspectorData = fn;
-    });
+        switch (event.dataType) {
+          case "meta":
+            store.setMeta(parsed as unknown as MetaInfo);
+            break;
+          case "cookies":
+            store.setCookies(parsed.cookies as CookieEntry[]);
+            break;
+          case "localStorage":
+            store.setLocalStorage(parsed.items as StorageEntry[]);
+            break;
+          case "sessionStorage":
+            store.setSessionStorage(parsed.items as StorageEntry[]);
+            break;
+        }
+      }),
+    );
 
-    return () => {
-      cancelled = true;
-      unUrl?.();
-      unLoading?.();
-      unTabInfo?.();
-      unHistory?.();
-      unNewTab?.();
-      unInspectorData?.();
-    };
+    return dispose;
   }, []);
 
   // ── TAB SWITCHING: activate the target tab's webview ─────────────
@@ -655,21 +648,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   // webview on the next line, so there was never a webview left to read from.
   const discardWebviewRef = useRef<(tabId: string) => Promise<void>>(async () => {});
   discardWebviewRef.current = async (tabId: string) => {
-    try {
-      // Bounded, because the close below now waits on this. The capture runs as
-      // ExecuteScript on the page's own JS thread and `eval_json` awaits it with
-      // no timeout, so a tab wedged in a busy loop would never resolve — and that
-      // is exactly the tab discard exists to reclaim. Give up on the state rather
-      // than on the discard.
-      const json = await Promise.race([
-        saveTabState(tabId),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
-      ]);
-      if (json) useTabsStore.getState().saveTabState(tabId, json);
-    } catch {
-      // Capture failed — discard anyway. Losing scroll position is much cheaper
-      // than leaking the webview this was called to reclaim.
-    }
+    await captureTabState(tabId);
     try {
       await closeTabWebview(tabId);
       useTabsStore.getState().discardTab(tabId);
@@ -734,12 +713,9 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
 
       Promise.all(
         toCapture.map(async (id) => {
-          try {
-            const json = await saveTabState(id);
-            if (json) useTabsStore.getState().saveTabState(id, json);
-          } catch {
-            // Capture failed — discard anyway.
-          }
+          // Bounded — an unbounded capture of one wedged tab used to stall the
+          // whole user-agent switch forever.
+          await captureTabState(id);
           useTabsStore.getState().discardTab(id);
         }),
       )
@@ -862,32 +838,24 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   // ── Network entry listener ────────────────────────────────────────
   useEffect(() => {
     if (!IS_TAURI) return;
-    let cancelled = false;
+    const { track, dispose } = tracker();
     const addEntry = useNetworkStore.getState().addEntry;
-    const unlisten = onNetworkEntry((payload) => {
-      if (cancelled) return;
-      addEntry({
-        id: `net-${++_netEntryId}`,
-        ...payload,
-        bodyEvicted: false,
-      });
-    });
-    return () => {
-      cancelled = true;
-      unlisten.then((fn) => fn());
-    };
+    track(
+      onNetworkEntry((payload) => {
+        addEntry({
+          id: `net-${++_netEntryId}`,
+          ...payload,
+          bodyEvicted: false,
+        });
+      }),
+    );
+    return dispose;
   }, []);
 
   // ── Download listeners ────────────────────────────────────────────
   useEffect(() => {
     if (!IS_TAURI) return;
-    let cancelled = false;
-    const unlisteners: UnlistenFn[] = [];
-    const track = (p: Promise<UnlistenFn>) =>
-      p.then((fn) => {
-        if (cancelled) fn();
-        else unlisteners.push(fn);
-      });
+    const { track, dispose } = tracker();
 
     track(
       onDownloadStarted(({ url, destination }) => {
@@ -901,12 +869,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       }),
     );
 
-    return () => {
-      cancelled = true;
-      unlisteners.forEach((fn) => {
-        fn();
-      });
-    };
+    return dispose;
   }, []);
 
   // ── Header rules sync: resolve each tab's own workspace's rules and push the
