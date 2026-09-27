@@ -4,7 +4,9 @@
 
 # ZYNLEX
 
-**A 3.5 MB browser for developers. Built in Rust and Tauri, not Electron.**
+**A 3.6 MB browser for web developers. Built in Rust and Tauri, not Electron.**
+
+ZYNLEX is a lightweight Windows browser for local web development. It finds the dev servers running on your machine, and puts a network log, API response mocking, device viewports, request header rules and an API client in the sidebar — the things you'd otherwise open DevTools, Postman, Charles and a responsive tester for.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![CI](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml/badge.svg)](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml)
@@ -28,9 +30,9 @@ New tab shows your running dev servers. ZYNLEX scans localhost, reads the page t
 The sidebar has the things you'd otherwise keep four apps around for:
 
 - **Network log**: per-tab capture with filters, URL search, pause, and response bodies
+- **Mock responses**: fake any API response (status, body, delay) by URL pattern, or click "Mock this" on a captured request and edit it. No proxy, no certificate
 - **Device viewports**: one device at a time, rendered at its real pixel size
 - **Header rules**: add, override or strip request headers, matched per URL pattern
-- **Mock responses**: serve a canned status, body and delay for any URL pattern, or one-click mock a captured request. No proxy, no certificate
 - **API client**: saved collections, cURL import, runs through Rust so page CORS doesn't apply
 - **Inspector**: meta tags, Open Graph previews, and cookies including HttpOnly
 - JWT decoder, Base64, user-agent switcher
@@ -38,6 +40,21 @@ The sidebar has the things you'd otherwise keep four apps around for:
 Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it.
 
 No account. No telemetry. It makes no network calls of its own.
+
+## Who it's for
+
+Frontend and full-stack developers who spend the day on `localhost`. ZYNLEX is meant to be the browser you keep open next to your editor while you build: open your app, watch its requests, fake the API responses you can't easily reproduce (a 500, an empty list, a slow endpoint), check it on a phone-sized viewport, and move on.
+
+It's a normal browser too — you can browse in it — but it isn't trying to replace Chrome or Firefox as your everyday browser.
+
+## How it compares
+
+| If you use… | For… | ZYNLEX |
+|---|---|---|
+| Chrome DevTools | Network tab, device mode | Same data, kept in the sidebar per tab, alongside the tools below |
+| Charles / Proxyman / Requestly | Mocking and rewriting responses | Built in, no proxy or root certificate. Covers the page's own requests, not other apps |
+| Postman / Insomnia | Sending API requests | A lighter API client with collections and cURL import, saved per workspace |
+| Polypane / Responsively | Multi-device testing | One device at a time at real size. Use those if you need many side by side or accessibility audits |
 
 ## Why it exists
 
@@ -60,7 +77,7 @@ About a third less, and it holds at idle and under load. The idle gap is roughly
 
 That is not clever engineering, and it's worth being clear about why. Your tabs run on WebView2, which is Chromium, the same renderer Chrome uses. Heavy pages cost the same in both. The savings come from what ZYNLEX doesn't run: no sync, no Safe Browsing, no prerendering, no extension host, no update service. The app process itself is 27 MB.
 
-The installer is 3.46 MB for the same reason. WebView2 already ships with Windows, so there's no bundled copy of Chromium to download. It's also why there's no macOS or Linux build yet.
+The installer is 3.6 MB for the same reason. WebView2 already ships with Windows, so there's no bundled copy of Chromium to download. It's also why there's no macOS or Linux build yet.
 
 If you need macOS, several viewports side by side, or accessibility audits, [Responsively](https://responsively.app) and [Polypane](https://polypane.app) do those and ZYNLEX doesn't.
 

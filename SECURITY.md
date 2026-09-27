@@ -1,11 +1,12 @@
 # Security Policy
 
-ZYNLEX is a developer tool that intercepts and modifies live web traffic: it injects
-arbitrary HTTP headers, captures network requests via native WebView2 COM APIs,
-reads and edits cookies (including HttpOnly cookies), decodes JWTs, and makes
-outbound HTTP requests on the user's behalf through the API Tester. Bugs in any
-of that surface can mean more than a crash, so please report vulnerabilities
-responsibly rather than opening a public issue.
+This policy covers ZYNLEX, a browser for local web development (see the
+[README](README.md) for what it does).
+
+Several of its features act on the traffic of the page you have open — the
+network log, header rules, mock responses, the cookie inspector — and the API
+Tester sends requests on your behalf. A bug there can mean more than a crash, so
+please report vulnerabilities privately rather than in a public issue.
 
 ## Reporting a vulnerability
 
@@ -22,8 +23,8 @@ We'll acknowledge reports within a few days and follow up once a fix is ready.
 ## Scope
 
 In scope: the Tauri command surface (`src-tauri/src/commands/`), the IPC
-boundary between the frontend and the Rust backend, header injection, cookie
-handling, and the API Tester's outbound request path.
+boundary between the frontend and the Rust backend, header rules, mock
+responses, cookie handling, and the API Tester's outbound request path.
 
 Out of scope: vulnerabilities in WebView2 itself, or in sites the browser
 merely renders.
