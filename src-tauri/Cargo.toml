@@ -29,7 +29,11 @@ url = "2"
 tokio = { version = "1", features = ["net", "time", "io-util", "rt"] }
 webview2-com = "0.38"
 windows-core = "0.61"
-windows = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+windows = { version = "0.61", features = [
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_System_Com",
+] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-process = "2.3.1"

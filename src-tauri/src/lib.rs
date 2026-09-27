@@ -300,6 +300,7 @@ pub fn run() {
             commands::browser::browser_save_tab_state,
             commands::browser::browser_restore_tab_state,
             commands::browser::browser_set_header_rules,
+            commands::browser::browser_set_mock_rules,
             commands::http::api_fetch,
             commands::ports::scan_ports,
         ])

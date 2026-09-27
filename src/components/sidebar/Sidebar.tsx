@@ -13,6 +13,7 @@ import {
   Monitor,
   Shield,
   Download,
+  Ghost,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui";
@@ -48,6 +49,9 @@ const UserAgentPanel = lazy(() =>
 const HeadersPanel = lazy(() =>
   import("@/components/panels/HeadersPanel").then((m) => ({ default: m.HeadersPanel })),
 );
+const MocksPanel = lazy(() =>
+  import("@/components/panels/MocksPanel").then((m) => ({ default: m.MocksPanel })),
+);
 const DownloadsPanel = lazy(() =>
   import("@/components/sidebar/DownloadsPanel").then((m) => ({ default: m.DownloadsPanel })),
 );
@@ -57,6 +61,7 @@ const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
   { id: "inspector", Icon: FlaskConical, label: "Inspector" },
   { id: "api", Icon: Code2, label: "API Tester" },
   { id: "headers", Icon: Shield, label: "Header Injection" },
+  { id: "mocks", Icon: Ghost, label: "Mock Responses" },
   { id: "jwt", Icon: KeyRound, label: "JWT Decoder" },
   { id: "base64", Icon: Binary, label: "Base64" },
   { id: "ua", Icon: Globe, label: "User Agent" },
@@ -314,6 +319,7 @@ export function Sidebar() {
           {activePanel === "base64" && <Base64Tool />}
           {activePanel === "ua" && <UserAgentPanel />}
           {activePanel === "headers" && <HeadersPanel />}
+          {activePanel === "mocks" && <MocksPanel />}
           {activePanel === "viewport" && <ViewportControlsPanel />}
         </Suspense>
       </div>

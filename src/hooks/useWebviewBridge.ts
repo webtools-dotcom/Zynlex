@@ -52,7 +52,8 @@ import type { MetaInfo, CookieEntry, StorageEntry } from "@/types";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { useNetworkStore } from "@/stores/network";
 import { useHeadersStore } from "@/stores/headers";
-import { setHeaderRules } from "@/services/browser";
+import { setHeaderRules, setMockRules } from "@/services/browser";
+import { useMocksStore } from "@/stores/mocks";
 import { titleFromUrl } from "@/lib/url";
 import { openTab } from "@/lib/tabActions";
 
@@ -872,44 +873,54 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     return dispose;
   }, []);
 
-  // ── Header rules sync: resolve each tab's own workspace's rules and push the
-  // whole per-tab map to Rust. Keyed by tabId (not the active workspace) so a
-  // background tab from an inactive workspace never picks up another
-  // workspace's rules. ──
+  // ── Header + mock rules sync: resolve each tab's own workspace's rules and
+  // push the whole per-tab map to Rust. Keyed by tabId (not the active
+  // workspace) so a background tab from an inactive workspace never picks up
+  // another workspace's rules. ──
   useEffect(() => {
     if (!IS_TAURI) return;
-    // The payload of the last push. The tabs store fires on every title, favicon,
-    // loading flag, zoom, lastActiveAt and history-state change, so this
-    // subscription runs dozens of times per page load — and the rule map is
-    // identical almost every time. Only a real change is worth an IPC round trip
-    // and a lock on the map the request handler reads per request.
-    let lastSent: string | null = null;
-    const sync = () => {
-      const { rulesByWs } = useHeadersStore.getState();
-      const rulesByTab: Record<
-        string,
-        ReturnType<typeof useHeadersStore.getState>["rulesByWs"][string]
-      > = {};
-      for (const tab of Object.values(useTabsStore.getState().tabs)) {
-        const rules = rulesByWs[tab.workspaceId];
-        if (rules?.length) rulesByTab[tab.id] = rules;
-      }
-      // Comparing the serialised payload rather than diffing by hand: it is the
-      // exact thing being sent, so it cannot disagree with what a hand-written
-      // comparison thinks matters.
-      const serialised = JSON.stringify(rulesByTab);
-      if (serialised === lastSent) return;
-      lastSent = serialised;
-      setHeaderRules(rulesByTab).catch((err) =>
-        console.error("[zynlex] Failed to sync header rules:", err),
-      );
+    const syncRules = <T extends { id: string }>(
+      store: {
+        getState: () => { rulesByWs: Record<string, T[]> };
+        subscribe: (fn: () => void) => () => void;
+      },
+      send: (rulesByTab: Record<string, T[]>) => Promise<void>,
+      label: string,
+    ) => {
+      // The payload of the last push. The tabs store fires on every title,
+      // favicon, loading flag, zoom, lastActiveAt and history-state change, so
+      // this runs dozens of times per page load — and the rule map is identical
+      // almost every time. Only a real change is worth an IPC round trip and a
+      // lock on the map the request handler reads per request.
+      let lastSent: string | null = null;
+      const sync = () => {
+        const { rulesByWs } = store.getState();
+        const rulesByTab: Record<string, T[]> = {};
+        for (const tab of Object.values(useTabsStore.getState().tabs)) {
+          const rules = rulesByWs[tab.workspaceId];
+          if (rules?.length) rulesByTab[tab.id] = rules;
+        }
+        // Comparing the serialised payload rather than diffing by hand: it is
+        // the exact thing being sent, so it cannot disagree with what a
+        // hand-written comparison thinks matters.
+        const serialised = JSON.stringify(rulesByTab);
+        if (serialised === lastSent) return;
+        lastSent = serialised;
+        send(rulesByTab).catch((err) => console.error(`[zynlex] Failed to sync ${label}:`, err));
+      };
+      sync();
+      const unsubStore = store.subscribe(sync);
+      const unsubTabs = useTabsStore.subscribe(sync);
+      return () => {
+        unsubStore();
+        unsubTabs();
+      };
     };
-    sync();
-    const unsubHeaders = useHeadersStore.subscribe(sync);
-    const unsubTabs = useTabsStore.subscribe(sync);
+    const unsubHeaders = syncRules(useHeadersStore, setHeaderRules, "header rules");
+    const unsubMocks = syncRules(useMocksStore, setMockRules, "mock rules");
     return () => {
       unsubHeaders();
-      unsubTabs();
+      unsubMocks();
     };
   }, []);
 

@@ -19,6 +19,8 @@ export interface NetworkLogEntry {
   bodyTruncated: boolean;
   /** Body was dropped to reclaim memory — see `BODIES_KEPT`. */
   bodyEvicted: boolean;
+  /** Served by a mock rule, never reached the network. */
+  mocked?: boolean;
 }
 
 interface NetworkStore {

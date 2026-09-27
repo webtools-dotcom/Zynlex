@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import type { MockRule } from "@/stores/mocks";
 
 export interface BrowserBounds {
   x: number;
@@ -409,6 +410,7 @@ interface NetworkEntryPayload {
   body: string;
   /** Body hit the 64 KB capture cap and this is the leading slice. */
   bodyTruncated: boolean;
+  mocked?: boolean;
 }
 
 export function onNetworkEntry(
@@ -437,6 +439,12 @@ export async function setHeaderRules(
   rulesByTab: Record<string, HeaderRulePayload[]>,
 ): Promise<void> {
   await invoke<void>("browser_set_header_rules", { rulesByTab });
+}
+
+// ─── Response Mocking (SetResponse in WebResourceRequested) ─────────
+
+export async function setMockRules(rulesByTab: Record<string, MockRule[]>): Promise<void> {
+  await invoke<void>("browser_set_mock_rules", { rulesByTab });
 }
 
 // ─── Focus ───────────────────────────────────────────────────────────

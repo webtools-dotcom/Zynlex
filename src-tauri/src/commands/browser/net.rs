@@ -52,6 +52,251 @@ fn header_rules() -> &'static Mutex<HashMap<String, Vec<HeaderRule>>> {
     HEADER_RULES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// A canned response for requests matching `pattern` (+ `method`). First
+/// enabled match wins. Served from the WebResourceRequested handler via
+/// `SetResponse`, so the request never reaches the network.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MockRule {
+    pub pattern: String,
+    /// Empty or `*` matches any method.
+    #[serde(default)]
+    pub method: String,
+    pub status: u16,
+    #[serde(default)]
+    pub content_type: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub delay_ms: u64,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+// Keyed by tabId, same reasoning as HEADER_RULES.
+static MOCK_RULES: OnceLock<Mutex<HashMap<String, Vec<MockRule>>>> = OnceLock::new();
+
+fn mock_rules() -> &'static Mutex<HashMap<String, Vec<MockRule>>> {
+    MOCK_RULES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// First enabled rule matching `method` + `uri`. A blank or bare-`*` pattern
+/// never matches: unlike a header rule, a catch-all mock replaces the page's
+/// own document and every script and stylesheet with the canned body.
+fn find_mock<'a>(rules: &'a [MockRule], method: &str, uri: &str) -> Option<&'a MockRule> {
+    rules.iter().find(|r| {
+        let pattern = r.pattern.trim();
+        r.enabled
+            && !pattern.is_empty()
+            && pattern != "*"
+            && (r.method.is_empty() || r.method == "*" || r.method.eq_ignore_ascii_case(method))
+            && url_matches(pattern, uri)
+    })
+}
+
+fn resource_type_name(context: i32) -> &'static str {
+    match context {
+        1 => "document",
+        2 => "stylesheet",
+        3 => "image",
+        4 => "media",
+        5 => "font",
+        6 => "script",
+        7 => "xhr",
+        8 => "fetch",
+        9 => "texttrack",
+        10 => "eventsource",
+        11 => "websocket",
+        12 => "manifest",
+        13 => "signedexchange",
+        14 => "ping",
+        15 => "cspviolationreport",
+        _ => "other",
+    }
+}
+
+/// Reads one request header, `None` when absent.
+#[cfg(windows)]
+unsafe fn request_header(
+    request: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2WebResourceRequest,
+    name: &str,
+) -> Option<String> {
+    let headers = request.Headers().ok()?;
+    let mut value = windows::core::PWSTR::null();
+    headers
+        .GetHeader(&windows::core::HSTRING::from(name), &mut value)
+        .ok()?;
+    if value.is_null() {
+        None
+    } else {
+        value.to_string().ok()
+    }
+}
+
+/// `ICoreWebView2Deferral` is a COM pointer and not `Send`, but completing it
+/// is only ever done back on the UI thread (via `run_on_main_thread`) — the
+/// worker thread just carries it across the sleep.
+#[cfg(windows)]
+struct SendDeferral(webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Deferral);
+#[cfg(windows)]
+unsafe impl Send for SendDeferral {}
+#[cfg(windows)]
+impl SendDeferral {
+    fn complete(self) {
+        let _ = unsafe { self.0.Complete() };
+    }
+}
+
+/// Answer the request from `tab_id`'s mock rules, if one matches. Returns true
+/// when the request was served here.
+///
+/// Also answers the CORS preflight for a mocked cross-origin request: the page
+/// at localhost:3000 calling a mocked localhost:8000 API would otherwise have
+/// its preflight go to a server that may not exist (or not allow the origin),
+/// and the real request would never be sent to be mocked.
+#[cfg(windows)]
+unsafe fn try_mock(
+    app: &tauri::AppHandle,
+    env: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Environment,
+    args: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2WebResourceRequestedEventArgs,
+    request: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2WebResourceRequest,
+    tab_id: &str,
+    uri: &str,
+) -> bool {
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_WEB_RESOURCE_CONTEXT;
+    use windows::core::HSTRING;
+    use windows::Win32::UI::Shell::SHCreateMemStream;
+
+    let rules: Vec<MockRule> = match mock_rules().lock() {
+        Ok(m) => match m.get(tab_id) {
+            Some(v) if !v.is_empty() => v.clone(),
+            _ => return false,
+        },
+        Err(_) => return false,
+    };
+
+    let method = pwstr_to_string(|p| {
+        let _ = request.Method(p);
+    });
+    let origin = request_header(request, "Origin");
+    let cors = |extra: &str| {
+        match &origin {
+        Some(o) => format!(
+            "Access-Control-Allow-Origin: {o}\r\nAccess-Control-Allow-Credentials: true\r\nVary: Origin\r\n{extra}"
+        ),
+        None => String::new(),
+    }
+    };
+
+    if method.eq_ignore_ascii_case("OPTIONS") {
+        if let Some(wanted) = request_header(request, "Access-Control-Request-Method") {
+            if find_mock(&rules, &wanted, uri).is_some() {
+                let allow_headers = request_header(request, "Access-Control-Request-Headers")
+                    .map(|h| format!("Access-Control-Allow-Headers: {h}\r\n"))
+                    .unwrap_or_default();
+                let headers = cors(&format!(
+                    "Access-Control-Allow-Methods: {wanted}\r\n{allow_headers}Access-Control-Max-Age: 600\r\nX-Zynlex-Mock: 1\r\n"
+                ));
+                if let Ok(resp) = env.CreateWebResourceResponse(
+                    None,
+                    204,
+                    &HSTRING::from("No Content"),
+                    &HSTRING::from(headers),
+                ) {
+                    return args.SetResponse(&resp).is_ok();
+                }
+            }
+        }
+    }
+
+    let Some(rule) = find_mock(&rules, &method, uri) else {
+        return false;
+    };
+
+    let content_type = if rule.content_type.trim().is_empty() {
+        "application/json"
+    } else {
+        rule.content_type.trim()
+    };
+    let headers = format!(
+        "Content-Type: {content_type}\r\n{}X-Zynlex-Mock: 1\r\n",
+        cors("Access-Control-Expose-Headers: *\r\n")
+    );
+    let reason = reqwest::StatusCode::from_u16(rule.status)
+        .ok()
+        .and_then(|s| s.canonical_reason())
+        .unwrap_or("");
+    let stream = if rule.body.is_empty() {
+        None
+    } else {
+        SHCreateMemStream(Some(rule.body.as_bytes()))
+    };
+    let resp = match env.CreateWebResourceResponse(
+        stream.as_ref(),
+        rule.status as i32,
+        &HSTRING::from(reason),
+        &HSTRING::from(headers.as_str()),
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            zynlex_log!("[zynlex] mock CreateWebResourceResponse failed: {e:?}");
+            return false;
+        }
+    };
+    if args.SetResponse(&resp).is_err() {
+        return false;
+    }
+
+    // A delay holds the response back with a deferral, completed from the UI
+    // thread once the sleep is over.
+    if rule.delay_ms > 0 {
+        if let Ok(deferral) = args.GetDeferral() {
+            let deferral = SendDeferral(deferral);
+            let app = app.clone();
+            let ms = rule.delay_ms.min(60_000);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(ms));
+                let _ = app.run_on_main_thread(move || deferral.complete());
+            });
+        }
+    }
+
+    // The response handler skips X-Zynlex-Mock responses (if WebView2 raises
+    // it at all for a SetResponse), so the log entry is emitted here.
+    if NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) > 0 {
+        let mut ctx = COREWEBVIEW2_WEB_RESOURCE_CONTEXT(0);
+        let _ = args.ResourceContext(&mut ctx);
+        let mut body = rule.body.clone();
+        let truncated = body.len() > 65536;
+        if truncated {
+            let mut cut = 65536;
+            while !body.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            body.truncate(cut);
+        }
+        let _ = app.emit(
+            "browser://network-entry",
+            serde_json::json!({
+                "tabId": tab_id,
+                "method": method,
+                "url": uri,
+                "statusCode": rule.status,
+                "reasonPhrase": reason,
+                "resourceType": resource_type_name(ctx.0),
+                "durationMs": rule.delay_ms,
+                "contentLength": rule.body.len(),
+                "referrer": request_header(request, "Referer").unwrap_or_default(),
+                "headers": [["Content-Type", content_type], ["X-Zynlex-Mock", "1"]],
+                "body": body,
+                "bodyTruncated": truncated,
+                "mocked": true,
+            }),
+        );
+    }
+    true
+}
+
 fn strip_scheme(s: &str) -> &str {
     match s.find("://") {
         Some(i) => &s[i + 3..],
@@ -162,6 +407,13 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                 return;
             }
 
+            // Needed to build mock responses. A runtime too old for
+            // ICoreWebView2_2 simply gets no mocking.
+            let env = core
+                .cast::<ICoreWebView2_2>()
+                .and_then(|c| c.Environment())
+                .ok();
+            let app_req = app.clone();
             let tab_id_req = tab_id.clone();
             let req_handler =
                 WebResourceRequestedEventHandler::create(Box::new(move |_webview, args| {
@@ -205,6 +457,12 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                 }
                             }
                         }
+
+                        if let Some(env) = &env {
+                            if try_mock(&app_req, env, &args, &request, &tab_id_req, &uri) {
+                                return Ok(());
+                            }
+                        }
                     }
 
                     // Network-capture work below is rent the Network panel pays for
@@ -215,25 +473,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
 
                     let mut resource_context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT(0);
                     let _ = args.ResourceContext(&mut resource_context);
-                    let resource_type = match resource_context.0 {
-                        1 => "document",
-                        2 => "stylesheet",
-                        3 => "image",
-                        4 => "media",
-                        5 => "font",
-                        6 => "script",
-                        7 => "xhr",
-                        8 => "fetch",
-                        9 => "texttrack",
-                        10 => "eventsource",
-                        11 => "websocket",
-                        12 => "manifest",
-                        13 => "signedexchange",
-                        14 => "ping",
-                        15 => "cspviolationreport",
-                        16 => "other",
-                        _ => "other",
-                    };
+                    let resource_type = resource_type_name(resource_context.0);
 
                     let now = Instant::now();
                     let meta_key = format!("{}:{}", tab_id_req, uri);
@@ -320,19 +560,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                     // ICoreWebView2WebResourceRequest exposes no initiator/originator —
                     // only the request headers. So the panel's column is the Referer
                     // header, labelled "Referrer", not a true initiator chain.
-                    let referrer = request
-                        .Headers()
-                        .ok()
-                        .and_then(|h| {
-                            let mut value = PWSTR::null();
-                            h.GetHeader(&HSTRING::from("Referer"), &mut value).ok()?;
-                            if value.is_null() {
-                                None
-                            } else {
-                                value.to_string().ok()
-                            }
-                        })
-                        .unwrap_or_default();
+                    let referrer = request_header(&request, "Referer").unwrap_or_default();
 
                     let mut status_code: i32 = 0;
                     let _ = response.StatusCode(&mut status_code);
@@ -369,6 +597,14 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                 }
                             }
                         }
+                    }
+
+                    // Mocked responses were already logged by try_mock.
+                    if headers
+                        .iter()
+                        .any(|(k, _)| k.eq_ignore_ascii_case("x-zynlex-mock"))
+                    {
+                        return Ok(());
                     }
 
                     // Case-insensitive: WebView2 hands back whatever casing the
@@ -480,6 +716,14 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
 }
 
 #[tauri::command]
+pub async fn browser_set_mock_rules(
+    rules_by_tab: HashMap<String, Vec<MockRule>>,
+) -> Result<(), String> {
+    *mock_rules().lock().map_err(|e| e.to_string())? = rules_by_tab;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn browser_set_header_rules(
     rules_by_tab: HashMap<String, Vec<HeaderRule>>,
 ) -> Result<(), String> {
@@ -488,7 +732,42 @@ pub async fn browser_set_header_rules(
 }
 #[cfg(test)]
 mod tests {
-    use super::url_matches;
+    use super::{find_mock, url_matches, MockRule};
+
+    fn mock(pattern: &str, method: &str) -> MockRule {
+        MockRule {
+            pattern: pattern.into(),
+            method: method.into(),
+            status: 200,
+            content_type: String::new(),
+            body: String::new(),
+            delay_ms: 0,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn mock_matching() {
+        let rules = vec![mock("localhost:8000/api/users", "GET"), mock("*/api/*", "")];
+        // Method-specific rule wins when it comes first.
+        assert_eq!(
+            find_mock(&rules, "get", "http://localhost:8000/api/users").map(|r| &r.method[..]),
+            Some("GET")
+        );
+        // Falls through to the any-method rule.
+        assert_eq!(
+            find_mock(&rules, "POST", "http://localhost:8000/api/users").map(|r| &r.method[..]),
+            Some("")
+        );
+        assert!(find_mock(&rules, "GET", "http://localhost:8000/index.html").is_none());
+
+        // A catch-all would replace the page itself — never matches.
+        assert!(find_mock(&[mock("", ""), mock(" * ", "")], "GET", "http://x/").is_none());
+
+        let mut off = mock("*/api/*", "");
+        off.enabled = false;
+        assert!(find_mock(&[off], "GET", "http://x/api/y").is_none());
+    }
 
     #[test]
     fn glob_matching() {
