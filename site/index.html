@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZYNLEX — the minimal browser for web developers</title>
+<meta name="description" content="ZYNLEX is a 3.6 MB browser for local web development on Windows. It finds your localhost dev servers, logs network traffic, mocks API responses without a proxy, and emulates devices. Free and open source.">
+<link rel="canonical" href="https://webtools-dotcom.github.io/Zynlex/">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="theme-color" content="#0b0b0a">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ZYNLEX">
+<meta property="og:title" content="ZYNLEX — the minimal browser for web developers">
+<meta property="og:description" content="Finds your localhost dev servers, logs their traffic, mocks API responses without a proxy, and emulates devices. 3.6 MB, Rust + Tauri, not Electron.">
+<meta property="og:url" content="https://webtools-dotcom.github.io/Zynlex/">
+<meta property="og:image" content="https://webtools-dotcom.github.io/Zynlex/assets/og.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="preload" href="fonts/jetbrains-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/space-grotesk-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "ZYNLEX",
+  "description": "A minimal browser for local web development: localhost dev server detection, network log, API response mocking without a proxy, device viewports, header rules and an API client.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows 10, Windows 11",
+  "softwareVersion": "0.13.0",
+  "fileSize": "3.6MB",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "url": "https://webtools-dotcom.github.io/Zynlex/",
+  "downloadUrl": "https://github.com/webtools-dotcom/Zynlex/releases/latest",
+  "codeRepository": "https://github.com/webtools-dotcom/Zynlex",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Is ZYNLEX a minimal browser I can use every day?",
+      "acceptedAnswer": { "@type": "Answer", "text": "You can browse in it like any browser, and it is minimal: no sync, no extensions, no account. It is built around development work, so most people keep it open next to their editor rather than replacing their main browser." } },
+    { "@type": "Question", "name": "Will websites work in ZYNLEX?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. Tabs render with WebView2, Microsoft's packaging of Chromium, the same engine as Chrome and Edge." } },
+    { "@type": "Question", "name": "Do I need a proxy or certificate to mock API responses in ZYNLEX?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Mocks are answered inside the browser before the request reaches the network, so there is nothing to install or trust. It only mocks requests made by pages open in ZYNLEX." } },
+    { "@type": "Question", "name": "Is ZYNLEX built on Electron?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. It is built with Tauri and Rust and uses the WebView2 runtime that ships with Windows, which is why the installer is 3.6 MB." } },
+    { "@type": "Question", "name": "Does ZYNLEX work on macOS or Linux?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Not yet. Its developer features are built on WebView2 APIs that only exist on Windows." } }
+  ]
+}
+</script>
+
+<style>
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 500; font-display: swap; src: url(fonts/jetbrains-mono-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-weight: 500; font-display: swap; src: url(fonts/space-grotesk-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-weight: 700; font-display: swap; src: url(fonts/space-grotesk-latin-700-normal.woff2) format("woff2"); }
+
+/* The app's own "Warm Ivory" tokens (src/index.css). */
+:root {
+  --base: #0b0b0a; --surface: #100f0d; --elevated: #17150f; --hover: #211f18;
+  --border: #26251f; --border-subtle: #1c1b16;
+  --text: #e8e6e0; --text-2: #b8b6ae; --muted: #8a887f; --disabled: #57564e;
+  --accent: #dcd3c4; --live: #22c55e; --warn: #f59e0b; --get: #22c55e; --post: #f59e0b;
+  --s2xx: #22c55e; --s5xx: #c084fc; --mock: #f0abfc;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --wrap: 1120px;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body { margin: 0; background: var(--base); color: var(--text); font: 15px/1.65 var(--mono); }
+img { max-width: 100%; display: block; }
+a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { color: #fff; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 32px; } }
+.muted { color: var(--muted); }
+.eyebrow { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+
+/* ── Header ── */
+header { position: sticky; top: 0; z-index: 10; background: rgba(11,11,10,.86); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-subtle); }
+header .wrap { display: flex; align-items: center; gap: 20px; height: 56px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 500; letter-spacing: .14em; font-size: 13px; }
+.brand img { width: 22px; height: 22px; }
+header nav { margin-left: auto; display: flex; gap: 20px; font-size: 13px; }
+header nav a { color: var(--muted); text-decoration: none; }
+header nav a:hover { color: var(--text); }
+@media (max-width: 560px) { header nav a.opt { display: none; } }
+
+/* ── Hero ── */
+.hero { padding-top: 72px; padding-bottom: 40px; }
+.hero h1 { font-family: var(--display); font-weight: 700; font-size: clamp(38px, 7vw, 76px); line-height: 1.02; letter-spacing: -.035em; margin: 18px 0 20px; max-width: 14ch; }
+.hero .lede { color: var(--text-2); max-width: 60ch; margin: 0 0 32px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 6px; font: 500 14px var(--mono); text-decoration: none; border: 1px solid var(--border); color: var(--text); background: var(--elevated); transition: border-color .15s, background .15s; }
+.btn:hover { border-color: var(--accent); color: var(--text); }
+.btn.primary { background: var(--accent); color: var(--base); border-color: var(--accent); }
+.btn.primary:hover { background: #efe8da; color: var(--base); }
+.btn small { font-weight: 400; opacity: .65; }
+.facts { margin-top: 20px; font-size: 13px; color: var(--muted); }
+
+/* Scanner readout — the new-tab page's job, told as a terminal. */
+.scan { margin-top: 56px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.scan-bar { display: flex; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); }
+.scan-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--hover); }
+.scan-body { padding: 18px 20px 22px; font-size: 14px; min-height: 196px; }
+.scan-body .line { white-space: pre; overflow: hidden; text-overflow: ellipsis; opacity: 0; transform: translateY(4px); transition: opacity .35s, transform .35s; }
+.scan-body .line.on { opacity: 1; transform: none; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 10px rgba(34,197,94,.45); margin-right: 10px; vertical-align: 1px; }
+.dot.tcp { background: var(--warn); box-shadow: none; }
+.port { color: var(--text); }
+.code2 { color: var(--s2xx); }
+@media (max-width: 560px) { .scan-body { font-size: 12px; padding: 14px; } }
+
+/* ── Sections ── */
+section { padding: 96px 0; border-top: 1px solid var(--border-subtle); }
+h2 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4.4vw, 44px); line-height: 1.08; letter-spacing: -.025em; margin: 14px 0 18px; max-width: 20ch; }
+section > .wrap > p.intro { color: var(--text-2); max-width: 62ch; margin: 0; }
+
+/* Text above, screenshot full width below — at half width the UI is unreadable. */
+.feature { margin-top: 96px; }
+.feature .copy { display: grid; gap: 4px 56px; margin-bottom: 28px; }
+@media (min-width: 900px) {
+  .feature .copy { grid-template-columns: 5fr 7fr; }
+  .feature .copy .body { padding-top: 30px; }
+  .feature .split { display: grid; grid-template-columns: 5fr 7fr; gap: 56px; align-items: center; margin-bottom: 32px; }
+  .feature .split .copy { display: block; margin: 0; }
+  .feature .split .copy .body { padding-top: 0; }
+}
+.feature .split .demo { margin-bottom: 32px; }
+@media (min-width: 900px) { .feature .split .demo { margin-bottom: 0; } }
+.feature .q { font-size: 13px; color: var(--muted); }
+.feature h3 { font-family: var(--display); font-weight: 500; font-size: clamp(22px, 2.6vw, 28px); letter-spacing: -.015em; line-height: 1.2; margin: 8px 0 12px; }
+.feature p { color: var(--text-2); margin: 0 0 12px; }
+.feature ul { margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 13px; }
+.feature li { padding-left: 18px; position: relative; margin: 4px 0; }
+.feature li::before { content: "→"; position: absolute; left: 0; color: var(--disabled); }
+.shot { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+
+/* ── Mock demo ── */
+.demo { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; font-size: 13px; }
+.demo-row { display: grid; grid-template-columns: 52px 44px 1fr auto; gap: 10px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); }
+.m-get { color: var(--get); font-weight: 500; }
+.badge { font-size: 11px; padding: 1px 7px; border-radius: 3px; background: rgba(20,184,166,.18); color: #5eead4; justify-self: start; }
+.badge.mock { background: rgba(217,70,239,.2); color: var(--mock); }
+.url { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.demo pre { margin: 0; padding: 16px; min-height: 124px; color: var(--text-2); white-space: pre-wrap; transition: color .2s; }
+.demo pre .k { color: #93c5fd; } .demo pre .s { color: #fca5a5; } .demo pre .n { color: #fcd34d; }
+.demo-ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--border-subtle); background: var(--elevated); }
+.demo-ctl button { font: 500 12px var(--mono); color: var(--text-2); background: var(--hover); border: 1px solid var(--border); border-radius: 5px; padding: 7px 11px; cursor: pointer; }
+.demo-ctl button[aria-pressed="true"] { border-color: var(--mock); color: var(--mock); }
+.demo-ctl .hint { margin-left: auto; font-size: 12px; color: var(--muted); }
+.s500 { color: var(--s5xx); } .s200 { color: var(--s2xx); }
+
+/* ── Numbers ── */
+.nums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden; margin-top: 48px; }
+@media (min-width: 820px) { .nums { grid-template-columns: repeat(4, 1fr); } }
+.num { background: var(--base); padding: 26px 22px; }
+.num b { display: block; font-family: var(--display); font-weight: 700; font-size: clamp(30px, 4vw, 44px); letter-spacing: -.03em; line-height: 1; color: var(--text); }
+.num span { display: block; margin-top: 10px; font-size: 13px; color: var(--muted); }
+
+/* ── Limits ── */
+.limits { display: grid; gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden; margin-top: 40px; }
+@media (min-width: 820px) { .limits { grid-template-columns: repeat(3, 1fr); } }
+.limits div { background: var(--base); padding: 22px; }
+.limits b { display: block; font-weight: 500; margin-bottom: 6px; }
+.limits p { margin: 0; color: var(--muted); font-size: 13px; }
+
+/* ── FAQ ── */
+.faq { margin-top: 36px; border-top: 1px solid var(--border); }
+.faq details { border-bottom: 1px solid var(--border); }
+.faq summary { cursor: pointer; list-style: none; padding: 20px 0; display: flex; justify-content: space-between; gap: 16px; font-weight: 500; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; color: var(--muted); }
+.faq details[open] summary::after { content: "–"; }
+.faq details p { margin: 0 0 20px; color: var(--text-2); max-width: 68ch; }
+
+/* ── End ── */
+.end { text-align: left; }
+.end h2 { max-width: 16ch; }
+footer { border-top: 1px solid var(--border-subtle); padding: 32px 0 48px; font-size: 12px; color: var(--muted); }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
+footer a { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .scan-body .line { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/logo.png" alt="" width="22" height="22">ZYNLEX</a>
+    <nav>
+      <a class="opt" href="#features">Features</a>
+      <a class="opt" href="#faq">FAQ</a>
+      <a href="https://github.com/webtools-dotcom/Zynlex">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap hero">
+    <div class="eyebrow">The browser for localhost</div>
+    <h1>The minimal browser for web developers.</h1>
+    <p class="lede">ZYNLEX finds the dev servers running on your machine and puts the network log, API mocking, device viewports and an API client in the browser itself. The things you'd otherwise open DevTools, Postman, Charles and a responsive tester for.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/webtools-dotcom/Zynlex/releases/latest">Download for Windows <small>3.6 MB</small></a>
+      <a class="btn" href="https://github.com/webtools-dotcom/Zynlex">View source</a>
+    </div>
+    <p class="facts">Free and open source · Windows 10 &amp; 11 · Rust + Tauri, not Electron · no account, no telemetry</p>
+
+    <div class="scan" aria-label="Example of ZYNLEX detecting local dev servers">
+      <div class="scan-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="scan-body" id="scan">
+        <div class="line muted">new tab — scanning localhost…</div>
+        <div class="line"><span class="dot"></span><span class="port">:5173</span>   Vite + React             <span class="code2">200</span></div>
+        <div class="line"><span class="dot"></span><span class="port">:3000</span>   Dashboard — Next.js      <span class="code2">200</span></div>
+        <div class="line"><span class="dot"></span><span class="port">:6006</span>   Storybook                <span class="code2">200</span></div>
+        <div class="line"><span class="dot tcp"></span><span class="port">:8000</span>   api  <span class="muted">(listening, no page)</span></div>
+        <div class="line muted">4 servers · click one to open it</div>
+      </div>
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="eyebrow">What it's for</div>
+      <h2>Four questions you ask all day, answered in one window.</h2>
+      <p class="intro">Which port is that on? What did that request return? What happens when the API fails? How does it look on a phone? Each used to be a different app.</p>
+
+      <div class="feature">
+        <div class="copy">
+          <div><div class="q">Which port is that on?</div><h3>Your servers, on the new tab page</h3></div>
+          <div class="body"><p>ZYNLEX scans the usual dev ports every few seconds, reads each page's title and shows what's running. Vite, Next.js, Astro, Storybook, Django, whatever. Add your own ports in settings.</p><ul><li>Label and pin the ones you care about</li><li>Shows a server as stopped when it goes down</li></ul></div>
+        </div>
+        <div class="shot"><img src="assets/home.webp" alt="The new tab page listing three detected local dev servers" width="1600" height="801" loading="lazy"></div>
+      </div>
+
+      <div class="feature">
+        <div class="copy">
+          <div><div class="q">What did that request return?</div><h3>A network log per tab</h3></div>
+          <div class="body"><p>Every request with method, status, type, size and timing, captured through WebView2's own API. There's no proxy to route through and no certificate to trust.</p><ul><li>Filter by errors, API calls or slow requests</li><li>Response headers and bodies, copy as cURL or fetch()</li></ul></div>
+        </div>
+        <div class="shot"><img src="assets/network.webp" alt="The network panel with captured requests and one expanded" width="1600" height="952" loading="lazy"></div>
+      </div>
+
+      <div class="feature">
+        <div class="split">
+          <div class="copy">
+            <div class="q">What happens when the API fails?</div>
+            <h3>Mock any response. No proxy.</h3>
+            <div class="body"><p>Match a URL, set the status, body and delay, and the page gets your version. Or click <em>Mock this</em> on a real request and edit what came back. It works cross-origin, so you can build against a backend that doesn't exist yet.</p><ul><li>Fake the 500, the empty list, the 3-second endpoint</li><li>Mocked requests are marked in the network log</li></ul></div>
+          </div>
+        <div class="demo" id="demo" aria-label="Interactive example of mocking a response">
+          <div class="demo-row">
+            <span class="m-get">GET</span>
+            <span id="d-status" class="s200">200</span>
+            <span class="url">/api/users?page=1</span>
+            <span id="d-badge" class="badge">Fetch</span>
+          </div>
+<pre id="d-body"></pre>
+          <div class="demo-ctl">
+            <button type="button" data-mock="off" aria-pressed="true">Real</button>
+            <button type="button" data-mock="500" aria-pressed="false">Mock 500</button>
+            <button type="button" data-mock="empty" aria-pressed="false">Mock empty</button>
+            <button type="button" data-mock="slow" aria-pressed="false">Mock slow</button>
+            <span class="hint" id="d-hint">try it</span>
+          </div>
+        </div>
+        </div>
+        <div class="shot"><img src="assets/mocks.webp" alt="The Mock Responses panel with a rule returning a 500 error to jsonplaceholder" width="1600" height="800" loading="lazy"></div>
+      </div>
+
+      <div class="feature">
+        <div class="copy">
+          <div><div class="q">How does it look on a phone?</div><h3>Devices at their real size</h3></div>
+          <div class="body"><p>Pick a phone or tablet and the page renders at its true width, pixel ratio and user agent, with touch. One device at a time, at 1:1, not a shrunken thumbnail.</p><ul><li>Current iPhone, Pixel, Galaxy and iPad sizes</li><li>Server-side device detection sees the right client</li></ul></div>
+        </div>
+        <div class="shot"><img src="assets/viewport.webp" alt="A Galaxy phone viewport rendering GitHub at 412 by 891" width="1600" height="951" loading="lazy"></div>
+      </div>
+
+      <div class="feature">
+        <div class="copy">
+          <div><div class="q">And the rest</div><h3>An API client that ignores CORS</h3></div>
+          <div class="body"><p>Requests run through Rust, so the page's CORS rules don't apply. Saved collections and cURL import, per project. Next to it: header rules per URL pattern, an inspector for meta tags, Open Graph and HttpOnly cookies, a JWT decoder, Base64 and a user-agent switcher.</p><ul><li>Workspaces keep each project's tabs, rules and requests apart</li><li><code>Ctrl+K</code> finds all of it</li></ul></div>
+        </div>
+        <div class="shot"><img src="assets/api.webp" alt="The API tester with a saved collection and a JSON response" width="1600" height="947" loading="lazy"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">Small on purpose</div>
+      <h2>No bundled Chromium. No sync. No extension host.</h2>
+      <p class="intro">Tabs render with WebView2, the Chromium runtime that already ships with Windows, so heavy pages cost the same as in Chrome. The savings come from everything ZYNLEX doesn't run.</p>
+      <div class="nums">
+        <div class="num"><b>3.6 MB</b><span>installer</span></div>
+        <div class="num"><b>452 MB</b><span>idle with one tab, vs 689 MB for Chrome</span></div>
+        <div class="num"><b>27 MB</b><span>for the app process itself</span></div>
+        <div class="num"><b>0</b><span>accounts, trackers or telemetry</span></div>
+      </div>
+      <p class="muted" style="font-size:13px;margin-top:16px">Measured on one Windows 11 machine with clean profiles. <a href="https://github.com/webtools-dotcom/Zynlex#size-and-memory">Method and numbers</a>.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">Before you download</div>
+      <h2>What it doesn't do.</h2>
+      <div class="limits">
+        <div><b>Windows only, for now</b><p>Every developer feature sits on WebView2 APIs that only exist on Windows. macOS and Linux are on the roadmap.</p></div>
+        <div><b>One device at a time</b><p>If you need many viewports side by side or accessibility audits, Polypane and Responsively do that well.</p></div>
+        <div><b>Its own tabs only</b><p>Mocks and header rules apply to pages open in ZYNLEX, not to other apps on your machine. WebSocket handshakes aren't covered.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <div class="eyebrow">FAQ</div>
+      <h2>Questions people ask.</h2>
+      <div class="faq">
+        <details><summary>Can I use it as my everyday browser?</summary><p>You can browse in it like any browser, and it is minimal: no sync, no extensions, no account. It's built around development work, so most people keep it open next to their editor rather than replacing their main browser.</p></details>
+        <details><summary>Will websites work in it?</summary><p>Yes. Tabs render with WebView2, Microsoft's packaging of Chromium, the same engine as Chrome and Edge. Pages look and behave the same.</p></details>
+        <details><summary>How is it different from Chrome DevTools?</summary><p>DevTools is a drawer inside a general browser. ZYNLEX puts the network log, device viewports and header rules in the browser's own sidebar, per tab and per project, and adds what DevTools doesn't have: localhost server detection, response mocking without a proxy, and an API client.</p></details>
+        <details><summary>Do I need a proxy or certificate to mock responses?</summary><p>No. Mocks are answered inside the browser before the request reaches the network, so there's nothing to install or trust. Cross-origin requests work too.</p></details>
+        <details><summary>Why is it so small? Is it Electron?</summary><p>It's not Electron. It's built with Tauri and Rust, and uses the WebView2 runtime that already ships with Windows instead of bundling its own copy of Chromium.</p></details>
+        <details><summary>Does it collect any data?</summary><p>No account, no telemetry, no analytics. The only network call it makes on its own is an update check against the project's GitHub releases. This page makes no third-party requests either.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="end">
+    <div class="wrap">
+      <h2>Open localhost in something built for it.</h2>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/webtools-dotcom/Zynlex/releases/latest">Download for Windows <small>3.6 MB</small></a>
+        <a class="btn" href="https://github.com/webtools-dotcom/Zynlex">Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>ZYNLEX · Apache-2.0 · built with Tauri, React and Rust</span>
+    <span><a href="https://github.com/webtools-dotcom/Zynlex/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/webtools-dotcom/Zynlex/issues">Issues</a> · no cookies, no analytics on this page</span>
+  </div>
+</footer>
+
+<script>
+// Scanner readout: reveal one line at a time when it scrolls into view.
+(() => {
+  const lines = [...document.querySelectorAll("#scan .line")];
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const show = () => lines.forEach((l, i) => setTimeout(() => l.classList.add("on"), reduce ? 0 : 250 + i * 420));
+  if (!("IntersectionObserver" in window)) return show();
+  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { show(); io.disconnect(); } }, { threshold: 0.3 });
+  io.observe(document.getElementById("scan"));
+})();
+
+// Mock demo: same request, four answers.
+(() => {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const hl = (json) => esc(json)
+    .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span class="s">"$1"</span>')
+    .replace(/: (\d+|true|false)/g, ': <span class="n">$1</span>');
+  const states = {
+    off:   { status: 200, mock: false, body: '{\n  "page": 1,\n  "users": [\n    { "id": 1, "name": "Ada" },\n    { "id": 2, "name": "Linus" }\n  ]\n}' },
+    "500": { status: 500, mock: true,  body: '{\n  "error": "database is down"\n}' },
+    empty: { status: 200, mock: true,  body: '{\n  "page": 1,\n  "users": []\n}' },
+    slow:  { status: 200, mock: true,  delay: 1500, body: '{\n  "page": 1,\n  "users": [\n    { "id": 1, "name": "Ada" },\n    { "id": 2, "name": "Linus" }\n  ]\n}' },
+  };
+  const $ = (id) => document.getElementById(id);
+  const buttons = [...document.querySelectorAll("#demo [data-mock]")];
+  let seq = 0;
+  const apply = (key) => {
+    const st = states[key];
+    const mine = ++seq;
+    buttons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mock === key)));
+    const paint = () => {
+      if (mine !== seq) return;
+      $("d-status").textContent = st.status;
+      $("d-status").className = st.status >= 500 ? "s500" : "s200";
+      $("d-badge").textContent = st.mock ? "Mock" : "Fetch";
+      $("d-badge").className = st.mock ? "badge mock" : "badge";
+      $("d-body").innerHTML = hl(st.body);
+      $("d-hint").textContent = st.mock ? (st.delay ? "answered after 1.5 s, by ZYNLEX" : "answered by ZYNLEX, never hit the network") : "real response";
+    };
+    if (st.delay) {
+      $("d-status").textContent = "…";
+      $("d-status").className = "muted";
+      $("d-body").textContent = "waiting…";
+      $("d-hint").textContent = "holding the response…";
+      setTimeout(paint, st.delay);
+    } else paint();
+  };
+  buttons.forEach((b) => b.addEventListener("click", () => apply(b.dataset.mock)));
+  apply("off");
+  $("d-hint").textContent = "try it";
+})();
+</script>
+</body>
+</html>
