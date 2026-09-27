@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-27
+
+Mock any API response from inside the browser — no proxy, no certificate, no
+second app — plus a round of fixes from a full audit of the codebase.
+
+### Added
+
+- **Mock Responses panel.** Requests matching a URL pattern (and optionally a
+  method) get the status, content type, body and delay you set, and never reach
+  the network. Use it to fake a 500, an empty list, a slow endpoint, or a backend
+  that isn't running yet.
+  - **Mock this** in the Network panel turns a captured response into a mock you
+    can edit.
+  - Cross-origin APIs work: a page on `localhost:3000` can call a mocked
+    `localhost:8000` with nothing listening there.
+  - Mocked requests appear in the Network log with a **Mock** badge.
+  - Rules are kept per workspace. A blank or bare `*` pattern is ignored, since
+    it would replace the page itself.
+- Live Servers also scans ports 4173 (`vite preview`), 5500 (VS Code Live
+  Server), 5555 (Prisma Studio), 8100 (Ionic) and 19006 (Expo web).
+
+### Fixed
+
+- **Forms submit after a discarded tab is restored.** Restoring wrote the page's
+  old hidden values (CSRF tokens) over the fresh ones, so the next submit was
+  rejected.
+- **History shows page titles** instead of the URL for every entry, and keeps
+  1000 entries instead of 100.
+- **Reload and Stop work on pages with a strict Content Security Policy.**
+- **Bookmarks and reopened tabs show their title** right away instead of the raw
+  URL until the page loads.
+- **Changing the user agent can no longer hang** when a background tab is busy.
+- Page titles containing `&amp;` in Live Servers are no longer decoded twice.
+
+### Changed
+
+- The Network panel no longer reads the bodies of images, fonts and media. They
+  were never shown, and reading them cost memory and time on media-heavy pages.
+- The Live Servers list no longer re-renders on every scan when nothing changed.
+- The app requests fewer window and webview permissions — only the ones the
+  interface actually uses.
+
 ## [0.12.0] - 2026-09-12
 
 A correctness release. Several features turned out never to have worked at all —
@@ -166,7 +208,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.0
 [0.12.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.12.0
 [0.11.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.11.0
 [0.10.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.10.0
