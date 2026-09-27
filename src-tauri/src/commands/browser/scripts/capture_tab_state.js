@@ -10,6 +10,10 @@
             // that renders differently on reload would write the value into some
             // other field — and a discarded background tab is not worth that risk.
             if (el.type === 'password') continue;
+            // Hidden inputs are server state (CSRF tokens, nonces): writing a stale
+            // one over the freshly issued value breaks the next submit. File inputs
+            // can't be restored at all.
+            if (el.type === 'hidden' || el.type === 'file') continue;
             var s = { i: i, tag: el.tagName, type: el.type || '', name: el.name || '' };
             if (el.type === 'checkbox' || el.type === 'radio') {
                 s.checked = el.checked;
@@ -17,9 +21,6 @@
                 s.selectedIndex = el.selectedIndex;
             } else {
                 s.value = el.value;
-            }
-            if (el.isContentEditable) {
-                s.html = el.innerHTML;
             }
             formState.push(s);
         }

@@ -11,10 +11,10 @@ import { Bookmark, Trash2, ExternalLink, FolderPlus, Upload, Download } from "lu
 import { cn } from "@/lib/utils";
 import { useBookmarksStore } from "@/stores/bookmarks";
 import { useWorkspacesStore } from "@/stores/workspaces";
-import { useTabsStore } from "@/stores/tabs";
 import { VirtualList } from "@/components/ui/VirtualList";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { useUIStore } from "@/stores/ui";
+import { openTab } from "@/lib/tabActions";
 
 function getHost(url: string): string {
   try {
@@ -34,9 +34,6 @@ function BookmarksPanel() {
   const workspaces = useWorkspacesStore((s) => s.workspaces);
   const ws = workspaces[activeWorkspaceId];
   const wsName = ws?.name ?? "Workspace";
-  const addTab = useTabsStore((s) => s.addTab);
-  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
-  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState<string>("");
 
@@ -109,9 +106,7 @@ function BookmarksPanel() {
   }
 
   function openBookmark(url: string) {
-    const id = addTab(activeWorkspaceId, { url });
-    addTabToWorkspace(activeWorkspaceId, id);
-    setActiveTab(activeWorkspaceId, id);
+    openTab({ url }, { wsId: activeWorkspaceId });
   }
 
   function startRename(id: string, currentTitle: string) {

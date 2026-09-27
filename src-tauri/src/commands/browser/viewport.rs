@@ -1,5 +1,4 @@
 use super::{eval_json, find_tab_webview};
-use crate::zynlex_log;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewUrl,
@@ -42,28 +41,8 @@ fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
     #[cfg(windows)]
     {
         let spec = spec.clone();
-        let _ = webview.with_webview(move |platform| unsafe {
-            use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
-            use windows_core::HSTRING;
-            let core = match platform.controller().CoreWebView2() {
-                Ok(c) => c,
-                Err(e) => {
-                    zynlex_log!("[zynlex] viewport emulation: CoreWebView2 unavailable: {e:?}");
-                    return;
-                }
-            };
-            let call = |method: &str, params: String| {
-                let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
-                    |_r: windows_core::Result<()>, _json: String| -> windows_core::Result<()> {
-                        Ok(())
-                    },
-                ));
-                let _ = core.CallDevToolsProtocolMethod(
-                    &HSTRING::from(method),
-                    &HSTRING::from(params),
-                    &handler,
-                );
-            };
+        let _ = super::with_core(webview, "viewport emulation", move |core| {
+            let call = |method: &str, params: String| super::cdp(&core, method, &params);
             call(
                 "Emulation.setDeviceMetricsOverride",
                 serde_json::json!({

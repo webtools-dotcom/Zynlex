@@ -10,8 +10,8 @@ import { createPortal } from "react-dom";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
-import { closeTabWebview } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
+import { openTab, closeTab } from "@/lib/tabActions";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
 
@@ -74,12 +74,10 @@ export function TabContextMenu({ tabId, workspaceId, x, y, onClose, bridge }: Ta
 
   function handleDuplicate() {
     if (!tab) return;
-    const newId = useTabsStore.getState().addTab(workspaceId, {
-      url: tab.url,
-      title: tab.title,
-      favicon: tab.favicon ?? undefined,
-    });
-    useWorkspacesStore.getState().addTabToWorkspace(workspaceId, newId);
+    openTab(
+      { url: tab.url, title: tab.title, favicon: tab.favicon ?? undefined },
+      { wsId: workspaceId, activate: false },
+    );
     onClose();
   }
 
@@ -89,9 +87,7 @@ export function TabContextMenu({ tabId, workspaceId, x, y, onClose, bridge }: Ta
   }
 
   function handleClose() {
-    useWorkspacesStore.getState().removeTabFromWorkspace(workspaceId, tabId);
-    useTabsStore.getState().closeTab(tabId);
-    closeTabWebview(tabId).catch(() => {});
+    closeTab(tabId);
     onClose();
   }
 
@@ -101,11 +97,7 @@ export function TabContextMenu({ tabId, workspaceId, x, y, onClose, bridge }: Ta
     const others = getLiveWorkspaceTabIds(ws, useTabsStore.getState().tabs).filter(
       (id) => id !== tabId,
     );
-    for (const id of others) {
-      useWorkspacesStore.getState().removeTabFromWorkspace(workspaceId, id);
-      useTabsStore.getState().closeTab(id);
-      closeTabWebview(id).catch(() => {});
-    }
+    for (const id of others) closeTab(id);
     onClose();
   }
 

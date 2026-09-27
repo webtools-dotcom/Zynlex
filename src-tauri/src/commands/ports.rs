@@ -182,13 +182,14 @@ fn extract_title(html: &str) -> Option<String> {
     let end = lower[start..].find("</title")? + start;
     if start < end {
         let raw = html[start..end].trim();
-        // Decode common HTML entities
+        // Decode common HTML entities. `&amp;` goes last: decoding it first turns
+        // a literal `&amp;lt;` into `&lt;` and then into `<` — a double decode.
         let decoded = raw
-            .replace("&amp;", "&")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&quot;", "\"")
-            .replace("&#39;", "'");
+            .replace("&#39;", "'")
+            .replace("&amp;", "&");
         if decoded.is_empty() {
             None
         } else {
@@ -282,6 +283,11 @@ mod tests {
         assert_eq!(
             extract_title("<!-- café İstanbul --><title>Ok</title>"),
             Some("Ok".to_string())
+        );
+        // Decoded once, not twice.
+        assert_eq!(
+            extract_title("<title>&amp;lt;b&amp;gt;</title>"),
+            Some("&lt;b&gt;".to_string())
         );
         assert_eq!(extract_title("<title></title>"), None);
         assert_eq!(extract_title("no title here"), None);

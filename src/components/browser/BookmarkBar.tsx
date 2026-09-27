@@ -8,16 +8,13 @@ import { Folder } from "lucide-react";
 import { useState } from "react";
 import { useBookmarksStore } from "@/stores/bookmarks";
 import { useWorkspacesStore } from "@/stores/workspaces";
-import { useTabsStore } from "@/stores/tabs";
 import type { Bookmark } from "@/types";
+import { openTab } from "@/lib/tabActions";
 
 export function BookmarkBar() {
   const bookmarks = useBookmarksStore((s) => s.bookmarks);
   const folders = useBookmarksStore((s) => s.folders);
   const wsId = useWorkspacesStore((s) => s.activeWorkspaceId);
-  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
-  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
-  const addTab = useTabsStore((s) => s.addTab);
 
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
 
@@ -26,9 +23,7 @@ export function BookmarkBar() {
   const wsFolders = folders.filter((f) => f.workspaceId === wsId);
 
   function open(bm: Bookmark) {
-    const id = addTab(wsId, { url: bm.url, title: bm.title });
-    addTabToWorkspace(wsId, id);
-    setActiveTab(wsId, id);
+    openTab({ url: bm.url, title: bm.title }, { wsId });
     setOpenFolderId(null);
   }
 

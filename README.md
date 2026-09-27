@@ -98,10 +98,10 @@ API client, saved per workspace:
 
 Worth knowing before you download:
 
-- **Windows only.** Tabs, cookies, network capture, header injection and viewport emulation are written against WebView2 COM APIs. There's no WebKit equivalent yet, so a build for another platform compiles but refuses to start rather than open a browser with none of its tools working. macOS and Linux are planned, see [ROADMAP.md](ROADMAP.md).
+- **Windows only.** Tabs, cookies, network capture, header injection and viewport emulation are written against WebView2 COM APIs. There's no WebKit equivalent yet, so there is no macOS or Linux build. macOS and Linux are planned, see [ROADMAP.md](ROADMAP.md).
 - Downloads show started and finished, not a percentage. Tauri's download event has no progress callback.
 - Header rules don't apply to WebSocket handshakes. WebView2 never raises its request event for them.
-- The network log captures fetch and XHR, not images, fonts or stylesheets. That's deliberate; asset noise is what makes a request list useless.
+- The network log records every request type, but only keeps response bodies for text resources. Images, fonts and media show status, size and timing only. Use the type filter or the API chip to cut the asset noise.
 - JWT signatures are decoded, never verified.
 
 ## Docs

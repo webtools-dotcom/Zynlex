@@ -5,11 +5,11 @@ import { cn } from "@/lib/utils";
 import { useServersStore } from "@/stores/servers";
 import { useBookmarksStore } from "@/stores/bookmarks";
 import { useWorkspacesStore } from "@/stores/workspaces";
-import { useTabsStore } from "@/stores/tabs";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { resolveInput } from "@/lib/url";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
+import { openTab } from "@/lib/tabActions";
 
 interface HomePageProps {
   onNavigate?: ReturnType<typeof useWebviewBridge>["navigate"] | null;
@@ -19,9 +19,6 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
   const { servers } = useServersStore();
   const bookmarks = useBookmarksStore((s) => s.bookmarks);
   const activeWorkspaceId = useWorkspacesStore((s) => s.activeWorkspaceId);
-  const addTabToWorkspace = useWorkspacesStore((s) => s.addTabToWorkspace);
-  const setActiveTab = useWorkspacesStore((s) => s.setActiveTab);
-  const addTab = useTabsStore((s) => s.addTab);
   const settings = useSettingsStore((s) => s.settings);
   const setActivePanel = useUIStore((s) => s.setActivePanel);
 
@@ -61,24 +58,17 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
     if (onNavigate) {
       onNavigate(url);
     } else {
-      const id = addTab(activeWorkspaceId, { url });
-      addTabToWorkspace(activeWorkspaceId, id);
-      setActiveTab(activeWorkspaceId, id);
+      openTab({ url }, { wsId: activeWorkspaceId });
     }
     setQuery("");
   }
 
   function openServer(port: number, protocol: "http" | "https") {
-    const url = `${protocol}://localhost:${port}`;
-    const id = addTab(activeWorkspaceId, { url });
-    addTabToWorkspace(activeWorkspaceId, id);
-    setActiveTab(activeWorkspaceId, id);
+    openTab({ url: `${protocol}://localhost:${port}` }, { wsId: activeWorkspaceId });
   }
 
   function openBookmark(url: string) {
-    const id = addTab(activeWorkspaceId, { url });
-    addTabToWorkspace(activeWorkspaceId, id);
-    setActiveTab(activeWorkspaceId, id);
+    openTab({ url }, { wsId: activeWorkspaceId });
   }
 
   return (
