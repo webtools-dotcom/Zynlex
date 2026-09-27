@@ -15,7 +15,6 @@ open issues for anything actively being worked on.
 ## Browser chrome
 
 - Port scanner: HTTP title in sidebar tooltip.
-- Status bar: hovered-link URL preview (needs an injected script).
 - Find in page: case-sensitive and whole-word toggles.
 
 ## Sidebar panels
