@@ -128,6 +128,8 @@ h2 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4.4vw
 section > .wrap > p.intro { color: var(--text-2); max-width: 62ch; margin: 0; }
 
 /* Text above, screenshot full width below — at half width the UI is unreadable. */
+.tour { padding: 56px 0 96px; }
+.tour video { display: block; width: 100%; height: auto; margin-top: 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .feature { margin-top: 96px; }
 .feature .copy { display: grid; gap: 4px 56px; margin-bottom: 28px; }
 @media (min-width: 900px) {
@@ -235,6 +237,16 @@ footer a { color: var(--muted); }
     </div>
   </div>
 
+  <section class="tour" aria-label="Video tour">
+    <div class="wrap">
+      <div class="eyebrow">See it work · real footage</div>
+      <video controls preload="none" playsinline poster="assets/tour-poster.jpg" width="1920" height="1080">
+        <source src="assets/zynlex-tour.mp4" type="video/mp4">
+        <a href="assets/zynlex-tour.mp4">Watch the tour (MP4)</a>
+      </video>
+    </div>
+  </section>
+
   <section id="features">
     <div class="wrap">
       <div class="eyebrow">What it's for</div>
@@ -246,7 +258,7 @@ footer a { color: var(--muted); }
           <div><div class="q">Which port is that on?</div><h3>Your servers, on the new tab page</h3></div>
           <div class="body"><p>ZYNLEX scans the usual dev ports every few seconds, reads each page's title and shows what's running. Vite, Next.js, Astro, Storybook, Django, whatever. Add your own ports in settings.</p><ul><li>Label and pin the ones you care about</li><li>Shows a server as stopped when it goes down</li></ul></div>
         </div>
-        <div class="shot"><img src="assets/home.webp" alt="The new tab page listing three detected local dev servers" width="1600" height="801" loading="lazy"></div>
+        <div class="shot"><img src="assets/home.webp" alt="The new tab page listing three detected local dev servers: a dashboard, its API and a docs site" width="1600" height="950" loading="lazy"></div>
       </div>
 
       <div class="feature">
@@ -254,7 +266,7 @@ footer a { color: var(--muted); }
           <div><div class="q">What did that request return?</div><h3>A network log per tab</h3></div>
           <div class="body"><p>Every request with method, status, type, size and timing, captured through WebView2's own API. There's no proxy to route through and no certificate to trust.</p><ul><li>Filter by errors, API calls or slow requests</li><li>Response headers and bodies, copy as cURL or fetch()</li></ul></div>
         </div>
-        <div class="shot"><img src="assets/network.webp" alt="The network panel with captured requests and one expanded" width="1600" height="952" loading="lazy"></div>
+        <div class="shot"><img src="assets/network.webp" alt="The network panel beside a dashboard, with the /api/orders request open and its JSON response pretty-printed" width="1600" height="950" loading="lazy"></div>
       </div>
 
       <div class="feature">
@@ -281,7 +293,7 @@ footer a { color: var(--muted); }
           </div>
         </div>
         </div>
-        <div class="shot"><img src="assets/mocks.webp" alt="The Mock Responses panel with a rule returning a 500 error to jsonplaceholder" width="1600" height="800" loading="lazy"></div>
+        <div class="shot"><img src="assets/mocks.webp" alt="A mock rule returning 500 for /api/orders, and the dashboard showing its Couldn't load orders error" width="1600" height="950" loading="lazy"></div>
       </div>
 
       <div class="feature">
@@ -289,7 +301,7 @@ footer a { color: var(--muted); }
           <div><div class="q">How does it look on a phone?</div><h3>Devices at their real size</h3></div>
           <div class="body"><p>Pick a phone or tablet and the page renders at its true width, pixel ratio and user agent, with touch. One device at a time, at 1:1, not a shrunken thumbnail.</p><ul><li>Current iPhone, Pixel, Galaxy and iPad sizes</li><li>Server-side device detection sees the right client</li></ul></div>
         </div>
-        <div class="shot"><img src="assets/viewport.webp" alt="A Galaxy phone viewport rendering GitHub at 412 by 891" width="1600" height="951" loading="lazy"></div>
+        <div class="shot"><img src="assets/viewport.webp" alt="The dashboard rendered in an iPhone 17 Pro viewport at 402 by 874" width="1600" height="950" loading="lazy"></div>
       </div>
 
       <div class="feature">
@@ -297,7 +309,7 @@ footer a { color: var(--muted); }
           <div><div class="q">And the rest</div><h3>An API client that ignores CORS</h3></div>
           <div class="body"><p>Requests run through Rust, so the page's CORS rules don't apply. Saved collections and cURL import, per project. Next to it: header rules per URL pattern, an inspector for meta tags, Open Graph and HttpOnly cookies, a JWT decoder, Base64 and a user-agent switcher.</p><ul><li>Workspaces keep each project's tabs, rules and requests apart</li><li><code>Ctrl+K</code> finds all of it</li></ul></div>
         </div>
-        <div class="shot"><img src="assets/api.webp" alt="The API tester with a saved collection and a JSON response" width="1600" height="947" loading="lazy"></div>
+        <div class="shot"><img src="assets/api.webp" alt="The API tester calling localhost:8000/api/users with the JSON response below" width="1600" height="950" loading="lazy"></div>
       </div>
     </div>
   </section>

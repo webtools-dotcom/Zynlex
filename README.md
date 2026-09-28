@@ -13,9 +13,9 @@ ZYNLEX is a lightweight browser for local web development on Windows: the browse
 [![Release](https://img.shields.io/github/v/release/webtools-dotcom/Zynlex)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-blue)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
-<img src=".github/assets/demo.gif" alt="Opening a detected dev server, watching the network log fill, and switching to a phone viewport" width="800" />
+<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4"><img src=".github/assets/hero.gif" alt="A tour of ZYNLEX: it lists your local dev servers, logs a dashboard's API requests, mocks one as a 500 so the dashboard shows its error state, renders the page on an iPhone viewport, and calls the API from the built-in client" width="880" /></a>
 
-<sub>Text hard to read? There's a [1080p version](https://github.com/webtools-dotcom/Zynlex/releases/download/v0.9.0/high_quality.mp4) of the same clip.</sub>
+<sub>[Watch the full tour in 1080p](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4) · [Website](https://webtools-dotcom.github.io/Zynlex/)</sub>
 
 ### [Download for Windows →](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
@@ -100,19 +100,23 @@ pnpm tauri dev
 
 Your servers, on the new tab page:
 
-<img src=".github/assets/home.png" alt="New tab page listing three detected local dev servers" width="820" />
+<img src=".github/assets/home.png" alt="New tab page listing three detected local dev servers: a dashboard, its API and a docs site" width="820" />
 
 Network log. Capture goes through WebView2's native COM API, not a proxy, so there's nothing to configure and no certificate to trust.
 
-<img src=".github/assets/network.png" alt="Network panel showing 231 captured requests with filters and one request expanded" width="820" />
+<img src=".github/assets/network.png" alt="Network panel beside a dashboard, with the /api/orders request open and its JSON response pretty-printed" width="820" />
+
+Mock responses. Click "Mock this" on a request, make it a 500, and see how the page handles it:
+
+<img src=".github/assets/mocks.png" alt="A mock rule returning 500 for /api/orders, and the dashboard showing its Couldn't load orders error" width="820" />
 
 A device viewport at 1:1, next to the chrome:
 
-<img src=".github/assets/viewport.png" alt="A Galaxy S26 Ultra viewport at 412x891 rendering GitHub" width="820" />
+<img src=".github/assets/viewport.png" alt="The dashboard rendered in an iPhone 17 Pro viewport at 402x874" width="820" />
 
 API client, saved per workspace:
 
-<img src=".github/assets/api.png" alt="API tester with a saved collection and a JSON response" width="820" />
+<img src=".github/assets/api.png" alt="API tester calling localhost:8000/api/users with the JSON response below" width="820" />
 
 ## Limitations
 
