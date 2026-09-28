@@ -21,6 +21,7 @@ import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { resolveInput } from "@/lib/url";
 import { focusAppWebview } from "@/services/browser";
+import { UpdateButton } from "@/components/browser/UpdateButton";
 
 /**
  * Address-bar security indicator, derived purely from the URL scheme.
@@ -251,6 +252,8 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
           )}
         </div>
       </div>
+
+      <UpdateButton />
 
       {/* Bookmark button */}
       <button
