@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-09-28
+
+**Updating from 0.13.0 or 0.13.1?** Those versions do find new releases, but
+their update prompt is hidden behind the page you have open. Press **Ctrl+T**
+to open a blank tab and it appears in the bottom-right corner — or download the
+installer from this release. From 0.13.2 on, updates show in the toolbar.
+
+### Fixed
+
+- **Update notifications are visible.** The "new version available" prompt was
+  drawn underneath the open web page, so it was never seen with a page open. It
+  is now an **Update to x.y.z** button in the toolbar, with download progress, a
+  Restart button when it's ready, and a retry if the install fails.
+
+### Added
+
+- **Settings → Check for updates**, which tells you whether you're up to date,
+  a new version is available, or GitHub couldn't be reached.
+
 ## [0.13.1] - 2026-09-28
 
 Polish for the Network and Mock Responses panels.
@@ -228,7 +247,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.13.2...HEAD
+[0.13.2]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.2
 [0.13.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.1
 [0.13.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.0
 [0.12.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.12.0
