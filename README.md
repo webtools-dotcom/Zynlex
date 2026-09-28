@@ -13,7 +13,7 @@ ZYNLEX is a lightweight browser for local web development on Windows: the browse
 [![Release](https://img.shields.io/github/v/release/webtools-dotcom/Zynlex)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-blue)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
-<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4"><img src=".github/assets/overview.gif" alt="ZYNLEX in use: the network log, then Mock this turns a request into a 500 and the dashboard shows its error state" width="800" /></a>
+<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4"><img src=".github/assets/hero.gif" alt="ZYNLEX in use: it lists your local dev servers, then Mock this turns an API request into a 500 and the dashboard shows its error state" width="860" /></a>
 
 <sub>[Watch the full tour in 1080p](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4) · [Website](https://webtools-dotcom.github.io/Zynlex/)</sub>
 
@@ -97,10 +97,6 @@ pnpm tauri dev
 ```
 
 ## A look around
-
-An unedited screen recording: opening a detected dev server, watching the network log fill, and switching to a phone viewport ([1080p](https://github.com/webtools-dotcom/Zynlex/releases/download/v0.9.0/high_quality.mp4)).
-
-<img src=".github/assets/demo.gif" alt="Opening a detected dev server, watching the network log fill, and switching to a phone viewport" width="820" />
 
 Your servers, on the new tab page:
 
