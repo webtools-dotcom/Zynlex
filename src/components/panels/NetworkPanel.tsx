@@ -10,8 +10,8 @@ import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { entryToCurl, entryToFetch } from "@/lib/networkCopy";
 import { copyToClipboard } from "@/lib/clipboard";
-import { formatBytes, statusColor } from "@/lib/format";
-import { hostOf } from "@/lib/url";
+import { formatBytes, prettyBody, statusColor } from "@/lib/format";
+import { hostOf, splitUrl } from "@/lib/url";
 import { useCopy } from "@/hooks/useCopy";
 import { setNetworkCapture, webviewReload } from "@/services/browser";
 import { useMocksStore, mockRuleFromEntry } from "@/stores/mocks";
@@ -33,8 +33,10 @@ const METHOD_COLORS: Record<string, string> = {
    fixed columns alone exceed that, so a 0-minimum let URL collapse to nothing. The row/header
    wrapper below scrolls horizontally once the panel is narrower than this, same as it would
    in any other network inspector. */
-const GRID_COLS = "2.75rem 2rem 2.25rem minmax(6rem,1fr) 6rem 3.5rem 2.5rem 1.75rem";
-const GRID_MIN_WIDTH = "31rem";
+// Method/Status/Type are sized for their uppercase header labels, not just the
+// row values: at 2rem, "STATUS" ran into "TYPE".
+const GRID_COLS = "3.25rem 3.25rem 3rem minmax(7rem,1fr) 6rem 3.5rem 2.5rem 1.75rem";
+const GRID_MIN_WIDTH = "34rem";
 
 const TYPE_COLORS: Record<string, string> = {
   document: "bg-blue-500/20 text-blue-300",
@@ -65,10 +67,12 @@ function entryIsApi(e: NetworkLogEntry): boolean {
   return e.resourceType === "xhr" || e.resourceType === "fetch";
 }
 
-const BODY_PREVIEW_MAX = 500;
+// Room for a pretty-printed JSON response; the copy tab has the whole thing.
+const BODY_PREVIEW_MAX = 4000;
 
 function bodyPreview(body: string): string {
   if (!body) return "";
+  body = prettyBody(body);
   if (body.length > BODY_PREVIEW_MAX) return body.slice(0, BODY_PREVIEW_MAX) + "...";
   return body;
 }
@@ -215,7 +219,7 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
           <div>
             {entry.body ? (
               <>
-                <pre className="whitespace-pre-wrap break-all text-micro text-[var(--color-text-muted)] bg-[var(--color-hover)] rounded p-1.5 max-h-40 overflow-y-auto">
+                <pre className="whitespace-pre-wrap break-words text-micro text-[var(--color-text-secondary)] bg-[var(--color-hover)] rounded p-1.5 max-h-64 overflow-y-auto">
                   {bodyPreview(entry.body)}
                 </pre>
                 {entry.bodyTruncated && (
@@ -283,6 +287,7 @@ function EntryRow({
     e.stopPropagation();
     copyToClipboard(entryToCurl(entry, true));
   };
+  const { path, host } = splitUrl(entry.url);
 
   return (
     <div
@@ -315,7 +320,8 @@ function EntryRow({
         className="truncate text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]"
         title={entry.url}
       >
-        {entry.url}
+        {path}
+        {host && <span className="ml-1.5 text-[var(--color-text-disabled)]">{host}</span>}
       </span>
       <span className="truncate text-[var(--color-text-muted)]" title={entry.referrer || undefined}>
         {hostOf(entry.referrer, entry.referrer || "—")}

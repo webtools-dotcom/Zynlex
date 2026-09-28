@@ -13,3 +13,18 @@ export function statusColor(code: number): string {
   if (code >= 500) return "text-status-5xx";
   return "text-[var(--color-text-disabled)]";
 }
+
+/**
+ * A response body as the network log shows it: JSON re-indented when it
+ * parses, anything else untouched. Keyed off the body itself rather than the
+ * Content-Type header, which APIs get wrong often enough (text/plain JSON).
+ */
+export function prettyBody(body: string): string {
+  const t = body.trimStart();
+  if (!t.startsWith("{") && !t.startsWith("[")) return body;
+  try {
+    return JSON.stringify(JSON.parse(body), null, 2);
+  } catch {
+    return body;
+  }
+}
