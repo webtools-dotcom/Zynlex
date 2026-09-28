@@ -14,7 +14,7 @@ import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutHelp } from "@/components/ShortcutHelp";
 import { Toast } from "@/components/Toast";
-import { UpdateBanner } from "@/components/UpdateBanner";
+import { useUpdatesStore } from "@/stores/updates";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ViewportSurface } from "@/components/panels/ViewportPanel";
 import { useUIStore, useViewportMode } from "@/stores/ui";
@@ -35,6 +35,10 @@ type BridgeType = ReturnType<typeof useWebviewBridge>;
 const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export function RootLayout() {
+  // One update check per launch; the result shows as a toolbar pill.
+  useEffect(() => {
+    void useUpdatesStore.getState().check();
+  }, []);
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
@@ -155,7 +159,6 @@ export function RootLayout() {
         {commandPaletteOpen && <CommandPalette />}
         {shortcutHelpOpen && <ShortcutHelp />}
         <Toast />
-        <UpdateBanner />
       </div>
     </ErrorBoundary>
   );

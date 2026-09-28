@@ -10,6 +10,7 @@ import { X } from "lucide-react";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { SEARCH_ENGINES, type SearchEngineId } from "@/lib/url";
+import { useUpdatesStore } from "@/stores/updates";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
@@ -298,7 +299,36 @@ export function SettingsPanel() {
       <div className="text-xs text-[var(--color-text-disabled)] mt-6 space-y-1">
         <div>ZYNLEX Browser{version && ` v${version}`}</div>
         <div>Open source · Zero telemetry · Zero accounts</div>
+        <UpdateCheck />
       </div>
+    </div>
+  );
+}
+
+function UpdateCheck() {
+  const { update, phase, lastCheck, check } = useUpdatesStore();
+  const status =
+    phase === "checking"
+      ? "Checking…"
+      : update
+        ? `Version ${update.version} is available — use the Update button in the toolbar.`
+        : lastCheck === "up-to-date"
+          ? "You're on the latest version."
+          : lastCheck === "error"
+            ? "Couldn't reach GitHub to check for updates."
+            : "";
+  return (
+    <div className="pt-1 space-y-1">
+      <button
+        type="button"
+        onClick={() => void check()}
+        disabled={phase === "checking" || phase === "downloading"}
+        className="px-2 py-1 rounded border whitespace-nowrap text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] disabled:opacity-50"
+        style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
+      >
+        Check for updates
+      </button>
+      {status && <div>{status}</div>}
     </div>
   );
 }
