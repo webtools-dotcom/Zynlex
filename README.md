@@ -13,7 +13,7 @@ ZYNLEX is a lightweight browser for local web development on Windows: the browse
 [![Release](https://img.shields.io/github/v/release/webtools-dotcom/Zynlex)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-blue)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
-<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4"><img src=".github/assets/hero.gif" alt="ZYNLEX in use: it lists your local dev servers, then Mock this turns an API request into a 500 and the dashboard shows its error state" width="860" /></a>
+<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4"><img src=".github/assets/hero.gif" alt="A tour of ZYNLEX: it lists your local dev servers, logs a dashboard's API requests, mocks one as a 500 so the dashboard shows its error state, renders the page on an iPhone viewport, and calls the API from the built-in client" width="880" /></a>
 
 <sub>[Watch the full tour in 1080p](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4) · [Website](https://webtools-dotcom.github.io/Zynlex/)</sub>
 
