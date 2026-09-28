@@ -3,6 +3,7 @@ import {
   DEFAULT_SEARCH_ENGINE,
   SEARCH_ENGINES,
   hostOf,
+  splitUrl,
   originOf,
   resolveInput,
   searchUrl,
@@ -125,5 +126,18 @@ describe("titleFromUrl", () => {
   it("never throws on a malformed string", () => {
     expect(titleFromUrl("")).toBe("");
     expect(titleFromUrl("not a url at all")).toBe("not a url at all");
+  });
+});
+
+describe("splitUrl", () => {
+  it("puts the path and query first, host second", () => {
+    expect(splitUrl("http://localhost:8000/api/orders?page=2")).toEqual({
+      path: "/api/orders?page=2",
+      host: "localhost:8000",
+    });
+  });
+
+  it("returns an unparseable URL whole", () => {
+    expect(splitUrl("not a url")).toEqual({ path: "not a url", host: "" });
   });
 });

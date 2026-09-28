@@ -250,6 +250,10 @@ export function MocksPanel() {
   const updateRule = useMocksStore((s) => s.updateRule);
   const removeRule = useMocksStore((s) => s.removeRule);
   const active = rules.filter((r) => r.enabled).length;
+  // The add form is the whole panel when there are no rules; once there are,
+  // it folds behind a button so the rules themselves stay at the top.
+  const [adding, setAdding] = useState(false);
+  const showForm = adding || rules.length === 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -263,13 +267,33 @@ export function MocksPanel() {
           {rules.length} mock{rules.length !== 1 ? "s" : ""}
           {rules.length > 0 && ` · ${active} active`}
         </span>
+        {rules.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAdding(!adding)}
+            className="flex items-center gap-1 text-micro text-[var(--color-accent)] hover:text-[var(--color-text-primary)]"
+          >
+            {adding ? (
+              "Cancel"
+            ) : (
+              <>
+                <Plus size={11} /> New mock
+              </>
+            )}
+          </button>
+        )}
       </div>
 
-      <AddMockForm
-        key={defaultPattern}
-        defaultPattern={defaultPattern}
-        onAdd={(r) => addRule(activeWorkspaceId, r)}
-      />
+      {showForm && (
+        <AddMockForm
+          key={defaultPattern}
+          defaultPattern={defaultPattern}
+          onAdd={(r) => {
+            addRule(activeWorkspaceId, r);
+            setAdding(false);
+          }}
+        />
+      )}
 
       <div className="flex-1 overflow-y-auto">
         {rules.length === 0 ? (

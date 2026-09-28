@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes } from "./format";
+import { formatBytes, prettyBody } from "./format";
 
 describe("formatBytes", () => {
   it("formats bytes under 1KB as B", () => {
@@ -19,5 +19,16 @@ describe("formatBytes", () => {
 
   it("returns an em dash for negative sizes", () => {
     expect(formatBytes(-1)).toBe("—");
+  });
+});
+
+describe("prettyBody", () => {
+  it("re-indents JSON", () => {
+    expect(prettyBody('{"a":1,"b":[2]}')).toBe('{\n  "a": 1,\n  "b": [\n    2\n  ]\n}');
+  });
+
+  it("leaves non-JSON and broken JSON alone", () => {
+    expect(prettyBody("<html></html>")).toBe("<html></html>");
+    expect(prettyBody('{"a":')).toBe('{"a":');
   });
 });

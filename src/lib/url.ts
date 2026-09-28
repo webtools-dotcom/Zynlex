@@ -7,6 +7,20 @@ export function originOf(url: string, fallback = ""): string {
   }
 }
 
+/**
+ * Splits a URL for the network log: path + query first (what tells requests
+ * apart), host second (repeated on most rows, so it is the part to truncate).
+ * An unparseable URL comes back whole as `path`.
+ */
+export function splitUrl(url: string): { path: string; host: string } {
+  try {
+    const u = new URL(url);
+    return { path: u.pathname + u.search, host: u.host };
+  } catch {
+    return { path: url, host: "" };
+  }
+}
+
 /** Hostname only (no port), or `fallback` if `url` doesn't parse. */
 export function hostOf(url: string, fallback = ""): string {
   try {
