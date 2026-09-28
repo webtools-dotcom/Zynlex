@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-09-28
+
+Polish for the Network and Mock Responses panels.
+
+### Fixed
+
+- **Network:** the column headers no longer run into each other ("STATUS"
+  overlapped "TYPE").
+- **Network:** the URL column leads with the path, so `/api/orders` stays
+  readable in a narrow sidebar. The host follows it, dimmed, and the full URL
+  is still in the tooltip.
+
+### Changed
+
+- **Network:** JSON response bodies are pretty-printed, and the body view shows
+  up to 4 KB instead of 500 characters.
+- **Mock Responses:** once you have rules, the add form folds behind a
+  **New mock** button, so your rules stay at the top of the panel — including
+  the one you just created with **Mock this**.
+
 ## [0.13.0] - 2026-09-27
 
 Mock any API response from inside the browser — no proxy, no certificate, no
@@ -208,7 +228,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.1
 [0.13.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.0
 [0.12.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.12.0
 [0.11.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.11.0
