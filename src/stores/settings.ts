@@ -14,6 +14,8 @@ const DEFAULTS: AppSettings = {
   compactMode: false,
   bookmarkBarVisible: false,
   maxConcurrentWebviews: 10,
+  suspendHiddenTabsMinutes: 5,
+  discardHiddenTabsMinutes: 10,
   userAgent: null,
 };
 
@@ -40,7 +42,9 @@ export const useSettingsStore = create<SettingsStore>()(
     })),
     {
       name: "zynlex-settings",
-      version: 3,
+      // v4 added the suspend/discard timers; every bump re-fills new keys from
+      // DEFAULTS below (persist's own merge would replace the whole object).
+      version: 4,
       migrate: (persistedState, version) => {
         const state = persistedState as any;
         const settings = { ...DEFAULTS, ...(state?.settings || {}) };

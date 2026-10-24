@@ -97,6 +97,43 @@ function CompactToggle({ value, onToggle }: { value: boolean; onToggle: () => vo
   );
 }
 
+function MinutesSelect({
+  label,
+  hint,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  options: number[];
+  value: number;
+  onChange: (minutes: number) => void;
+}) {
+  return (
+    <div className="mt-3">
+      <div className="flex justify-between items-center">
+        <span className="text-sm text-[var(--color-text-muted)]">{label}</span>
+        <select
+          aria-label={label}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="px-1.5 py-0.5 text-xs border rounded text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+          style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
+        >
+          <option value={0}>Never</option>
+          {options.map((m) => (
+            <option key={m} value={m}>
+              After {m} min
+            </option>
+          ))}
+        </select>
+      </div>
+      <span className="text-xs text-[var(--color-text-disabled)] block mt-1">{hint}</span>
+    </div>
+  );
+}
+
 export function SettingsPanel() {
   const settings = useSettingsStore((s) => s.settings);
   const setPortScanInterval = useSettingsStore((s) => s.setPortScanInterval);
@@ -279,6 +316,24 @@ export function SettingsPanel() {
           style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
         />
       </div>
+
+      {/* ── Memory ──────────────────────────────────────────────────── */}
+      <SectionHeader>Memory</SectionHeader>
+
+      <MinutesSelect
+        label="Suspend hidden tabs"
+        hint="Freezes a background tab; it resumes when shown. Localhost tabs are never suspended."
+        options={[1, 5, 15, 30]}
+        value={settings.suspendHiddenTabsMinutes}
+        onChange={(suspendHiddenTabsMinutes) => update({ suspendHiddenTabsMinutes })}
+      />
+      <MinutesSelect
+        label="Discard hidden tabs"
+        hint="Closes a background tab's page; it reloads when you click it."
+        options={[10, 30, 60]}
+        value={settings.discardHiddenTabsMinutes}
+        onChange={(discardHiddenTabsMinutes) => update({ discardHiddenTabsMinutes })}
+      />
 
       {/* ── Home Page ───────────────────────────────────────────────── */}
       <SectionHeader>Home Page</SectionHeader>

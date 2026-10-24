@@ -1015,6 +1015,50 @@ pub async fn browser_set_memory_target(
     Ok(())
 }
 
+/// Memory target for the app's own UI webview (label "main").
+#[tauri::command]
+pub async fn browser_set_ui_memory_target(app: AppHandle, low: bool) -> Result<(), String> {
+    let wv = app.get_webview("main").ok_or("main webview not found")?;
+    apply_memory_target(&wv, low);
+    Ok(())
+}
+
+/// `ICoreWebView2_3::TrySuspend` on a hidden tab: freezes its scripts and timers
+/// and trims its renderer's memory. WebView2 resumes it by itself when the
+/// webview is shown again, so `browser_show_tab` needs no extra call. Skipped
+/// while the page plays audio, which suspending would cut off.
+#[tauri::command]
+pub async fn browser_suspend_tab(app: AppHandle, tab_id: String) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    let wv =
+        find_tab_webview(&app, &label).ok_or_else(|| format!("no webview for tab {}", tab_id))?;
+    with_core(&wv, "suspend", |core| unsafe {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2_3, ICoreWebView2_8};
+        use webview2_com::TrySuspendCompletedHandler;
+        use windows_core::Interface;
+        if let Ok(c8) = core.cast::<ICoreWebView2_8>() {
+            let mut playing = windows_core::BOOL(0);
+            if c8.IsDocumentPlayingAudio(&mut playing).is_ok() && playing.as_bool() {
+                return;
+            }
+        }
+        let handler = TrySuspendCompletedHandler::create(Box::new(
+            |r: windows_core::Result<()>, ok: bool| {
+                zynlex_log!("[zynlex] TrySuspend: {r:?} suspended={ok}");
+                Ok(())
+            },
+        ));
+        match core.cast::<ICoreWebView2_3>() {
+            Ok(c3) => {
+                if let Err(e) = c3.TrySuspend(&handler) {
+                    zynlex_log!("[zynlex] TrySuspend failed: {e:?}");
+                }
+            }
+            Err(e) => zynlex_log!("[zynlex] ICoreWebView2_3 unavailable: {e:?}"),
+        }
+    })
+}
+
 // ─── Tab State Save/Restore ────────────────────────────────────────
 
 /// Capture a tab's scroll position and form values.

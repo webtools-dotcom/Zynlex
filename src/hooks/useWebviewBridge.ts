@@ -36,6 +36,7 @@ import {
   onNewTabRequested,
   onInspectorData,
   setMemoryTarget,
+  suspendTab,
   setTabZoom,
   saveTabState,
   restoreTabState,
@@ -54,7 +55,7 @@ import { useNetworkStore } from "@/stores/network";
 import { useHeadersStore } from "@/stores/headers";
 import { setHeaderRules, setMockRules } from "@/services/browser";
 import { useMocksStore } from "@/stores/mocks";
-import { titleFromUrl } from "@/lib/url";
+import { isLoopbackUrl, titleFromUrl } from "@/lib/url";
 import { openTab } from "@/lib/tabActions";
 
 let _netEntryId = 0;
@@ -167,6 +168,8 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   // restored tabs, discarded tabs being recreated — so overlap is the norm.
   const loadStartRef = useRef<Map<string, number>>(new Map());
   const createdTabsRef = useRef<Set<string>>(new Set());
+  // Hidden tabs already TrySuspend-ed, so the timer doesn't re-suspend them every tick.
+  const suspendedTabsRef = useRef<Set<string>>(new Set());
   const prevActiveTabIdRef = useRef<string | null>(null);
   // Bumped on every tab-switch attempt. An async show/create that resolves after
   // a newer switch started is stale — its result must not be applied, or a
@@ -502,7 +505,13 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     const prevId = prevActiveTabIdRef.current;
     if (prevId && prevId !== activeTabId && createdTabsRef.current.has(prevId)) {
       setMemoryTarget(prevId, true).catch(() => {});
+      // lastActiveAt is the moment the tab was last visible: the suspend/discard
+      // timer measures hidden time from it. Stamped only on activation, a tab used
+      // for an hour was "idle for an hour" the instant it was switched away from.
+      useTabsStore.getState().touchTab(prevId);
     }
+    // Showing a suspended webview resumes it (WebView2 does this on visibility).
+    suspendedTabsRef.current.delete(activeTabId);
 
     if (viewportMode) {
       lastBoundsRef.current = null;
@@ -635,6 +644,9 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       for (const id of createdTabsRef.current) {
         if (!state.tabs[id]) createdTabsRef.current.delete(id);
       }
+      for (const id of suspendedTabsRef.current) {
+        if (!createdTabsRef.current.has(id)) suspendedTabsRef.current.delete(id);
+      }
       // Same reasoning for in-flight load timings: a tab closed mid-load never
       // gets its "finished" event, so its entry would sit here forever.
       for (const id of loadStartRef.current.keys()) {
@@ -659,15 +671,22 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     }
   };
 
-  // ── TAB DISCARD TIMER: discard inactive tabs after 10 minutes ─────
+  // ── SUSPEND / DISCARD TIMER: hidden tabs, thresholds from Settings ─────
+  // Suspend freezes a hidden tab and trims its renderer (~40% of a background
+  // tab's memory, measured); discard closes the webview outright and reloads on
+  // click. Both are skipped for the active tab, pinned tabs and loading tabs.
+  // Localhost tabs are never suspended: a frozen tab misses HMR updates and its
+  // dev-server requests. The Network panel only ever shows the active tab, which
+  // is never hidden, so its log keeps flowing.
   useEffect(() => {
     if (!IS_TAURI) return;
 
-    const DISCARD_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
-    const DISCARD_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
+    const CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
 
     const interval = setInterval(() => {
       const now = Date.now();
+      const { suspendHiddenTabsMinutes, discardHiddenTabsMinutes } =
+        useSettingsStore.getState().settings;
       const tabsState = useTabsStore.getState().tabs;
       const currentActiveTabId = getActiveTabId();
 
@@ -683,11 +702,21 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
           continue;
         }
 
-        if (now - tab.lastActiveAt > DISCARD_TIMEOUT_MS) {
+        const hiddenMs = now - tab.lastActiveAt;
+        if (discardHiddenTabsMinutes > 0 && hiddenMs > discardHiddenTabsMinutes * 60_000) {
           void discardWebviewRef.current(tabId);
+        } else if (
+          suspendHiddenTabsMinutes > 0 &&
+          hiddenMs > suspendHiddenTabsMinutes * 60_000 &&
+          createdTabsRef.current.has(tabId) &&
+          !suspendedTabsRef.current.has(tabId) &&
+          !isLoopbackUrl(tab.url)
+        ) {
+          suspendedTabsRef.current.add(tabId);
+          suspendTab(tabId).catch(() => suspendedTabsRef.current.delete(tabId));
         }
       }
-    }, DISCARD_CHECK_INTERVAL_MS);
+    }, CHECK_INTERVAL_MS);
 
     return () => clearInterval(interval);
   }, []);

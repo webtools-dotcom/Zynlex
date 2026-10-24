@@ -265,6 +265,11 @@ export async function setMemoryTarget(tabId: string, low: boolean): Promise<void
   await invoke<void>("browser_set_memory_target", { tabId, low });
 }
 
+/** Freeze a hidden tab (WebView2 TrySuspend). Showing it again resumes it. */
+export async function suspendTab(tabId: string): Promise<void> {
+  await invoke<void>("browser_suspend_tab", { tabId });
+}
+
 // ─── Tab State Save/Restore ──────────────────────────────────────
 
 /** Returns the captured state as a JSON string, or null if the page gave nothing. */

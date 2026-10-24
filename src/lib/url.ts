@@ -30,6 +30,12 @@ export function hostOf(url: string, fallback = ""): string {
   }
 }
 
+/** A local dev server: localhost, *.localhost, or a loopback address. */
+export function isLoopbackUrl(url: string): boolean {
+  const h = hostOf(url);
+  return h === "localhost" || h.endsWith(".localhost") || h === "[::1]" || h.startsWith("127.");
+}
+
 /** Host (with port, if any) minus scheme and "www." — a placeholder title
  * shown before the real page title loads. Never throws: unlike `hostOf`,
  * this has to tolerate not-yet-resolved or malformed strings. */
