@@ -19,7 +19,7 @@ ZYNLEX is a lightweight browser for local web development on Windows: the browse
 
 ### [Download for Windows →](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
-3.6 MB installer · about a third less RAM than Chrome · no account, no telemetry · free and open source
+3.6 MB installer · less than half Chrome's RAM at idle · no account, no telemetry · free and open source
 
 </div>
 
@@ -40,6 +40,8 @@ The sidebar has the things you'd otherwise keep four apps around for:
 - JWT decoder, Base64, user-agent switcher
 
 Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it.
+
+Background tabs get out of the way on their own: after a few minutes hidden they're suspended, and later discarded, with timers you set in **Settings → Memory**. Your `localhost` tabs are never suspended, so hot reload keeps working.
 
 No account. No telemetry. The only network call it makes on its own is an update check against this repo's GitHub releases.
 
@@ -68,18 +70,48 @@ ZYNLEX puts them in the browser chrome instead.
 
 ## Size and memory
 
-Measured on one Windows 11 machine, clean profiles, identical pages, same window size:
+### Compared with Chrome
 
-| | ZYNLEX | Chrome |
+Release builds on one Windows 11 machine. Clean profiles, identical pages, same 1280×800 window, 30 seconds after the pages load, median of 3 runs. Memory is summed over the app and every browser process it starts:
+
+| | ZYNLEX 0.14 | Chrome | |
+|---|---|---|---|
+| Idle, one blank tab | **152 MB** | 348 MB | **56% less** |
+| Three tabs (GitHub, YouTube, localhost) | **546 MB** | 692 MB | **21% less** |
+
+That's committed (private) memory, the RAM a process has actually claimed. Working set, what's resident right now, shows the same picture: 410 vs 703 MB idle, 946 vs 1160 MB with three tabs.
+
+### Where the memory goes, and what ZYNLEX does about it
+
+Your tabs run on WebView2, which is Chromium, the same engine Chrome uses, so a heavy page costs about the same in both. The ZYNLEX app itself is about 10 MB. Everything else is WebView2's processes: one that coordinates, one per site, and helpers for networking and storage. ZYNLEX saves memory in four ways:
+
+1. **It runs less.** No sync, no Safe Browsing, no prerendering, no extension host, no update service.
+2. **Graphics run in the main browser process.** Chromium normally keeps a separate GPU process, and most of its 140–290 MB is fixed overhead. Moving it in saves 100–200 MB in every scenario, including an empty window.
+3. **Hidden tabs are suspended** after 5 minutes. A suspended tab's scripts stop, and Windows pages its memory out of RAM. With 10 tabs open, resident memory drops by about 60%. Click the tab and it picks up where it was.
+4. **Hidden tabs are discarded** after 10 minutes. The page is closed and reloads when you click it, with scroll position and form fields restored.
+
+Before and after this work, on the same machine (ZYNLEX 0.13 → 0.14, private memory):
+
+| | 0.13 | 0.14 | 0.14, hidden tabs suspended | 0.14 + low-memory process model |
+|---|---|---|---|---|
+| One blank tab | 267 MB | **152 MB** (−43%) | 170 MB | 167 MB |
+| Three tabs | 758 MB | **546 MB** (−28%) | 496 MB (−35%) | 418 MB (−45%) |
+| Ten tabs | 1577 MB | **1341 MB** (−15%) | 1277 MB (−19%) | **776 MB** (−51%) |
+
+### Memory settings
+
+All in **Settings → Memory**:
+
+| Setting | Default | Trade-off |
 |---|---|---|
-| Idle, one blank tab | **452 MB** | 689 MB |
-| Three tabs (GitHub, YouTube, localhost) | **~1.1 GB** | ~1.8 GB |
+| Suspend hidden tabs | After 5 min | A suspended tab stops updating (chat, dashboards, live logs) until you switch back. `localhost` tabs and tabs playing audio are never suspended. |
+| Discard hidden tabs | After 10 min | The page reloads when you return to it. In-page state that isn't in a form field or the URL is lost. |
+| GPU in main process | On | If your graphics driver crashes, the whole app closes instead of Chromium quietly restarting its GPU process. Turn it off if that happens to you. |
+| Low-memory process model | Off | Turns off site isolation and shares two processes across all tabs: up to half the memory with many tabs open. Sites are less protected from each other (Spectre-class attacks), and one heavy tab can slow the rest. Fine for local development; leave it off for banking and similar. |
 
-About a third less, and it holds at idle and under load. The idle gap is roughly **237 MB**.
+The last two take effect after a restart; the panel has a button for it.
 
-That is not clever engineering, and it's worth being clear about why. Your tabs run on WebView2, which is Chromium, the same renderer Chrome uses. Heavy pages cost the same in both. The savings come from what ZYNLEX doesn't run: no sync, no Safe Browsing, no prerendering, no extension host, no update service. The app process itself is 27 MB.
-
-The installer is 3.6 MB for the same reason. WebView2 already ships with Windows, so there's no bundled copy of Chromium to download. It's also why there's no macOS or Linux build yet.
+The installer is 3.6 MB because WebView2 already ships with Windows, so there's no bundled copy of Chromium to download. That's also why there's no macOS or Linux build yet.
 
 If you need macOS, several viewports side by side, or accessibility audits, [Responsively](https://responsively.app) and [Polypane](https://polypane.app) do those and ZYNLEX doesn't.
 
@@ -144,6 +176,12 @@ No. Mocks are answered inside the browser, before the request reaches the networ
 
 **Why is it so small? Is it Electron?**
 It's not Electron. It's built with Tauri and Rust, and uses the WebView2 runtime that already ships with Windows instead of bundling its own copy of Chromium. That's why the installer is 3.6 MB.
+
+**Why does it use less RAM than Chrome if it's the same engine?**
+It runs fewer background services, keeps graphics in one process instead of two, and suspends and discards tabs you aren't looking at. See [Size and memory](#size-and-memory) for the numbers and the trade-offs.
+
+**Why did a background tab reload, or show old data when I came back?**
+Hidden tabs are suspended after 5 minutes and discarded after 10, to keep memory down. A suspended tab catches up when you switch back to it; a discarded one reloads. Change either timer, or turn them off, in Settings → Memory. Pinned tabs and `localhost` tabs are never suspended.
 
 **Does it work on macOS or Linux?**
 Not yet. Every developer feature is built on WebView2 APIs that only exist on Windows. See [ROADMAP.md](ROADMAP.md).
