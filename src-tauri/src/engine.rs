@@ -114,7 +114,8 @@ mod tests {
 
     #[test]
     fn partial_or_bad_file_falls_back_to_defaults() {
-        let partial: EngineOptions = serde_json::from_str(r#"{"lowMemoryProcessModel":true}"#).unwrap();
+        let partial: EngineOptions =
+            serde_json::from_str(r#"{"lowMemoryProcessModel":true}"#).unwrap();
         assert!(partial.in_process_gpu && partial.low_memory_process_model);
         assert!(serde_json::from_str::<EngineOptions>("not json").is_err());
     }
