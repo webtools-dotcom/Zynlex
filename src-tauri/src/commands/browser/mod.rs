@@ -259,6 +259,9 @@ fn create_webview_for_tab(
     if let Some(ref ua) = user_agent {
         builder = builder.user_agent(ua);
     }
+    if let Some(args) = state.browser_args.get() {
+        builder = builder.additional_browser_args(args);
+    }
 
     let builder = builder
         .on_navigation(move |nav_url| {
@@ -1011,14 +1014,6 @@ pub async fn browser_set_memory_target(
         );
         format!("no webview for tab {}", tab_id)
     })?;
-    apply_memory_target(&wv, low);
-    Ok(())
-}
-
-/// Memory target for the app's own UI webview (label "main").
-#[tauri::command]
-pub async fn browser_set_ui_memory_target(app: AppHandle, low: bool) -> Result<(), String> {
-    let wv = app.get_webview("main").ok_or("main webview not found")?;
     apply_memory_target(&wv, low);
     Ok(())
 }

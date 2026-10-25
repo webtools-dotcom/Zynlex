@@ -1,4 +1,5 @@
 mod commands;
+mod engine;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -64,6 +65,10 @@ pub struct BrowserState {
     /// the "System" setting read back whatever had last been forced instead of the
     /// OS, and could never change.
     pub preferred_scheme: AtomicI32,
+    /// Chromium switches the main window's WebView2 environment was created
+    /// with (see engine.rs). Every tab and viewport webview must pass the same
+    /// string, or WebView2 refuses to create it in the running browser process.
+    pub browser_args: OnceLock<String>,
 }
 
 /// Re-apply the active child webview's bounds from the current window size and
@@ -196,6 +201,24 @@ pub fn run() {
                 // window-event listeners (verified against tauri-runtime-wry
                 // 2.11.2's WindowEvent match arm).
                 use tauri::Manager;
+
+                // The main window is created here rather than from tauri.conf.json
+                // ("create": false) so its WebView2 environment gets the Chromium
+                // switches from engine.json, which only apply at browser start.
+                let args = engine::browser_args(&engine::load(_app.handle()));
+                let config = _app
+                    .config()
+                    .app
+                    .windows
+                    .iter()
+                    .find(|w| w.label == "main")
+                    .cloned()
+                    .ok_or("main window config missing")?;
+                tauri::WebviewWindowBuilder::from_config(_app.handle(), &config)?
+                    .additional_browser_args(&args)
+                    .build()?;
+                let _ = _app.state::<BrowserState>().browser_args.set(args);
+
                 if let Some(main) = _app.get_window("main") {
                     let app_handle = _app.handle().clone();
                     main.on_window_event(move |event| {
@@ -266,6 +289,7 @@ pub fn run() {
             resync_pending: AtomicBool::new(false),
             fullscreen_tab: Mutex::new(None),
             preferred_scheme: AtomicI32::new(commands::browser::SCHEME_DARK),
+            browser_args: OnceLock::new(),
         })
         .invoke_handler(tauri::generate_handler![
             commands::browser::browser_create_tab,
@@ -288,8 +312,9 @@ pub fn run() {
             commands::browser::browser_show_tab,
             commands::browser::browser_set_user_agent,
             commands::browser::browser_set_memory_target,
-            commands::browser::browser_set_ui_memory_target,
             commands::browser::browser_suspend_tab,
+            engine::get_engine_options,
+            engine::set_engine_options,
             commands::browser::browser_eval_inspector,
             commands::browser::inspector_mutate,
             commands::browser::create_viewport,

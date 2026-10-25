@@ -11,6 +11,8 @@ import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { SEARCH_ENGINES, type SearchEngineId } from "@/lib/url";
 import { useUpdatesStore } from "@/stores/updates";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { getEngineOptions, setEngineOptions, type EngineOptions } from "@/services/browser";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
@@ -131,6 +133,64 @@ function MinutesSelect({
       </div>
       <span className="text-xs text-[var(--color-text-disabled)] block mt-1">{hint}</span>
     </div>
+  );
+}
+
+/** Startup-only engine switches: saved to engine.json, applied on restart. */
+function EngineToggles() {
+  const [opts, setOpts] = useState<EngineOptions | null>(null);
+  const [changed, setChanged] = useState(false);
+  useEffect(() => {
+    getEngineOptions()
+      .then(setOpts)
+      .catch(() => {});
+  }, []);
+  if (!opts) return null;
+
+  const toggle = (key: keyof EngineOptions) => {
+    const next = { ...opts, [key]: !opts[key] };
+    setOpts(next);
+    setChanged(true);
+    setEngineOptions(next).catch(() => {});
+  };
+
+  return (
+    <>
+      <div className="flex justify-between items-center mt-3">
+        <div>
+          <span className="text-sm text-[var(--color-text-muted)] block">GPU in main process</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Saves ~100–200 MB. Turn off if graphics driver crashes close the whole app.
+          </span>
+        </div>
+        <CompactToggle value={opts.inProcessGpu} onToggle={() => toggle("inProcessGpu")} />
+      </div>
+      <div className="flex justify-between items-center mt-3">
+        <div>
+          <span className="text-sm text-[var(--color-text-muted)] block">
+            Low-memory process model
+          </span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Saves ~300–550 MB with many tabs. Turns off site isolation (weaker protection between
+            sites) and shares 2 processes across tabs.
+          </span>
+        </div>
+        <CompactToggle
+          value={opts.lowMemoryProcessModel}
+          onToggle={() => toggle("lowMemoryProcessModel")}
+        />
+      </div>
+      {changed && (
+        <button
+          type="button"
+          onClick={() => void relaunch()}
+          className="mt-2 px-2 py-1 text-xs rounded border text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+          style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
+        >
+          Restart to apply
+        </button>
+      )}
+    </>
   );
 }
 
@@ -334,6 +394,7 @@ export function SettingsPanel() {
         value={settings.discardHiddenTabsMinutes}
         onChange={(discardHiddenTabsMinutes) => update({ discardHiddenTabsMinutes })}
       />
+      <EngineToggles />
 
       {/* ── Home Page ───────────────────────────────────────────────── */}
       <SectionHeader>Home Page</SectionHeader>

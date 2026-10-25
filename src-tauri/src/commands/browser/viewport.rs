@@ -162,6 +162,10 @@ pub async fn create_viewport(
     if let Some(ref ua) = spec.user_agent {
         builder = builder.user_agent(ua);
     }
+    // Same switches as every other webview, or WebView2 refuses the environment.
+    if let Some(args) = app.state::<crate::BrowserState>().browser_args.get() {
+        builder = builder.additional_browser_args(args);
+    }
 
     let spec_for_load = spec.clone();
     let app_for_load = app.clone();

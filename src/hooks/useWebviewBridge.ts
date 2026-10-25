@@ -672,9 +672,10 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   };
 
   // ── SUSPEND / DISCARD TIMER: hidden tabs, thresholds from Settings ─────
-  // Suspend freezes a hidden tab and trims its renderer (~40% of a background
-  // tab's memory, measured); discard closes the webview outright and reloads on
-  // click. Both are skipped for the active tab, pinned tabs and loading tabs.
+  // Suspend freezes a hidden tab and pages its renderer out of RAM (10 tabs,
+  // measured: working set -62%, committed memory only -6%); discard closes the
+  // webview outright (-69% committed) and reloads on click. Both are skipped
+  // for the active tab, pinned tabs and loading tabs.
   // Localhost tabs are never suspended: a frozen tab misses HMR updates and its
   // dev-server requests. The Network panel only ever shows the active tab, which
   // is never hidden, so its log keeps flowing.
