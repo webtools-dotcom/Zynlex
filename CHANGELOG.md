@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-25
+
+Less RAM: 43% less with one blank tab, 28% less with three tabs, and up to
+half with many tabs, with every trade-off behind a setting. Measured against
+0.13 on a release build; the numbers are in the README.
+
+### Added
+
+- **Settings → Memory.**
+  - **Suspend hidden tabs** after 1, 5 (default), 15 or 30 minutes, or never.
+    A suspended tab stops running and Windows pages it out of RAM; it picks up
+    where it was when you switch back. `localhost` tabs and tabs playing audio
+    are never suspended, so hot reload keeps working.
+  - **Discard hidden tabs** after 10 (default), 30 or 60 minutes, or never.
+    This was a fixed 10 minutes before.
+  - **GPU in main process** (on): saves 100–200 MB. Turn it off if graphics
+    driver crashes close the app.
+  - **Low-memory process model** (off): turns off site isolation and shares two
+    processes across all tabs, about half the memory with ten tabs. Sites are
+    less isolated from each other, so leave it off for sensitive browsing.
+  - The two engine options apply after a restart; the panel has a button.
+
+### Changed
+
+- Graphics now run inside the browser process instead of a separate GPU
+  process. That alone takes 100–200 MB off every window, including an empty one.
+
+### Fixed
+
+- A tab you had been using for a while could be discarded about a minute after
+  you switched away from it. Tabs now get the full discard time from the moment
+  they're hidden.
+
 ## [0.13.2] - 2026-09-28
 
 **Updating from 0.13.0 or 0.13.1?** Those versions do find new releases, but
@@ -247,7 +280,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.13.2...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.14.0
 [0.13.2]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.2
 [0.13.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.1
 [0.13.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.0
