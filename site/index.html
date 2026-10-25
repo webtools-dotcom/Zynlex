@@ -318,11 +318,11 @@ footer a { color: var(--muted); }
     <div class="wrap">
       <div class="eyebrow">Small on purpose</div>
       <h2>No bundled Chromium. No sync. No extension host.</h2>
-      <p class="intro">Tabs render with WebView2, the Chromium runtime that already ships with Windows, so heavy pages cost the same as in Chrome. The savings come from everything ZYNLEX doesn't run.</p>
+      <p class="intro">Tabs render with WebView2, the Chromium runtime that already ships with Windows, so heavy pages cost the same as in Chrome. The savings come from everything ZYNLEX doesn't run, graphics kept in one process, and background tabs that suspend themselves.</p>
       <div class="nums">
         <div class="num"><b>3.6 MB</b><span>installer</span></div>
-        <div class="num"><b>452 MB</b><span>idle with one tab, vs 689 MB for Chrome</span></div>
-        <div class="num"><b>27 MB</b><span>for the app process itself</span></div>
+        <div class="num"><b>152 MB</b><span>idle with one tab, vs 348 MB for Chrome</span></div>
+        <div class="num"><b>21% less</b><span>than Chrome with three tabs open</span></div>
         <div class="num"><b>0</b><span>accounts, trackers or telemetry</span></div>
       </div>
       <p class="muted" style="font-size:13px;margin-top:16px">Measured on one Windows 11 machine with clean profiles. <a href="https://github.com/webtools-dotcom/Zynlex#size-and-memory">Method and numbers</a>.</p>

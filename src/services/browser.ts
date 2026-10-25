@@ -265,6 +265,26 @@ export async function setMemoryTarget(tabId: string, low: boolean): Promise<void
   await invoke<void>("browser_set_memory_target", { tabId, low });
 }
 
+/** Chromium switches applied at startup (src-tauri/src/engine.rs). */
+export interface EngineOptions {
+  inProcessGpu: boolean;
+  lowMemoryProcessModel: boolean;
+}
+
+export async function getEngineOptions(): Promise<EngineOptions> {
+  return await invoke<EngineOptions>("get_engine_options");
+}
+
+/** Saved for the next start; takes effect after a restart. */
+export async function setEngineOptions(options: EngineOptions): Promise<void> {
+  await invoke<void>("set_engine_options", { options });
+}
+
+/** Freeze a hidden tab (WebView2 TrySuspend). Showing it again resumes it. */
+export async function suspendTab(tabId: string): Promise<void> {
+  await invoke<void>("browser_suspend_tab", { tabId });
+}
+
 // ─── Tab State Save/Restore ──────────────────────────────────────
 
 /** Returns the captured state as a JSON string, or null if the page gave nothing. */

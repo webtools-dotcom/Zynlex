@@ -85,6 +85,10 @@ export interface AppSettings {
   bookmarkBarVisible: boolean;
   /** Soft limit on concurrent webview processes (default 10). Oldest background tab is discarded when exceeded. */
   maxConcurrentWebviews: number;
+  /** Suspend (freeze) a hidden tab after this many minutes. 0 = never. Localhost tabs are never suspended. */
+  suspendHiddenTabsMinutes: number;
+  /** Discard (close, reload on click) a hidden tab after this many minutes. 0 = never. */
+  discardHiddenTabsMinutes: number;
 }
 
 // ─── Bookmarks ────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import {
   DEFAULT_SEARCH_ENGINE,
   SEARCH_ENGINES,
   hostOf,
+  isLoopbackUrl,
   splitUrl,
   originOf,
   resolveInput,
@@ -139,5 +140,17 @@ describe("splitUrl", () => {
 
   it("returns an unparseable URL whole", () => {
     expect(splitUrl("not a url")).toEqual({ path: "not a url", host: "" });
+  });
+});
+
+describe("isLoopbackUrl", () => {
+  it("matches local dev servers only", () => {
+    expect(isLoopbackUrl("http://localhost:5173/")).toBe(true);
+    expect(isLoopbackUrl("http://app.localhost:3000")).toBe(true);
+    expect(isLoopbackUrl("http://127.0.0.1:8080/x")).toBe(true);
+    expect(isLoopbackUrl("http://[::1]:4000")).toBe(true);
+    expect(isLoopbackUrl("https://localhost.example.com")).toBe(false);
+    expect(isLoopbackUrl("https://github.com")).toBe(false);
+    expect(isLoopbackUrl("")).toBe(false);
   });
 });

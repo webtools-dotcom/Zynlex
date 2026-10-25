@@ -25,9 +25,20 @@ process set). Setting it on tab webviews only makes those tabs share an
 environment *with each other*, not with the main window, and spawns a second,
 duplicate WebView2 process tree.
 
-Tabs inactive for more than 10 minutes are discarded (destroyed, then recreated
-and reloaded on next switch). Pinned and active tabs are exempt. A soft cap of 10
-concurrent webviews discards the oldest background tab when exceeded.
+Sharing one environment also means every webview — main window, tabs, viewport —
+must be created with the *same* `additionalBrowserArgs`: WebView2 refuses a webview
+whose options differ from the running browser process's. The string comes from
+`engine.rs` (Chromium switches read from `engine.json` at startup), which is why
+the main window is built in `setup` (`"create": false` in tauri.conf.json) instead
+of from config, and why tab/viewport builders read it from `BrowserState`.
+Changing a switch takes a restart.
+
+Hidden tabs are suspended (`TrySuspend`) after a configurable idle time (default
+5 minutes), and discarded (destroyed, then recreated and reloaded on next switch)
+after another (default 10). Idle time counts from when the tab was last visible.
+Pinned and active tabs are exempt from both; localhost tabs and tabs playing audio
+are never suspended. WebView2 resumes a suspended webview when it is shown. A soft
+cap of 10 concurrent webviews discards the oldest background tab when exceeded.
 
 ## Bounds and resize
 

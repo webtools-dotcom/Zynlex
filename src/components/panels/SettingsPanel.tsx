@@ -11,6 +11,8 @@ import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { SEARCH_ENGINES, type SearchEngineId } from "@/lib/url";
 import { useUpdatesStore } from "@/stores/updates";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { getEngineOptions, setEngineOptions, type EngineOptions } from "@/services/browser";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
@@ -94,6 +96,101 @@ function CompactToggle({ value, onToggle }: { value: boolean; onToggle: () => vo
         }
       />
     </button>
+  );
+}
+
+function MinutesSelect({
+  label,
+  hint,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  options: number[];
+  value: number;
+  onChange: (minutes: number) => void;
+}) {
+  return (
+    <div className="mt-3">
+      <div className="flex justify-between items-center">
+        <span className="text-sm text-[var(--color-text-muted)]">{label}</span>
+        <select
+          aria-label={label}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="px-1.5 py-0.5 text-xs border rounded text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+          style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
+        >
+          <option value={0}>Never</option>
+          {options.map((m) => (
+            <option key={m} value={m}>
+              After {m} min
+            </option>
+          ))}
+        </select>
+      </div>
+      <span className="text-xs text-[var(--color-text-disabled)] block mt-1">{hint}</span>
+    </div>
+  );
+}
+
+/** Startup-only engine switches: saved to engine.json, applied on restart. */
+function EngineToggles() {
+  const [opts, setOpts] = useState<EngineOptions | null>(null);
+  const [changed, setChanged] = useState(false);
+  useEffect(() => {
+    getEngineOptions()
+      .then(setOpts)
+      .catch(() => {});
+  }, []);
+  if (!opts) return null;
+
+  const toggle = (key: keyof EngineOptions) => {
+    const next = { ...opts, [key]: !opts[key] };
+    setOpts(next);
+    setChanged(true);
+    setEngineOptions(next).catch(() => {});
+  };
+
+  return (
+    <>
+      <div className="flex justify-between items-center mt-3">
+        <div>
+          <span className="text-sm text-[var(--color-text-muted)] block">GPU in main process</span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Saves ~100–200 MB. Turn off if graphics driver crashes close the whole app.
+          </span>
+        </div>
+        <CompactToggle value={opts.inProcessGpu} onToggle={() => toggle("inProcessGpu")} />
+      </div>
+      <div className="flex justify-between items-center mt-3">
+        <div>
+          <span className="text-sm text-[var(--color-text-muted)] block">
+            Low-memory process model
+          </span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Saves ~300–550 MB with many tabs. Turns off site isolation (weaker protection between
+            sites) and shares 2 processes across tabs.
+          </span>
+        </div>
+        <CompactToggle
+          value={opts.lowMemoryProcessModel}
+          onToggle={() => toggle("lowMemoryProcessModel")}
+        />
+      </div>
+      {changed && (
+        <button
+          type="button"
+          onClick={() => void relaunch()}
+          className="mt-2 px-2 py-1 text-xs rounded border text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+          style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
+        >
+          Restart to apply
+        </button>
+      )}
+    </>
   );
 }
 
@@ -279,6 +376,25 @@ export function SettingsPanel() {
           style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
         />
       </div>
+
+      {/* ── Memory ──────────────────────────────────────────────────── */}
+      <SectionHeader>Memory</SectionHeader>
+
+      <MinutesSelect
+        label="Suspend hidden tabs"
+        hint="Freezes a background tab; it resumes when shown. Localhost tabs are never suspended."
+        options={[1, 5, 15, 30]}
+        value={settings.suspendHiddenTabsMinutes}
+        onChange={(suspendHiddenTabsMinutes) => update({ suspendHiddenTabsMinutes })}
+      />
+      <MinutesSelect
+        label="Discard hidden tabs"
+        hint="Closes a background tab's page; it reloads when you click it."
+        options={[10, 30, 60]}
+        value={settings.discardHiddenTabsMinutes}
+        onChange={(discardHiddenTabsMinutes) => update({ discardHiddenTabsMinutes })}
+      />
+      <EngineToggles />
 
       {/* ── Home Page ───────────────────────────────────────────────── */}
       <SectionHeader>Home Page</SectionHeader>
