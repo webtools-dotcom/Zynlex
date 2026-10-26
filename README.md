@@ -32,6 +32,7 @@ New tab shows your running dev servers. ZYNLEX scans localhost, reads the page t
 The sidebar has the things you'd otherwise keep four apps around for:
 
 - **Network log**: per-tab capture with filters, URL search, pause, and response bodies
+- **Console**: each tab's JS errors, console warnings and failed requests, with a count on the tab itself so you notice them. F12 opens full DevTools
 - **Mock responses**: fake any API response (status, body, delay) by URL pattern, or click "Mock this" on a captured request and edit it. No proxy, no certificate
 - **Device viewports**: one device at a time, rendered at its real pixel size
 - **Header rules**: add, override or strip request headers, matched per URL pattern
@@ -39,7 +40,7 @@ The sidebar has the things you'd otherwise keep four apps around for:
 - **Inspector**: meta tags, Open Graph previews, and cookies including HttpOnly
 - JWT decoder, Base64, user-agent switcher
 
-Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it.
+Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it, and every command can be given your own shortcut or pinned to the toolbar (**Settings → Shortcuts**).
 
 Background tabs get out of the way on their own: after a few minutes hidden they're suspended, and later discarded, with timers you set in **Settings → Memory**. Your `localhost` tabs are never suspended, so hot reload keeps working.
 

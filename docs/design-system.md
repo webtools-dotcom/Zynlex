@@ -26,6 +26,9 @@ defined once in `src/index.css` and consumed everywhere via `@theme`.
 - **HTTP method/status colors** — used only in the Network panel and API
   Tester, always as colored text against `--color-elevated`, never as a
   background.
+- **Console severity** (`--color-console-error` / `--color-console-warn`) —
+  the tab error badge, the status-bar counts and the Console panel only, as
+  text color.
 
 ## Typography
 

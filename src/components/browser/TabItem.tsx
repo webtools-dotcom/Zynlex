@@ -2,6 +2,36 @@ import { useState, useEffect } from "react";
 import { X, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Tab } from "@/types";
+import { useConsoleStore } from "@/stores/console";
+import { useUIStore } from "@/stores/ui";
+
+/** JS errors + failed requests on the tab's current page; opens the Console panel. */
+function ErrorBadge({ tabId, onActivate }: { tabId: string; onActivate: () => void }) {
+  const counts = useConsoleStore((s) => s.countsByTab[tabId]);
+  const total = counts ? counts.errors + counts.failed : 0;
+  if (total === 0) return null;
+  const parts = [
+    counts.errors && `${counts.errors} error${counts.errors === 1 ? "" : "s"}`,
+    counts.failed && `${counts.failed} failed request${counts.failed === 1 ? "" : "s"}`,
+  ].filter(Boolean);
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onActivate();
+        useUIStore.getState().setActivePanel("console");
+        useUIStore.getState().setSidebarOpen(true);
+      }}
+      title={`${parts.join(", ")} — open Console`}
+      aria-label={`${parts.join(", ")}. Open Console`}
+      className="flex-shrink-0 px-1 h-4 rounded-[2px] text-micro leading-4 font-medium tabular-nums hover:bg-[var(--color-active)]"
+      style={{ color: "var(--color-console-error)" }}
+    >
+      {total > 99 ? "99+" : total}
+    </button>
+  );
+}
 
 interface TabItemProps {
   tab: Tab;
@@ -119,6 +149,8 @@ export function TabItem({
       <span className="flex-1 min-w-0 text-md font-medium leading-none truncate">
         {tab.isLoading ? "Loading…" : tab.title || "New Tab"}
       </span>
+
+      <ErrorBadge tabId={tab.id} onActivate={onActivate} />
 
       {/* Close button OR pin indicator */}
       {tab.isPinned ? (

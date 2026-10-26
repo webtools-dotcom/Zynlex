@@ -14,6 +14,7 @@ import {
   Shield,
   Download,
   Ghost,
+  TerminalSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui";
@@ -33,6 +34,9 @@ const HistoryPanel = lazy(() =>
 );
 const NetworkPanel = lazy(() =>
   import("@/components/panels/NetworkPanel").then((m) => ({ default: m.NetworkPanel })),
+);
+const ConsolePanel = lazy(() =>
+  import("@/components/panels/ConsolePanel").then((m) => ({ default: m.ConsolePanel })),
 );
 const JwtDecoder = lazy(() =>
   import("@/components/panels/JwtDecoder").then((m) => ({ default: m.JwtDecoder })),
@@ -58,6 +62,7 @@ const DownloadsPanel = lazy(() =>
 const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
   { id: "servers", Icon: Server, label: "Live Servers" },
   { id: "network", Icon: Activity, label: "Network" },
+  { id: "console", Icon: TerminalSquare, label: "Console" },
   { id: "inspector", Icon: FlaskConical, label: "Inspector" },
   { id: "api", Icon: Code2, label: "API Tester" },
   { id: "headers", Icon: Shield, label: "Header Injection" },
@@ -313,6 +318,7 @@ export function Sidebar() {
           {activePanel === "history" && <HistoryPanel />}
           {activePanel === "downloads" && <DownloadsPanel />}
           {activePanel === "network" && <NetworkPanel key={activeTabId ?? "none"} />}
+          {activePanel === "console" && <ConsolePanel />}
           {activePanel === "inspector" && <InspectorPanel />}
           {activePanel === "api" && <ApiTesterPanel />}
           {activePanel === "jwt" && <JwtDecoder />}

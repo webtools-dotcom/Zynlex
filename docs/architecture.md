@@ -113,8 +113,9 @@ expose tab-scoped commands to any page the user navigates to.
 
 Anything that needs data out of a tab — Inspector reads, tab title/favicon, in-page
 keyboard shortcuts — goes through native WebView2 COM APIs instead
-(`ExecuteScript`, `DocumentTitleChanged`, `AcceleratorKeyPressed`), always
-Rust-initiated, never page-initiated. `capabilities/default.json` declares no
+(`ExecuteScript`, `DocumentTitleChanged`, `AcceleratorKeyPressed`, and
+DevTools-protocol event receivers for the console), always Rust-initiated,
+never page-initiated. `capabilities/default.json` declares no
 `remote` scope. This is a deliberate boundary, not a gap — do not add
 `remote.urls` to work around it.
 

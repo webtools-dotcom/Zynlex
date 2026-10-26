@@ -153,6 +153,7 @@ export function RootLayout() {
           url={url}
           hoveredUrl={hoveredUrl}
           zoom={activeTab?.zoom ?? 1}
+          tabId={activeTab?.id ?? null}
         />
 
         {/* Overlays */}

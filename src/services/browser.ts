@@ -445,6 +445,22 @@ export function onNetworkEntry(
   return listen<NetworkEntryPayload>("browser://network-entry", (e) => callback(e.payload));
 }
 
+/** A console error/warning or failed request from a tab — see console.rs. */
+export interface ConsoleEntryPayload {
+  tabId: string;
+  level: "error" | "warning";
+  source: string;
+  text: string;
+  url: string;
+  line: number | null;
+}
+
+export function onConsoleEntry(
+  callback: (payload: ConsoleEntryPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<ConsoleEntryPayload>("browser://console", (e) => callback(e.payload));
+}
+
 /** Gates the Rust-side capture work (COM reads, body fetch, IPC emit) — off
  * unless the Network panel is mounted, so a closed panel costs nothing. */
 export async function setNetworkCapture(active: boolean): Promise<void> {

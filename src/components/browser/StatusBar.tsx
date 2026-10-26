@@ -1,4 +1,36 @@
 import { originOf } from "@/lib/url";
+import { useConsoleStore } from "@/stores/console";
+import { useUIStore } from "@/stores/ui";
+
+/** The active page's console counts; clicking opens the Console panel. */
+function ConsoleCounts({ tabId }: { tabId: string | null }) {
+  const c = useConsoleStore((s) => (tabId ? s.countsByTab[tabId] : undefined));
+  if (!c || c.errors + c.warnings + c.failed === 0) return null;
+  const items: [number, string, string][] = [
+    [c.errors, c.errors === 1 ? "error" : "errors", "var(--color-console-error)"],
+    [c.failed, "failed", "var(--color-console-error)"],
+    [c.warnings, c.warnings === 1 ? "warning" : "warnings", "var(--color-console-warn)"],
+  ];
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        useUIStore.getState().setActivePanel("console");
+        useUIStore.getState().setSidebarOpen(true);
+      }}
+      title="Open Console"
+      className="flex items-center gap-2 hover:underline"
+    >
+      {items
+        .filter(([n]) => n > 0)
+        .map(([n, label, color]) => (
+          <span key={label} style={{ color }}>
+            {n} {label}
+          </span>
+        ))}
+    </button>
+  );
+}
 
 interface StatusBarProps {
   isLoading: boolean;
@@ -6,9 +38,10 @@ interface StatusBarProps {
   url: string;
   hoveredUrl: string | null;
   zoom: number;
+  tabId: string | null;
 }
 
-export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom }: StatusBarProps) {
+export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom, tabId }: StatusBarProps) {
   const origin = url ? originOf(url) : "";
 
   let leftContent: React.ReactNode = null;
@@ -43,6 +76,7 @@ export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom }: Status
       }}
     >
       {leftContent}
+      <ConsoleCounts tabId={tabId} />
       <div className="flex-1" />
       {zoom !== 1 && (
         <span style={{ color: "var(--color-text-muted)" }}>{Math.round(zoom * 100)}%</span>

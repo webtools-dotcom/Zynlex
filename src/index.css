@@ -49,6 +49,10 @@
   --color-status-4xx: #ef4444;
   --color-status-5xx: #c084fc;
 
+  /* Console severity — the tab error badge and Console panel only. */
+  --color-console-error: #ef4444;
+  --color-console-warn:  #f59e0b;
+
   /* Typography */
   --font-ui:      "JetBrains Mono", "Fira Code", ui-monospace, monospace;
   --font-mono:    "JetBrains Mono", "Fira Code", ui-monospace, monospace;
@@ -267,6 +271,9 @@ input, textarea, [contenteditable], .selectable {
   --color-status-3xx: #d97706;
   --color-status-4xx: #dc2626;
   --color-status-5xx: #9333ea;
+
+  --color-console-error: #dc2626;
+  --color-console-warn:  #d97706;
 
   /* Legacy aliases — light overrides */
   --zynlex-workspace-bar: var(--color-base);
