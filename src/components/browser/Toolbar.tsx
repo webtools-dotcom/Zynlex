@@ -10,6 +10,7 @@ import {
   Lock,
   ShieldAlert,
   Wrench,
+  TerminalSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspacesStore } from "@/stores/workspaces";
@@ -22,6 +23,32 @@ import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { resolveInput } from "@/lib/url";
 import { focusAppWebview } from "@/services/browser";
 import { UpdateButton } from "@/components/browser/UpdateButton";
+import { COMMANDS_BY_ID, chordLabel, keysFor } from "@/lib/commands";
+import { useKeybindingsStore } from "@/stores/keybindings";
+
+/** Commands the user pinned in Settings → Shortcuts, as icon buttons. */
+function PinnedCommands() {
+  const pinned = useKeybindingsStore((s) => s.pinned);
+  const overrides = useKeybindingsStore((s) => s.overrides);
+  return pinned.map((id) => {
+    const cmd = COMMANDS_BY_ID.get(id);
+    if (!cmd) return null;
+    const Icon = cmd.icon ?? TerminalSquare;
+    const keys = keysFor(cmd, overrides);
+    const title = keys.length ? `${cmd.title} (${chordLabel(keys[0]).join("+")})` : cmd.title;
+    return (
+      <button
+        key={id}
+        onClick={() => cmd.run()}
+        title={title}
+        aria-label={cmd.title}
+        className="w-8 h-8 flex items-center justify-center rounded-[4px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] transition-colors"
+      >
+        <Icon size={15} />
+      </button>
+    );
+  });
+}
 
 /**
  * Address-bar security indicator, derived purely from the URL scheme.
@@ -137,21 +164,9 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
         inputRef.current?.select();
       });
     }
-    function handler(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "l") {
-        e.preventDefault();
-        focusInput();
-      }
-    }
-    function onForwarded() {
-      focusInput();
-    }
-    window.addEventListener("keydown", handler);
-    window.addEventListener("zynlex:focus-address-bar", onForwarded);
-    return () => {
-      window.removeEventListener("keydown", handler);
-      window.removeEventListener("zynlex:focus-address-bar", onForwarded);
-    };
+    // Dispatched by the addressBar.focus command (src/lib/commands.ts).
+    window.addEventListener("zynlex:focus-address-bar", focusInput);
+    return () => window.removeEventListener("zynlex:focus-address-bar", focusInput);
   }, []);
 
   const canGoBack = activeTab?.canGoBack ?? false;
@@ -254,6 +269,8 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
       </div>
 
       <UpdateButton />
+
+      <PinnedCommands />
 
       {/* Bookmark button */}
       <button

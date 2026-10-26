@@ -15,12 +15,7 @@
  */
 import { useEffect, useRef, useCallback } from "react";
 import { Search, X, ChevronUp, ChevronDown } from "lucide-react";
-import {
-  webviewFind,
-  webviewFindNext,
-  webviewStopFind,
-  focusAppWebview,
-} from "@/services/browser";
+import { webviewFind, webviewFindNext, webviewStopFind, focusAppWebview } from "@/services/browser";
 import { useUIStore, useFindOpen } from "@/stores/ui";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 
@@ -112,8 +107,8 @@ export function FindBar() {
   );
 
   // Local keydown handler: Enter cycles matches, Shift+Enter goes back,
-  // Escape closes the bar. The global Ctrl+F is handled in
-  // useKeyboardShortcuts.
+  // Escape closes the bar. Ctrl+F is the find.open command
+  // (src/lib/commands.ts).
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();

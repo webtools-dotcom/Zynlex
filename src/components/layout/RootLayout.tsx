@@ -77,7 +77,7 @@ export function RootLayout() {
     setBridge(b);
   }, []);
 
-  useKeyboardShortcuts(bridge);
+  useKeyboardShortcuts();
   const viewportMode = useViewportMode();
 
   return (

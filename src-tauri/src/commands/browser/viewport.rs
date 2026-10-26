@@ -157,7 +157,9 @@ pub async fn create_viewport(
         &label,
         WebviewUrl::External(url::Url::parse("about:blank").expect("about:blank must parse")),
     )
-    .background_color(tauri::webview::Color(15, 15, 15, 255));
+    .background_color(tauri::webview::Color(15, 15, 15, 255))
+    // The `devtools` feature turns it on everywhere; only tabs get it in release.
+    .devtools(cfg!(debug_assertions));
 
     if let Some(ref ua) = spec.user_agent {
         builder = builder.user_agent(ua);

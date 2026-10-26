@@ -206,27 +206,6 @@ export function TabBar({ bridge = null, vertical = false }: TabBarProps = {}) {
     [reorderTabs],
   );
 
-  // ── Keyboard shortcuts ─────────────────────────────────────────────────
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea") return;
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key === "t") {
-        e.preventDefault();
-        openNewTab();
-      }
-      if (mod && e.key === "w") {
-        e.preventDefault();
-        if (activeTabId) handleCloseTab(activeTabId);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [openNewTab, handleCloseTab, activeTabId]);
-
   useEffect(() => {
     if (tabIds.length === 0) openNewTab();
   }, [activeWorkspaceId, openNewTab, tabIds.length]);
