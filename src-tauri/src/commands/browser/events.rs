@@ -7,9 +7,71 @@
 
 use super::{pwstr_to_string, webview_label_for_tab};
 use crate::zynlex_log;
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 
 // ─── Shortcut forwarding (global, not tab-specific) ──────────────────
+
+/// Chords the frontend has bound to a command (src/lib/commands.ts), pushed
+/// whenever bindings change. Only these are taken away from a focused page;
+/// every other key combination still reaches it.
+fn bound_shortcuts() -> &'static Mutex<HashSet<String>> {
+    static BOUND: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    BOUND.get_or_init(Default::default)
+}
+
+#[tauri::command]
+pub fn browser_set_shortcuts(chords: Vec<String>) {
+    *bound_shortcuts().lock().unwrap_or_else(|e| e.into_inner()) = chords.into_iter().collect();
+}
+
+/// The key half of a chord, named exactly as `chordFromEvent` in
+/// src/lib/commands.ts names it — the two must produce identical strings.
+fn key_name(vkey: u32) -> Option<String> {
+    let named = match vkey {
+        0x41..=0x5A => return char::from_u32(vkey + 0x20).map(String::from),
+        0x30..=0x39 => return char::from_u32(vkey).map(String::from),
+        0x60..=0x69 => return char::from_u32(vkey - 0x30).map(String::from),
+        0x70..=0x7B => return Some(format!("f{}", vkey - 0x6F)),
+        0x25 => "left",
+        0x26 => "up",
+        0x27 => "right",
+        0x28 => "down",
+        0x09 => "tab",
+        0x1B => "escape",
+        0x20 => "space",
+        0x0D => "enter",
+        0x08 => "backspace",
+        0x2E => "delete",
+        0xBC => ",",
+        0xBE => ".",
+        0xBF | 0x6F => "/",
+        0xDC => "\\",
+        0xBB | 0x6B => "=",
+        0xBD | 0x6D => "-",
+        0xC0 => "`",
+        0xBA => ";",
+        0xDE => "'",
+        0xDB => "[",
+        0xDD => "]",
+        _ => return None,
+    };
+    Some(named.to_string())
+}
+
+/// "ctrl+alt+shift+key", modifiers always in that order.
+fn chord(ctrl: bool, alt: bool, shift: bool, vkey: u32) -> Option<String> {
+    let key = key_name(vkey)?;
+    let mut s = String::new();
+    for (held, name) in [(ctrl, "ctrl+"), (alt, "alt+"), (shift, "shift+")] {
+        if held {
+            s.push_str(name);
+        }
+    }
+    s.push_str(&key);
+    Some(s)
+}
 
 /// Called from the native accelerator-key handler — never exposed as an
 /// IPC command, since it would let any page spoof a keyboard shortcut.
@@ -66,7 +128,9 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
     let _ = wv.with_webview(move |platform| {
         #[cfg(windows)]
         unsafe {
-            use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+            use webview2_com::Microsoft::Web::WebView2::Win32::{
+                COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN,
+            };
             use webview2_com::{
                 AcceleratorKeyPressedEventHandler, ContainsFullScreenElementChangedEventHandler,
                 DocumentTitleChangedEventHandler, HistoryChangedEventHandler,
@@ -170,16 +234,15 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                     };
                     let mut kind = Default::default();
                     let _ = args.KeyEventKind(&mut kind);
-                    if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN {
+                    if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN
+                        && kind != COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN
+                    {
+                        // Alt combinations arrive as SYSTEM_KEY_DOWN, not KEY_DOWN.
                         return Ok(());
                     }
                     let mut vkey: u32 = 0;
                     let _ = args.VirtualKey(&mut vkey);
 
-                    // The full set of shortcuts reachable while a page has focus.
-                    // ShortcutHelp.tsx is what users are shown; anything listed
-                    // there needs an entry here or it only works when the React
-                    // chrome happens to have focus.
                     let ctrl = windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
                         windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL.0 as i32,
                     ) < 0;
@@ -190,82 +253,24 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                         windows::Win32::UI::Input::KeyboardAndMouse::VK_MENU.0 as i32,
                     ) < 0;
 
-                    let shortcut = if vkey == 0x1B {
-                        Some("escape")
-                    } else if alt && !ctrl && !shift && vkey == 0x25 {
-                        Some("alt+left")
-                    } else if alt && !ctrl && !shift && vkey == 0x27 {
-                        Some("alt+right")
-                    } else if ctrl && shift && !alt && vkey == 0x54 {
-                        Some("ctrl+shift+t")
-                    } else if ctrl && shift && !alt && vkey == 0x09 {
-                        Some("ctrl+shift+tab")
-                    } else if ctrl && shift && !alt && vkey == 0x52 {
-                        Some("ctrl+shift+r")
-                    } else if ctrl && shift && !alt && (0x31..=0x39).contains(&vkey) {
-                        // Ctrl+Shift+1..9 → switch workspace. Table, not format!, so
-                        // the whole match stays &'static str.
-                        const WS: [&str; 9] = [
-                            "ctrl+shift+1",
-                            "ctrl+shift+2",
-                            "ctrl+shift+3",
-                            "ctrl+shift+4",
-                            "ctrl+shift+5",
-                            "ctrl+shift+6",
-                            "ctrl+shift+7",
-                            "ctrl+shift+8",
-                            "ctrl+shift+9",
-                        ];
-                        Some(WS[(vkey - 0x31) as usize])
-                    } else if ctrl && shift && !alt && (vkey == 0xBF || vkey == 0x6F) {
-                        Some("ctrl+?")
-                    } else if ctrl && !shift && !alt {
-                        match vkey {
-                            0x4B => Some("ctrl+k"),
-                            0x44 => Some("ctrl+d"),
-                            0x46 => Some("ctrl+f"),
-                            0x54 => Some("ctrl+t"),
-                            0x57 => Some("ctrl+w"),
-                            0x42 => Some("ctrl+b"),
-                            0xBC => Some("ctrl+,"),
-                            0x4C => Some("ctrl+l"),
-                            0x48 => Some("ctrl+h"),
-                            // Plain Ctrl+Tab. Ctrl+Shift+Tab is already handled
-                            // above; without this, tab cycling from a focused page
-                            // worked backwards but not forwards.
-                            0x09 => Some("ctrl+tab"),
-                            0x31 => Some("ctrl+1"),
-                            0x32 => Some("ctrl+2"),
-                            0x33 => Some("ctrl+3"),
-                            0x34 => Some("ctrl+4"),
-                            0x35 => Some("ctrl+5"),
-                            0x36 => Some("ctrl+6"),
-                            0x37 => Some("ctrl+7"),
-                            0x38 => Some("ctrl+8"),
-                            0x39 => Some("ctrl+9"),
-                            // Zoom: forwarded (and SetHandled) so the app's per-tab
-                            // zoom store stays the single source of truth. Ctrl+wheel
-                            // is still handled natively by zoom_hotkeys_enabled.
-                            0xBB | 0x6B => Some("ctrl+="),
-                            0xBD | 0x6D => Some("ctrl+-"),
-                            0x30 | 0x60 => Some("ctrl+0"),
-                            _ => None,
-                        }
-                    } else {
-                        None
+                    let Some(s) = chord(ctrl, alt, shift, vkey) else {
+                        return Ok(());
                     };
-
-                    if let Some(s) = shortcut {
-                        let _ = forward_shortcut(app_key.clone(), s.to_string());
-                        // Escape is observed, never consumed. SetHandled(true) stops
-                        // WebView2 delivering the key to the page, and the app only
-                        // wants Escape in two narrow cases (close the find bar, stop
-                        // a load) — so suppressing it unconditionally meant no page
-                        // could ever see an Escape keydown. Every other entry here is
-                        // a browser accelerator the page is not entitled to.
-                        if s != "escape" {
-                            let _ = args.SetHandled(true);
-                        }
+                    // Escape is observed, never consumed: always forwarded, never
+                    // SetHandled. SetHandled(true) stops WebView2 delivering the key
+                    // to the page, and the app only wants Escape in two narrow cases
+                    // (close the find bar, stop a load) — so suppressing it meant no
+                    // page could ever see an Escape keydown. Every bound chord is a
+                    // browser accelerator the page is not entitled to.
+                    if s == "escape" {
+                        let _ = forward_shortcut(app_key.clone(), s);
+                    } else if bound_shortcuts()
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .contains(&s)
+                    {
+                        let _ = forward_shortcut(app_key.clone(), s);
+                        let _ = args.SetHandled(true);
                     }
                     Ok(())
                 }));
@@ -335,4 +340,33 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             let _ = core.add_ContainsFullScreenElementChanged(&fs_handler, &mut fs_token);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::chord;
+
+    // Must match chordFromEvent in src/lib/commands.ts (see commands.test.ts).
+    #[test]
+    fn chord_names_match_the_frontend() {
+        assert_eq!(chord(true, false, false, 0x4B).as_deref(), Some("ctrl+k"));
+        assert_eq!(
+            chord(true, false, true, 0x31).as_deref(),
+            Some("ctrl+shift+1")
+        );
+        assert_eq!(
+            chord(true, false, true, 0xBF).as_deref(),
+            Some("ctrl+shift+/")
+        );
+        assert_eq!(chord(true, false, false, 0x6B).as_deref(), Some("ctrl+="));
+        assert_eq!(chord(true, false, false, 0x60).as_deref(), Some("ctrl+0"));
+        assert_eq!(chord(false, true, false, 0x25).as_deref(), Some("alt+left"));
+        assert_eq!(
+            chord(true, true, true, 0x7B).as_deref(),
+            Some("ctrl+alt+shift+f12")
+        );
+        assert_eq!(chord(false, false, false, 0x1B).as_deref(), Some("escape"));
+        // Modifier keys on their own are not chords.
+        assert_eq!(chord(true, false, false, 0x11), None);
+    }
 }

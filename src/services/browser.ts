@@ -88,6 +88,15 @@ export async function hardReload(tabId: string): Promise<void> {
   await invoke<void>("browser_hard_reload", { tabId });
 }
 
+export async function openDevtools(tabId: string): Promise<void> {
+  await invoke<void>("browser_open_devtools", { tabId });
+}
+
+/** The chords Rust takes away from a focused page and forwards to the app. */
+export async function setShortcuts(chords: string[]): Promise<void> {
+  await invoke<void>("browser_set_shortcuts", { chords });
+}
+
 export async function setTabZoom(tabId: string, factor: number): Promise<void> {
   await invoke<void>("browser_set_zoom", { tabId, factor });
 }
@@ -124,10 +133,7 @@ export async function webviewFind(tabId: string, query: string): Promise<FindRes
   return await invoke<FindResult>("browser_find", { tabId, query });
 }
 
-export async function webviewFindNext(
-  tabId: string,
-  forward: boolean = true,
-): Promise<FindResult> {
+export async function webviewFindNext(tabId: string, forward: boolean = true): Promise<FindResult> {
   return await invoke<FindResult>("browser_find_next", { tabId, forward });
 }
 

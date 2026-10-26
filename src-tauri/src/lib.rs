@@ -216,6 +216,9 @@ pub fn run() {
                     .ok_or("main window config missing")?;
                 tauri::WebviewWindowBuilder::from_config(_app.handle(), &config)?
                     .additional_browser_args(&args)
+                    // The `devtools` feature (for tab DevTools) would otherwise
+                    // open the app's own UI to inspection in release builds.
+                    .devtools(cfg!(debug_assertions))
                     .build()?;
                 let _ = _app.state::<BrowserState>().browser_args.set(args);
 
@@ -302,6 +305,8 @@ pub fn run() {
             commands::browser::browser_stop_loading,
             commands::browser::browser_set_zoom,
             commands::browser::browser_hard_reload,
+            commands::browser::browser_open_devtools,
+            commands::browser::browser_set_shortcuts,
             commands::browser::open_download,
             commands::browser::browser_find,
             commands::browser::browser_find_next,

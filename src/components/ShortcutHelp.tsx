@@ -3,49 +3,14 @@
  *
  * Triggered by Ctrl+? (Ctrl+Shift+/ on most keyboards). The key value
  * reported by the browser is "?" when Shift+/ is pressed with Ctrl held.
- * Esc or X button or backdrop click closes the overlay.
+ * Esc or X button or backdrop click closes the overlay. Generated from the
+ * command registry, so it always shows the user's current bindings.
  */
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { useUIStore } from "@/stores/ui";
-
-interface Shortcut {
-  keys: string[];
-  description: string;
-}
-
-const SHORTCUTS: Shortcut[] = [
-  { keys: ["Ctrl", "T"], description: "New Tab" },
-  { keys: ["Ctrl", "W"], description: "Close Tab" },
-  { keys: ["Ctrl", "Shift", "T"], description: "Reopen Last Tab" },
-  { keys: ["Ctrl", "L"], description: "Focus Address Bar" },
-  { keys: ["Ctrl", "R"], description: "Reload" },
-  { keys: ["Ctrl", "F"], description: "Find in Page" },
-  { keys: ["Ctrl", "D"], description: "Bookmark Current Tab" },
-  { keys: ["Ctrl", "K"], description: "Command Palette" },
-  { keys: ["Ctrl", ","], description: "Settings" },
-  { keys: ["Ctrl", "?"], description: "This Help" },
-  { keys: ["Alt", "←"], description: "Go Back" },
-  { keys: ["Alt", "→"], description: "Go Forward" },
-  { keys: ["Esc"], description: "Stop Loading / Close Find" },
-  { keys: ["Ctrl", "1"], description: "Switch to Tab 1" },
-  { keys: ["Ctrl", "2"], description: "Switch to Tab 2" },
-  { keys: ["Ctrl", "3"], description: "Switch to Tab 3" },
-  { keys: ["Ctrl", "4"], description: "Switch to Tab 4" },
-  { keys: ["Ctrl", "5"], description: "Switch to Tab 5" },
-  { keys: ["Ctrl", "6"], description: "Switch to Tab 6" },
-  { keys: ["Ctrl", "7"], description: "Switch to Tab 7" },
-  { keys: ["Ctrl", "8"], description: "Switch to Tab 8" },
-  { keys: ["Ctrl", "9"], description: "Switch to Tab 9" },
-  { keys: ["Ctrl", "Tab"], description: "Next Tab" },
-  { keys: ["Ctrl", "Shift", "Tab"], description: "Previous Tab" },
-  { keys: ["Ctrl", "Shift", "R"], description: "Hard Reload (bypass cache)" },
-  { keys: ["Ctrl", "H"], description: "History Panel" },
-  { keys: ["Ctrl", "Shift", "1-9"], description: "Switch Workspace" },
-  { keys: ["Ctrl", "+"], description: "Zoom In" },
-  { keys: ["Ctrl", "-"], description: "Zoom Out" },
-  { keys: ["Ctrl", "0"], description: "Reset Zoom" },
-];
+import { COMMANDS, chordLabel, keysFor } from "@/lib/commands";
+import { useKeybindingsStore } from "@/stores/keybindings";
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -63,6 +28,11 @@ function Kbd({ children }: { children: React.ReactNode }) {
 }
 
 export function ShortcutHelp() {
+  const overrides = useKeybindingsStore((s) => s.overrides);
+  const shortcuts = COMMANDS.flatMap((c) =>
+    keysFor(c, overrides).map((chord) => ({ chord, title: c.title })),
+  );
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -108,32 +78,35 @@ export function ShortcutHelp() {
         </div>
 
         <div className="overflow-y-auto py-2">
-          {SHORTCUTS.map((s) => (
+          {shortcuts.map((s) => (
             <div
-              key={s.description}
+              key={s.chord}
               className="flex items-center justify-between px-4 py-1.5 hover:bg-[var(--color-hover)]"
             >
               <div className="flex items-center gap-1 shrink-0">
-                {s.keys.map((k, j) => (
+                {chordLabel(s.chord).map((k, j, keys) => (
                   <span key={k} className="flex items-center gap-1">
                     <Kbd>{k}</Kbd>
-                    {j < s.keys.length - 1 && (
+                    {j < keys.length - 1 && (
                       <span className="text-[var(--color-text-disabled)] text-micro">+</span>
                     )}
                   </span>
                 ))}
               </div>
               <span className="text-xs text-[var(--color-text-muted)] text-right ml-4 truncate">
-                {s.description}
+                {s.title}
               </span>
             </div>
           ))}
         </div>
 
         <div
-          className="flex justify-end px-4 py-2 border-t shrink-0"
+          className="flex justify-between px-4 py-2 border-t shrink-0"
           style={{ borderColor: "var(--color-border)" }}
         >
+          <span className="text-micro text-[var(--color-text-disabled)]">
+            Change these in Settings → Shortcuts
+          </span>
           <span className="text-micro text-[var(--color-text-disabled)]">
             Press <Kbd>Esc</Kbd> to close
           </span>

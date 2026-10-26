@@ -10,14 +10,12 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import {
   Search,
   Globe,
-  Plus,
-  Settings,
-  X,
   Code2,
   Bookmark,
   Clock,
   Server,
   Layers,
+  TerminalSquare,
 } from "lucide-react";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspacesStore } from "@/stores/workspaces";
@@ -28,8 +26,9 @@ import { useServersStore } from "@/stores/servers";
 import { useApiCollectionsStore } from "@/stores/apiCollections";
 import { LOAD_REQUEST_EVENT } from "@/components/panels/ApiTester";
 import { getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
-import { openTab, closeTab } from "@/lib/tabActions";
-import { getActiveTabId } from "@/hooks/useActiveScope";
+import { openTab } from "@/lib/tabActions";
+import { COMMANDS, chordLabel, keysFor } from "@/lib/commands";
+import { useKeybindingsStore } from "@/stores/keybindings";
 
 type PaletteType = "tab" | "command" | "bookmark" | "history" | "workspace" | "server" | "request";
 
@@ -73,6 +72,7 @@ export function CommandPalette() {
   const servers = useServersStore((s) => s.servers);
   const collections = useApiCollectionsStore((s) => s.byWs[activeWorkspaceId]);
   const recentPaletteIds = useUIStore((s) => s.recentPaletteIds);
+  const overrides = useKeybindingsStore((s) => s.overrides);
 
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -96,75 +96,21 @@ export function CommandPalette() {
       };
     });
 
-    const commandItems: PaletteItem[] = [
-      {
-        id: "cmd-new-tab",
-        type: "command",
-        label: "New Tab",
-        sublabel: "Open a new empty tab",
-        icon: <Plus size={14} className="text-[var(--color-text-muted)]" />,
+    const commandItems: PaletteItem[] = COMMANDS.filter((c) => !c.hidden).map((c) => {
+      const Icon = c.icon ?? TerminalSquare;
+      const keys = keysFor(c, overrides);
+      return {
+        id: c.id,
+        type: "command" as const,
+        label: c.title,
+        sublabel: keys.length ? chordLabel(keys[0]).join("+") : undefined,
+        icon: <Icon size={14} className="text-[var(--color-text-muted)]" />,
         action: () => {
-          openTab({}, { wsId: activeWorkspaceId });
           useUIStore.getState().closeCommandPalette();
+          c.run();
         },
-      },
-      {
-        id: "cmd-settings",
-        type: "command",
-        label: "Open Settings",
-        sublabel: "Theme, search engine, scan interval",
-        icon: <Settings size={14} className="text-[var(--color-text-muted)]" />,
-        action: () => {
-          useUIStore.getState().toggleSettingsPanel();
-          useUIStore.getState().closeCommandPalette();
-        },
-      },
-      {
-        id: "cmd-close-tab",
-        type: "command",
-        label: "Close Current Tab",
-        sublabel: "Close the active tab",
-        icon: <X size={14} className="text-[var(--color-text-muted)]" />,
-        action: () => {
-          const activeTabId = getActiveTabId();
-          if (activeTabId) closeTab(activeTabId);
-          useUIStore.getState().closeCommandPalette();
-        },
-      },
-      {
-        id: "cmd-bookmarks",
-        type: "command",
-        label: "Open Bookmarks Panel",
-        sublabel: "Show saved bookmarks in the sidebar",
-        icon: <Bookmark size={14} className="text-[var(--color-text-muted)]" />,
-        action: () => {
-          useUIStore.getState().setActivePanel("bookmarks");
-          useUIStore.getState().closeCommandPalette();
-        },
-      },
-      {
-        id: "cmd-api-tester",
-        type: "command",
-        label: "Open API Tester",
-        sublabel: "Test HTTP endpoints in a split panel",
-        icon: <Code2 size={14} className="text-[var(--color-text-muted)]" />,
-        action: () => {
-          useUIStore.getState().openApiTester();
-          useUIStore.getState().closeCommandPalette();
-        },
-      },
-      {
-        id: "cmd-find",
-        type: "command",
-        label: "Find in Page",
-        sublabel: "Open the in-page search bar (Ctrl+F)",
-        icon: <Search size={14} className="text-[var(--color-text-muted)]" />,
-        action: () => {
-          useUIStore.getState().openFind();
-          useUIStore.getState().closeCommandPalette();
-        },
-      },
-    ];
+      };
+    });
 
     /** Every non-command item ends up opening a URL in a new tab. */
     const openInNewTab = (url: string, title: string) => () => {
@@ -274,6 +220,7 @@ export function CommandPalette() {
     servers,
     collections,
     recentPaletteIds,
+    overrides,
   ]);
 
   function run(item: PaletteItem) {

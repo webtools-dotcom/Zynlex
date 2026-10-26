@@ -249,6 +249,9 @@ fn create_webview_for_tab(
     // Ctrl +/- and Ctrl+mousewheel zoom natively inside the page (WebView2
     // IsZoomControlEnabled). Builder attribute — only affects new webviews.
     .zoom_hotkeys_enabled(true)
+    // Release builds need the tauri `devtools` feature for this to take effect.
+    // Tabs only: the main window and viewport keep it to debug builds.
+    .devtools(true)
     // Without this, WebView2's own default paints the strip newly exposed by a
     // resize before the page repaints it — a flash against the chrome.
     .background_color(flash)
@@ -692,6 +695,16 @@ pub async fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String
         with_core(&wv, "browser_reload", |core| unsafe {
             let _ = core.Reload();
         })?;
+    }
+    Ok(())
+}
+
+/// Opens Chromium DevTools for the tab in its own window.
+#[tauri::command]
+pub async fn browser_open_devtools(app: AppHandle, tab_id: String) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    if let Some(wv) = find_tab_webview(&app, &label) {
+        wv.open_devtools();
     }
     Ok(())
 }
