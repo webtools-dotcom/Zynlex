@@ -74,6 +74,32 @@ pub(crate) fn cdp(
     }
 }
 
+/// DevTools protocol call that waits for CDP's reply and returns its JSON.
+#[cfg(windows)]
+async fn cdp_result(
+    wv: &tauri::Webview,
+    method: &'static str,
+    params: String,
+) -> Result<String, String> {
+    use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
+    use windows_core::HSTRING;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    with_core(wv, method, move |core| unsafe {
+        let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+            move |r: windows_core::Result<()>, json: String| -> windows_core::Result<()> {
+                let _ = tx.send(r.map(|_| json).map_err(|e| format!("{method}: {e:?}")));
+                Ok(())
+            },
+        ));
+        let _ = core.CallDevToolsProtocolMethod(
+            &HSTRING::from(method),
+            &HSTRING::from(params),
+            &handler,
+        );
+    })?;
+    rx.await.map_err(|_| format!("{method}: no reply"))?
+}
+
 // ─── Injected Scripts ────────────────────────────────────────────────
 
 const CHROME_FEATURES_SCRIPT: &str = include_str!("scripts/chrome_features.js");
@@ -733,6 +759,66 @@ pub async fn browser_clear_site_data(
             &handler,
         );
     })
+}
+
+/// Saves a PNG of what the tab shows to Downloads and returns its path.
+#[tauri::command]
+pub async fn browser_capture_screenshot(app: AppHandle, tab_id: String) -> Result<String, String> {
+    use base64::Engine;
+    let wv = find_tab_webview(&app, &webview_label_for_tab(&tab_id)).ok_or("tab not found")?;
+    let json = cdp_result(&wv, "Page.captureScreenshot", r#"{"format":"png"}"#.into()).await?;
+    let data = serde_json::from_str::<serde_json::Value>(&json)
+        .ok()
+        .and_then(|v| v["data"].as_str().map(str::to_owned))
+        .ok_or("screenshot: no image data")?;
+    let png = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|e| format!("screenshot: {e}"))?;
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let path = app
+        .path()
+        .download_dir()
+        .map_err(|e| e.to_string())?
+        .join(format!("zynlex-bug-{millis}.png"));
+    std::fs::write(&path, png).map_err(|e| format!("screenshot: {e}"))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Puts `text` on the clipboard. `navigator.clipboard` refuses while the app's
+/// own document isn't focused, which is the case whenever a command runs from a
+/// shortcut pressed inside a page.
+#[tauri::command]
+pub fn clipboard_write_text(text: String) -> Result<(), String> {
+    use windows::Win32::Foundation::GlobalFree;
+    use windows::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+    };
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    const CF_UNICODETEXT: u32 = 13;
+    let wide: Vec<u16> = text.encode_utf16().chain([0]).collect();
+    unsafe {
+        OpenClipboard(None).map_err(|e| format!("clipboard busy: {e}"))?;
+        let result = (|| {
+            EmptyClipboard()?;
+            let mem = GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2)?;
+            let dst = GlobalLock(mem) as *mut u16;
+            std::ptr::copy_nonoverlapping(wide.as_ptr(), dst, wide.len());
+            let _ = GlobalUnlock(mem);
+            // On success the clipboard owns the memory; on failure it's still ours.
+            if let Err(e) = SetClipboardData(
+                CF_UNICODETEXT,
+                Some(windows::Win32::Foundation::HANDLE(mem.0)),
+            ) {
+                let _ = GlobalFree(Some(mem));
+                return Err(e);
+            }
+            Ok(())
+        })();
+        let _ = CloseClipboard();
+        result.map_err(|e| format!("clipboard: {e}"))
+    }
 }
 
 /// Opens Chromium DevTools for the tab in its own window.

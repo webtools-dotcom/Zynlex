@@ -93,6 +93,16 @@ export async function clearSiteData(tabId: string, origin: string): Promise<void
   await invoke<void>("browser_clear_site_data", { tabId, origin });
 }
 
+/** PNG of the tab's visible area, saved to Downloads. Resolves to its path. */
+export async function captureScreenshot(tabId: string): Promise<string> {
+  return invoke<string>("browser_capture_screenshot", { tabId });
+}
+
+/** Works when the app's document isn't focused, unlike navigator.clipboard. */
+export async function copyText(text: string): Promise<void> {
+  await invoke<void>("clipboard_write_text", { text });
+}
+
 export async function openDevtools(tabId: string): Promise<void> {
   await invoke<void>("browser_open_devtools", { tabId });
 }
