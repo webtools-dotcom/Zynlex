@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-28
+
+Fewer trips out of the browser: your own shortcuts and toolbar buttons for any
+command, a page's errors on its tab, one-click switching between local, staging
+and production, and a bug report in one command. Memory use stays where 0.14
+left it (within 1–2%, measured).
+
+### Added
+
+- **Settings → Shortcuts.** Every command can get your own shortcut (or lose
+  its default), and any command can be pinned to the toolbar as a button.
+  `Ctrl+K` lists them all.
+- **Open DevTools** (`F12`, `Ctrl+Shift+I`) for the current tab. Release builds
+  had no DevTools before.
+- **Console.** Each tab's JS errors, console warnings and failed requests
+  (4xx/5xx and network errors). A count on the tab shows when a page has errors;
+  click it to open the new Console panel (`Ctrl+Shift+J`), which filters by kind
+  or text and collapses repeated messages. The status bar shows the counts too.
+- **Environments** (Settings → Environments). List a workspace's addresses,
+  such as local, staging and production. When the page you're on matches one,
+  the toolbar shows them all: one click opens the same path, query and hash on
+  another, Ctrl+click in a new tab, or `Alt+Shift+1`–`4`. Production is marked
+  red and asks before you go there.
+- **Clear Site Data and Reload.** Wipes the site's cookies (including HttpOnly),
+  storage, IndexedDB, cache and service workers, then reloads, so you see a
+  first visit.
+- **Copy Bug Report.** Puts a Markdown report of the current tab on the
+  clipboard: URL, environment, device, user agent, zoom, version, time, and the
+  recent errors and failed requests. A screenshot of the tab is saved to
+  Downloads and linked in the report.
+
+### Fixed
+
+- Shortcuts on non-QWERTY layouts such as AZERTY now follow the letter printed
+  on the key, both in the app and while a page has focus.
+- `Alt` shortcuts now work while a page has focus.
+
 ## [0.14.0] - 2026-10-25
 
 Less RAM: 43% less with one blank tab, 28% less with three tabs, and up to
@@ -280,7 +317,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.15.0
 [0.14.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.14.0
 [0.13.2]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.2
 [0.13.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.1
