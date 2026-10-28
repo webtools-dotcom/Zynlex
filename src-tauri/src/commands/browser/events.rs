@@ -134,7 +134,7 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
             use webview2_com::{
                 AcceleratorKeyPressedEventHandler, ContainsFullScreenElementChangedEventHandler,
                 DocumentTitleChangedEventHandler, HistoryChangedEventHandler,
-                StatusBarTextChangedEventHandler,
+                NavigationCompletedEventHandler, StatusBarTextChangedEventHandler,
             };
             use windows_core::Interface;
 
@@ -164,6 +164,27 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
                 }));
             let mut title_token: i64 = 0;
             let _ = core.add_DocumentTitleChanged(&title_handler, &mut title_token);
+
+            // DocumentTitleChanged only fires when the title differs, but a navigation
+            // resets the tab's title to its URL (useWebviewBridge). A page titled like
+            // the last one (staging → local) would keep showing the URL, so send the
+            // title again once each navigation completes.
+            let app_nav = app.clone();
+            let tab_id_nav = tab_id.clone();
+            let core_nav = core.clone();
+            let nav_handler =
+                NavigationCompletedEventHandler::create(Box::new(move |_webview, _args| {
+                    let title = pwstr_to_string(|p| {
+                        let _ = core_nav.DocumentTitle(p);
+                    });
+                    let url = pwstr_to_string(|p| {
+                        let _ = core_nav.Source(p);
+                    });
+                    let _ = update_tab_info(app_nav.clone(), tab_id_nav.clone(), title, url, None);
+                    Ok(())
+                }));
+            let mut nav_token: i64 = 0;
+            let _ = core.add_NavigationCompleted(&nav_handler, &mut nav_token);
 
             // Back/forward state, straight from the webview. The app used to keep
             // its own URL stack and infer this from url-changed events, which
