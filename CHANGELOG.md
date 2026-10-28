@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-10-28
+
+### Fixed
+
+- Notifications were hidden whenever a page was open, because they were drawn
+  over the page area, where the page covers them. "Bug report copied",
+  "Slow 3G on this tab", the "press again to open prod" warning and the rest
+  now show in the status bar.
+- Going to a page with the same title as the one before (staging to local, for
+  example) left the tab named after its address. It now shows the page title.
+- The environment switcher drew unselected environments in a larger font.
+
 ## [0.16.0] - 2026-10-28
 
 Your own one-click actions on any site, and slow or offline networks on demand.
@@ -332,7 +344,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.16.1...HEAD
+[0.16.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.16.1
 [0.16.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.16.0
 [0.15.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.15.0
 [0.14.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.14.0
