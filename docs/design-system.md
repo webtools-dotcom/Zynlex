@@ -103,6 +103,8 @@ new bounds in one frame.
    change only.
 5. No motion longer than 150ms on any chrome interaction.
 6. No `localStorage`/`sessionStorage` anywhere.
+7. Nothing floats over the tab area (dropdowns, popovers, toasts): the tab is a
+   native child window on top and hides it. Toasts show in the status bar.
 
 ## CSS gotcha
 

@@ -13,7 +13,6 @@ import { BookmarkBar } from "@/components/browser/BookmarkBar";
 import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ShortcutHelp } from "@/components/ShortcutHelp";
-import { Toast } from "@/components/Toast";
 import { useUpdatesStore } from "@/stores/updates";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ViewportSurface } from "@/components/panels/ViewportPanel";
@@ -167,7 +166,6 @@ export function RootLayout() {
         {/* Overlays */}
         {commandPaletteOpen && <CommandPalette />}
         {shortcutHelpOpen && <ShortcutHelp />}
-        <Toast />
       </div>
     </ErrorBoundary>
   );

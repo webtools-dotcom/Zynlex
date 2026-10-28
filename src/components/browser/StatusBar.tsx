@@ -1,6 +1,7 @@
 import { originOf } from "@/lib/url";
 import { useConsoleStore } from "@/stores/console";
 import { useUIStore } from "@/stores/ui";
+import { Toast } from "@/components/Toast";
 
 /** The active page's console counts; clicking opens the Console panel. */
 function ConsoleCounts({ tabId }: { tabId: string | null }) {
@@ -78,6 +79,7 @@ export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom, tabId }:
       {leftContent}
       <ConsoleCounts tabId={tabId} />
       <div className="flex-1" />
+      <Toast />
       {zoom !== 1 && (
         <span style={{ color: "var(--color-text-muted)" }}>{Math.round(zoom * 100)}%</span>
       )}

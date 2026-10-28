@@ -1,9 +1,9 @@
 /**
- * Toast — small bottom-right notification stack.
+ * Toast — the newest notification, inline in the status bar.
  *
- * Renders toasts from useUIStore.toasts. Each toast auto-dismisses after 2.5s
- * (configured in the store's pushToast). Clicking a toast dismisses it early.
- * Stack grows upward; max 5 visible (older ones clipped).
+ * Not a floating stack: anything drawn over the tab's area is hidden behind the
+ * tab's native webview. Each toast auto-dismisses after 2.5s (the store's
+ * pushToast); clicking dismisses it early.
  */
 import { Check, Info, X } from "lucide-react";
 import { useUIStore, type Toast as ToastData } from "@/stores/ui";
@@ -25,7 +25,7 @@ function ToastItem({ toast }: { toast: ToastData }) {
   return (
     <button
       onClick={() => dismiss(toast.id)}
-      className="flex items-center gap-2 px-3 py-2.5 rounded-md border text-left max-w-[360px]"
+      className="flex items-center gap-1.5 h-5 px-2 rounded-[4px] border text-left min-w-0 max-w-[480px]"
       style={{
         background: c.bg,
         borderColor: c.border,
@@ -33,20 +33,13 @@ function ToastItem({ toast }: { toast: ToastData }) {
         animation: "toastIn var(--duration-normal) var(--ease-out)",
       }}
     >
-      <Icon size={14} className="flex-shrink-0" />
-      <span className="text-xs font-mono truncate">{toast.message}</span>
+      <Icon size={12} className="flex-shrink-0" />
+      <span className="text-micro font-mono truncate">{toast.message}</span>
     </button>
   );
 }
 
 export function Toast() {
-  const toasts = useUIStore((s) => s.toasts);
-  if (toasts.length === 0) return null;
-  return (
-    <div className="fixed bottom-4 right-4 z-[9998] flex flex-col-reverse gap-1.5">
-      {toasts.slice(-5).map((t) => (
-        <ToastItem key={t.id} toast={t} />
-      ))}
-    </div>
-  );
+  const toast = useUIStore((s) => s.toasts[s.toasts.length - 1]);
+  return toast ? <ToastItem key={toast.id} toast={toast} /> : null;
 }
