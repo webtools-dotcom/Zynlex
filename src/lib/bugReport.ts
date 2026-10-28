@@ -93,7 +93,7 @@ export function copyBugReport(): boolean {
   void (async () => {
     const [version, screenshot] = await Promise.all([
       getVersion().catch(() => "unknown"),
-      captureScreenshot(tabId).catch(() => null),
+      captureScreenshot(tabId, "bug").catch(() => null),
     ]);
     try {
       await copyText(bugReportMarkdown({ ...base, version, screenshot }));
