@@ -14,6 +14,7 @@ import {
   ArrowRight,
   Bookmark,
   Bug,
+  Camera,
   Clock,
   Code2,
   Eraser,
@@ -21,6 +22,7 @@ import {
   Gauge,
   Keyboard,
   type LucideIcon,
+  Pipette,
   Play,
   Plus,
   RotateCw,
@@ -45,6 +47,9 @@ import { copyBugReport } from "@/lib/bugReport";
 import {
   clearSiteData,
   hardReload,
+  captureScreenshot,
+  copyText,
+  focusAppWebview,
   openDevtools,
   runScript,
   setNetworkConditions,
@@ -160,6 +165,45 @@ function clearSite(): boolean {
   if (!tabId || !origin) return false;
   clearSiteData(tabId, origin).catch(() => {});
   useUIStore.getState().pushToast(`Cleared cookies and storage for ${origin}`, "info");
+  return true;
+}
+
+function screenshot(kind: "visible" | "full"): boolean {
+  return onActiveTab(async (tabId) => {
+    const toast = useUIStore.getState().pushToast;
+    try {
+      const path = await captureScreenshot(tabId, kind);
+      toast(`Saved ${path.split(/[\\/]/).pop()} to Downloads`, "success");
+    } catch {
+      toast("Couldn't take the screenshot", "danger");
+    }
+  });
+}
+
+type EyeDropperCtor = new () => { open(): Promise<{ sRGBHex: string }> };
+
+/**
+ * Chromium's EyeDropper: picks a colour anywhere on screen, the page included.
+ * It needs a user gesture in the app's own UI (a toolbar button, Ctrl+K) and
+ * that document focused, or it aborts at once; a shortcut pressed inside a page
+ * has neither, so that case gets a hint instead of silence.
+ */
+function pickColour(): boolean {
+  const Ctor = (window as unknown as { EyeDropper?: EyeDropperCtor }).EyeDropper;
+  const toast = useUIStore.getState().pushToast;
+  if (!Ctor) return false;
+  if (!navigator.userActivation?.isActive) {
+    toast("Pick Colour works from the toolbar button or Ctrl+K", "info");
+    return true;
+  }
+  const dropper = new Ctor(); // created inside the gesture, opened once the app UI has focus
+  (document.hasFocus() ? Promise.resolve() : focusAppWebview())
+    .then(() => dropper.open())
+    .then(async ({ sRGBHex }) => {
+      await copyText(sRGBHex);
+      toast(`Copied ${sRGBHex}`, "success");
+    })
+    .catch(() => {}); // AbortError: Escape, the user changed their mind
   return true;
 }
 
@@ -329,6 +373,21 @@ const COMMANDS: Command[] = [
     icon: Eraser,
     run: clearSite,
   },
+  {
+    id: "screenshot.full",
+    title: "Screenshot Full Page",
+    keys: [],
+    icon: Camera,
+    run: () => screenshot("full"),
+  },
+  {
+    id: "screenshot.visible",
+    title: "Screenshot Visible Area",
+    keys: [],
+    icon: Camera,
+    run: () => screenshot("visible"),
+  },
+  { id: "color.pick", title: "Pick Colour", keys: [], icon: Pipette, run: pickColour },
   {
     id: "bugReport.copy",
     title: "Copy Bug Report",

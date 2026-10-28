@@ -761,12 +761,39 @@ pub async fn browser_clear_site_data(
     })
 }
 
-/// Saves a PNG of what the tab shows to Downloads and returns its path.
+/// Saves a PNG of the tab to Downloads and returns its path. `kind`: "bug" (the visible
+/// area, for a bug report), "visible", or "full" (the whole page, up to Chromium's 16384 px).
 #[tauri::command]
-pub async fn browser_capture_screenshot(app: AppHandle, tab_id: String) -> Result<String, String> {
+pub async fn browser_capture_screenshot(
+    app: AppHandle,
+    tab_id: String,
+    kind: String,
+) -> Result<String, String> {
     use base64::Engine;
+    let (prefix, full) = match kind.as_str() {
+        "bug" => ("bug", false),
+        "visible" => ("screenshot", false),
+        "full" => ("screenshot", true),
+        _ => return Err(format!("screenshot: unknown kind {kind}")),
+    };
     let wv = find_tab_webview(&app, &webview_label_for_tab(&tab_id)).ok_or("tab not found")?;
-    let json = cdp_result(&wv, "Page.captureScreenshot", r#"{"format":"png"}"#.into()).await?;
+    let params = if full {
+        let metrics: serde_json::Value =
+            serde_json::from_str(&cdp_result(&wv, "Page.getLayoutMetrics", "{}".into()).await?)
+                .map_err(|e| format!("screenshot: {e}"))?;
+        let size = &metrics["cssContentSize"];
+        let w = size["width"].as_f64().unwrap_or(0.0).ceil();
+        let h = size["height"].as_f64().unwrap_or(0.0).ceil().min(16384.0);
+        serde_json::json!({
+            "format": "png",
+            "captureBeyondViewport": true,
+            "clip": { "x": 0, "y": 0, "width": w, "height": h, "scale": 1 }
+        })
+        .to_string()
+    } else {
+        r#"{"format":"png"}"#.into()
+    };
+    let json = cdp_result(&wv, "Page.captureScreenshot", params).await?;
     let data = serde_json::from_str::<serde_json::Value>(&json)
         .ok()
         .and_then(|v| v["data"].as_str().map(str::to_owned))
@@ -781,7 +808,7 @@ pub async fn browser_capture_screenshot(app: AppHandle, tab_id: String) -> Resul
         .path()
         .download_dir()
         .map_err(|e| e.to_string())?
-        .join(format!("zynlex-bug-{millis}.png"));
+        .join(format!("zynlex-{prefix}-{millis}.png"));
     std::fs::write(&path, png).map_err(|e| format!("screenshot: {e}"))?;
     Ok(path.to_string_lossy().into_owned())
 }

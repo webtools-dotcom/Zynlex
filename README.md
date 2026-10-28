@@ -43,9 +43,10 @@ The sidebar has the things you'd otherwise keep four apps around for:
 - **Copy bug report**: one command puts a Markdown report of the tab on the clipboard (URL, environment, device, recent errors and failed requests) and saves a screenshot to Downloads
 - **Snippets**: your own JavaScript, saved in Settings and run on the current tab from `Ctrl+K`, a shortcut or a toolbar button. Errors show in the Console
 - **Network throttling**: Slow 3G, Fast 3G or offline for the current tab, from `Ctrl+K`
+- **Screenshots and colours**: full-page or visible-area screenshots to Downloads, and a colour picker that copies the hex, both on the toolbar from the start
 - JWT decoder, Base64, user-agent switcher
 
-Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it, and every command can be given your own shortcut or pinned to the toolbar (**Settings → Shortcuts**).
+Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it, and every command can be given your own shortcut or pinned to the toolbar (**Settings → Shortcuts**). Out of the box the toolbar has Screenshot, Copy Bug Report and Pick Colour, the ones that work on any page with no setup.
 
 Background tabs get out of the way on their own: after a few minutes hidden they're suspended, and later discarded, with timers you set in **Settings → Memory**. Your `localhost` tabs are never suspended, so hot reload keeps working.
 
