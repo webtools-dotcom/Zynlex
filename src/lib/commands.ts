@@ -17,6 +17,7 @@ import {
   Clock,
   Code2,
   Eraser,
+  FileWarning,
   Keyboard,
   type LucideIcon,
   Plus,
@@ -37,6 +38,7 @@ import { openTab, closeTab, reopenLastClosedTab } from "@/lib/tabActions";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 import { activeEnv, switchEnv, workspaceEnvs } from "@/lib/envActions";
 import { originOf } from "@/lib/url";
+import { copyBugReport } from "@/lib/bugReport";
 import {
   clearSiteData,
   hardReload,
@@ -279,6 +281,13 @@ export const COMMANDS: Command[] = [
     keys: [],
     icon: Eraser,
     run: clearSite,
+  },
+  {
+    id: "bugReport.copy",
+    title: "Copy Bug Report",
+    keys: [],
+    icon: FileWarning,
+    run: copyBugReport,
   },
   { id: "zoom.in", title: "Zoom In", keys: ["ctrl+=", "ctrl+shift+="], run: () => applyZoom(1) },
   { id: "zoom.out", title: "Zoom Out", keys: ["ctrl+-"], run: () => applyZoom(-1) },
