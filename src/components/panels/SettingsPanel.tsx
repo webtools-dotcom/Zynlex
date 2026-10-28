@@ -14,6 +14,7 @@ import { useUpdatesStore } from "@/stores/updates";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getEngineOptions, setEngineOptions, type EngineOptions } from "@/services/browser";
 import { ShortcutsSettings } from "@/components/panels/ShortcutsSettings";
+import { EnvironmentsSettings } from "@/components/panels/EnvironmentsSettings";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
@@ -396,6 +397,10 @@ export function SettingsPanel() {
         onChange={(discardHiddenTabsMinutes) => update({ discardHiddenTabsMinutes })}
       />
       <EngineToggles />
+
+      {/* ── Environments ────────────────────────────────────────────── */}
+      <SectionHeader>Environments</SectionHeader>
+      <EnvironmentsSettings />
 
       {/* ── Shortcuts ───────────────────────────────────────────────── */}
       <SectionHeader>Shortcuts</SectionHeader>

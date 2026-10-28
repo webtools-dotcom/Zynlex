@@ -29,6 +29,10 @@ defined once in `src/index.css` and consumed everywhere via `@theme`.
 - **Console severity** (`--color-console-error` / `--color-console-warn`) —
   the tab error badge, the status-bar counts and the Console panel only, as
   text color.
+- **Production marker** (`--color-env-prod`) — the environment switcher and
+  the toolbar's bottom edge and address-bar outline while the active tab is on
+  an environment marked production. Same 1px widths as normal, so the content
+  area never moves.
 
 ## Typography
 

@@ -24,6 +24,9 @@ import { resolveInput } from "@/lib/url";
 import { focusAppWebview } from "@/services/browser";
 import { UpdateButton } from "@/components/browser/UpdateButton";
 import { COMMANDS_BY_ID, chordLabel, keysFor } from "@/lib/commands";
+import { EnvSwitcher } from "@/components/browser/EnvSwitcher";
+import { matchEnv } from "@/lib/envSwitch";
+import { useEnvironmentsStore } from "@/stores/environments";
 import { useKeybindingsStore } from "@/stores/keybindings";
 
 /** Commands the user pinned in Settings → Shortcuts, as icon buttons. */
@@ -122,6 +125,8 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
 
   const ws = workspaces[activeWorkspaceId];
   const activeTab = getLiveWorkspaceActiveTab(ws, tabs);
+  const envs = useEnvironmentsStore((s) => s.rulesByWs[activeWorkspaceId]);
+  const onProd = !!(activeTab?.url && envs && matchEnv(activeTab.url, envs)?.isProd);
 
   const bookmarks = useBookmarksStore((s) => s.bookmarks);
   const isCurrentBookmarked =
@@ -177,7 +182,8 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
       className="h-[44px] flex items-center gap-2 px-3 flex-shrink-0"
       style={{
         background: "var(--color-surface)",
-        borderBottom: "1px solid var(--color-border)",
+        // Production marker: same 1px, so the content area never moves.
+        borderBottom: `1px solid ${onProd ? "var(--color-env-prod)" : "var(--color-border)"}`,
       }}
     >
       {/* Nav buttons */}
@@ -225,7 +231,8 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
       </button>
 
       {/* Address bar — centered, max-width constrained */}
-      <div className="flex-1 flex justify-center">
+      <div className="flex-1 flex justify-center items-center gap-2 min-w-0">
+        <EnvSwitcher wsId={activeWorkspaceId} url={activeTab?.url ?? ""} />
         <div className="relative w-full max-w-[680px]">
           <SecurityIndicator url={activeTab?.url ?? ""} hidden={focused} />
           <input
@@ -242,7 +249,8 @@ export function Toolbar({ onNavigate, onBack, onForward, onReload }: ToolbarProp
             onBlur={() => setFocused(false)}
             placeholder="Search or enter address (Ctrl+L)"
             className={cn(
-              "w-full h-[30px] bg-[var(--color-elevated)] rounded-[4px] border border-[var(--color-border)]",
+              "w-full h-[30px] bg-[var(--color-elevated)] rounded-[4px] border",
+              onProd ? "border-[var(--color-env-prod)]" : "border-[var(--color-border)]",
               "pr-3 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]",
               !focused && activeTab?.url ? "pl-7" : "pl-3",
               "focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)] focus:border-[var(--color-accent)]",
