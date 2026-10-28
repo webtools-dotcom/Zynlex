@@ -40,6 +40,7 @@ The sidebar has the things you'd otherwise keep four apps around for:
 - **Inspector**: meta tags, Open Graph previews, and cookies including HttpOnly
 - **Environments**: list a project's addresses (local, staging, production) and switch the page you're on between them in one click, same path and query. Production is marked in red and asks before you go there
 - **Clear site data**: one command wipes the site's cookies, storage, IndexedDB and service workers, then reloads, for testing a first visit
+- **Copy bug report**: one command puts a Markdown report of the tab on the clipboard (URL, environment, device, recent errors and failed requests) and saves a screenshot to Downloads
 - JWT decoder, Base64, user-agent switcher
 
 Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it, and every command can be given your own shortcut or pinned to the toolbar (**Settings → Shortcuts**).
