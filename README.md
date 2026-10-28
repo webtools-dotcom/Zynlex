@@ -51,6 +51,24 @@ Background tabs get out of the way on their own: after a few minutes hidden they
 
 No account. No telemetry. The only network call it makes on its own is an update check against this repo's GitHub releases.
 
+## Workflows
+
+The things you'd otherwise switch apps for, each one a command you can run from `Ctrl+K`, give a shortcut, or pin to the toolbar.
+
+**The same page on local, staging and production.** Add a project's addresses in **Settings → Environments**. While you're on one of them, the toolbar lists them all; one click opens the same path and query on another (`Alt+Shift+1`–`4` from the keyboard). Production turns the toolbar's edge red and asks before you go there.
+
+<img src=".github/assets/environments.png" alt="The Orbit dashboard on staging.localhost, with local, staging and prod in the toolbar; prod was clicked and asks Open prod? before switching" width="820" />
+
+**Catch an error and hand it off.** A tab with JS errors or failed requests shows a count on the tab itself. Click it for the Console panel, then run **Copy Bug Report**: the URL, environment, device, browser and the recent errors and failed requests go to your clipboard as Markdown, and a screenshot of the page goes to Downloads. Paste it into the issue.
+
+<img src=".github/assets/bug-report.png" alt="The dashboard failing to load orders, a 1 on its tab, the Console panel showing the 500, and Bug report copied in the status bar" width="820" />
+
+**Your own one-click actions.** Save a bit of JavaScript in **Settings → Snippets**, such as filling a test login, turning on a feature flag, or outlining every element to check the layout. It becomes a command like any other, so it can have its own shortcut or a toolbar button.
+
+<img src=".github/assets/snippets.png" alt="A Show layout grid snippet run from its pinned toolbar button, outlining every element of the dashboard; the button's tooltip shows its Ctrl+Alt+G shortcut" width="820" />
+
+**The slow and broken network.** **Throttle Network: Slow 3G**, **Fast 3G** or **Offline** applies to the current tab and survives reloads, so you can see your loading and offline states. **Clear Site Data and Reload** wipes the site's cookies and storage for a first-visit test.
+
 ## Who it's for
 
 Frontend and full-stack developers who spend the day on `localhost`. ZYNLEX is meant to be the browser you keep open next to your editor while you build: open your app, watch its requests, fake the API responses you can't easily reproduce (a 500, an empty list, a slow endpoint), check it on a phone-sized viewport, and move on.
