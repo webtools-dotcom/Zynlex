@@ -129,7 +129,7 @@ section > .wrap > p.intro { color: var(--text-2); max-width: 62ch; margin: 0; }
 
 /* Text above, screenshot full width below — at half width the UI is unreadable. */
 .tour { padding: 56px 0 96px; }
-.tour video { display: block; width: 100%; height: auto; margin-top: 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.tour video, .film { display: block; width: 100%; height: auto; margin-top: 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .feature { margin-top: 96px; }
 .feature .copy { display: grid; gap: 4px 56px; margin-bottom: 28px; }
 @media (min-width: 900px) {
@@ -320,6 +320,10 @@ footer a { color: var(--muted); }
       <div class="eyebrow">Beyond localhost</div>
       <h2>The jobs you switch apps for, one command each.</h2>
       <p class="intro">Every action is a command: find it with <code>Ctrl+K</code>, give it your own shortcut, or pin it to the toolbar as a button. Settings → Shortcuts lists them all.</p>
+      <video class="film" controls preload="none" playsinline poster="assets/one-key-poster.jpg" width="1920" height="1080" aria-label="One Key: a 73-second film of the four workflows, made from real recordings of ZYNLEX">
+        <source src="assets/zynlex-one-key.mp4" type="video/mp4">
+        <a href="assets/zynlex-one-key.mp4">Watch the workflows film (MP4)</a>
+      </video>
 
       <div class="feature">
         <div class="copy">
