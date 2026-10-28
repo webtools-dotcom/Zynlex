@@ -1,3 +1,5 @@
+mod console;
+pub use console::*;
 mod find;
 pub use find::*;
 mod events;
@@ -354,6 +356,7 @@ fn create_webview_for_tab(
 
     register_webview_network_capture(&webview, app, tab_id);
     register_webview_native_events(&webview, app, tab_id);
+    register_webview_console_capture(&webview, app, tab_id);
 
     // Adopt the current app theme immediately, so a page's prefers-color-scheme
     // matches from first paint instead of defaulting to the OS scheme.

@@ -23,10 +23,12 @@ import {
   Search,
   Settings,
   Star,
+  TerminalSquare,
   X,
 } from "lucide-react";
 import { useUIStore, isFindOpen } from "@/stores/ui";
 import { useTabsStore } from "@/stores/tabs";
+import { useConsoleStore } from "@/stores/console";
 import { useWorkspacesStore } from "@/stores/workspaces";
 import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
@@ -102,7 +104,7 @@ function selectTab(pick: (ids: string[], current: number) => number): boolean {
   return true;
 }
 
-function openPanel(panel: "history" | "bookmarks") {
+function openPanel(panel: "history" | "bookmarks" | "console") {
   useUIStore.getState().setActivePanel(panel);
   useUIStore.getState().setSidebarOpen(true);
 }
@@ -255,6 +257,23 @@ export const COMMANDS: Command[] = [
     run: () => openPanel("history"),
   },
   {
+    id: "panel.console",
+    title: "Console Panel",
+    keys: ["ctrl+shift+j"],
+    icon: TerminalSquare,
+    run: () => openPanel("console"),
+  },
+  {
+    id: "console.clear",
+    title: "Clear Console",
+    keys: [],
+    run: () => {
+      const tabId = getActiveTabId();
+      if (!tabId) return false;
+      useConsoleStore.getState().clearTab(tabId);
+    },
+  },
+  {
     id: "panel.bookmarks",
     title: "Bookmarks Panel",
     keys: [],
@@ -374,20 +393,23 @@ const CODE_KEYS: Record<string, string> = {
 };
 
 /**
- * Named from `code` (the physical key), not `key`: with Shift held `key` is
+ * Letters come from `key`, so they follow the keyboard layout the way Rust's
+ * virtual-key codes do (on AZERTY the key labelled W reports code "KeyZ").
+ * Everything else comes from `code`, the physical key: with Shift held `key` is
  * the shifted symbol ("!" for 1), which would make Ctrl+Shift+1 unmatchable.
  */
-function keyName(code: string): string | null {
+function keyName(key: string, code: string): string | null {
+  if (/^[a-z]$/i.test(key)) return key.toLowerCase();
   if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
   if (/^(Digit|Numpad)\d$/.test(code)) return code.slice(-1);
   if (/^F([1-9]|1[0-2])$/.test(code)) return code.toLowerCase();
   return CODE_KEYS[code] ?? null;
 }
 
-type KeyLike = Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey">;
+type KeyLike = Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "altKey" | "shiftKey">;
 
 export function chordFromEvent(e: KeyLike): string | null {
-  const key = keyName(e.code);
+  const key = keyName(e.key, e.code);
   if (!key) return null;
   return [e.ctrlKey && "ctrl", e.altKey && "alt", e.shiftKey && "shift", key]
     .filter(Boolean)

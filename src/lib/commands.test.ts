@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { bindChord, bindingMap, chordFromEvent, chordLabel, isBindable } from "@/lib/commands";
 
-const ev = (code: string, mods: { ctrl?: boolean; alt?: boolean; shift?: boolean } = {}) => ({
+const ev = (
+  code: string,
+  mods: { ctrl?: boolean; alt?: boolean; shift?: boolean } = {},
+  key = "",
+) => ({
+  key,
   code,
   ctrlKey: !!mods.ctrl,
   altKey: !!mods.alt,
@@ -22,6 +27,14 @@ describe("chordFromEvent", () => {
     );
     expect(chordFromEvent(ev("Escape"))).toBe("escape");
     expect(chordFromEvent(ev("ControlLeft", { ctrl: true }))).toBeNull();
+  });
+
+  it("follows the keyboard layout for letters, like Windows virtual keys", () => {
+    // AZERTY: the key labelled W sits where QWERTY has Z.
+    expect(chordFromEvent(ev("KeyZ", { ctrl: true }, "w"))).toBe("ctrl+w");
+    expect(chordFromEvent(ev("KeyT", { ctrl: true, shift: true }, "T"))).toBe("ctrl+shift+t");
+    // Shifted digits still name the digit, not the symbol.
+    expect(chordFromEvent(ev("Digit1", { ctrl: true, shift: true }, "!"))).toBe("ctrl+shift+1");
   });
 });
 

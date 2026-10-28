@@ -41,6 +41,7 @@ import {
   saveTabState,
   restoreTabState,
   onNetworkEntry,
+  onConsoleEntry,
   onDownloadStarted,
   onDownloadFinished,
   type BrowserBounds,
@@ -52,6 +53,7 @@ import { useInspectorStore } from "@/stores/inspector";
 import type { MetaInfo, CookieEntry, StorageEntry } from "@/types";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { useNetworkStore } from "@/stores/network";
+import { useConsoleStore } from "@/stores/console";
 import { useHeadersStore } from "@/stores/headers";
 import { setHeaderRules, setMockRules } from "@/services/browser";
 import { useMocksStore } from "@/stores/mocks";
@@ -407,6 +409,8 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
           if (!useNetworkStore.getState().preserveLog) {
             useNetworkStore.getState().clearTab(tabId);
           }
+          // The badge counts the current page's errors, not the tab's lifetime.
+          useConsoleStore.getState().clearTab(tabId);
         } else {
           const startedAt = loadStartRef.current.get(tabId);
           loadStartRef.current.delete(tabId);
@@ -883,6 +887,15 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     return dispose;
   }, []);
 
+  // ── Console listener ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const { track, dispose } = tracker();
+    const add = useConsoleStore.getState().add;
+    track(onConsoleEntry(add));
+    return dispose;
+  }, []);
+
   // ── Download listeners ────────────────────────────────────────────
   useEffect(() => {
     if (!IS_TAURI) return;
@@ -990,13 +1003,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       const timer = setTimeout(() => ensureWebviewVisible(), 50);
       return () => clearTimeout(timer);
     }
-  }, [
-    commandPaletteOpen,
-    shortcutHelpOpen,
-    settingsPanelOpen,
-    activeTabId,
-    ensureWebviewVisible,
-  ]);
+  }, [commandPaletteOpen, shortcutHelpOpen, settingsPanelOpen, activeTabId, ensureWebviewVisible]);
 
   // ── Sync bounds when overlay panel opens/closes/resizes ──────────
   useEffect(() => {

@@ -69,7 +69,8 @@ export type PanelId =
   | "mocks"
   | "inspector"
   | "ua"
-  | "viewport";
+  | "viewport"
+  | "console";
 
 export interface AppSettings {
   theme: ThemeMode;
