@@ -55,6 +55,10 @@ No account. No telemetry. The only network call it makes on its own is an update
 
 The things you'd otherwise switch apps for, each one a command you can run from `Ctrl+K`, give a shortcut, or pin to the toolbar.
 
+<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-one-key.mp4"><img src=".github/assets/one-key.jpg" alt="One Key, a 73-second film of the four workflows made from real recordings of ZYNLEX: here the Copy Bug Report chapter, with the tab's error badge and the Console panel" width="820" /></a>
+
+<sub>[Watch the workflows film (73 s)](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-one-key.mp4)</sub>
+
 **The same page on local, staging and production.** Add a project's addresses in **Settings → Environments**. While you're on one of them, the toolbar lists them all; one click opens the same path and query on another (`Alt+Shift+1`–`4` from the keyboard). Production turns the toolbar's edge red and asks before you go there.
 
 <img src=".github/assets/environments.png" alt="The Orbit dashboard on staging.localhost, with local, staging and prod in the toolbar; prod was clicked and asks Open prod? before switching" width="820" />
