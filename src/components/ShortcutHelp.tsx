@@ -9,7 +9,7 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { useUIStore } from "@/stores/ui";
-import { COMMANDS, chordLabel, keysFor } from "@/lib/commands";
+import { allCommands, chordLabel, keysFor } from "@/lib/commands";
 import { useKeybindingsStore } from "@/stores/keybindings";
 
 function Kbd({ children }: { children: React.ReactNode }) {
@@ -29,7 +29,7 @@ function Kbd({ children }: { children: React.ReactNode }) {
 
 export function ShortcutHelp() {
   const overrides = useKeybindingsStore((s) => s.overrides);
-  const shortcuts = COMMANDS.flatMap((c) =>
+  const shortcuts = allCommands().flatMap((c) =>
     keysFor(c, overrides).map((chord) => ({ chord, title: c.title })),
   );
 

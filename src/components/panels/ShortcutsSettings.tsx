@@ -1,11 +1,11 @@
 /**
  * Settings → Shortcuts: rebind, unbind and reset any command's chords, and pin
- * commands to the toolbar. Every row is a COMMANDS entry (src/lib/commands.ts).
+ * commands to the toolbar. Every row is a command from allCommands() (src/lib/commands.ts).
  */
 import { useEffect, useState } from "react";
 import { Pin, PinOff, Plus, RotateCcw } from "lucide-react";
 import {
-  COMMANDS,
+  allCommands,
   bindingMap,
   chordFromEvent,
   chordLabel,
@@ -13,6 +13,7 @@ import {
   keysFor,
 } from "@/lib/commands";
 import { useKeybindingsStore } from "@/stores/keybindings";
+import { useSnippetsStore } from "@/stores/snippets";
 import { useUIStore } from "@/stores/ui";
 import { setRecordingShortcut } from "@/hooks/useKeyboardShortcuts";
 
@@ -24,6 +25,7 @@ const chip =
 
 export function ShortcutsSettings() {
   const { overrides, pinned, bind, unbind, reset, togglePin } = useKeybindingsStore();
+  const snippets = useSnippetsStore((s) => s.snippets);
   const [filter, setFilter] = useState("");
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [hint, setHint] = useState("");
@@ -64,7 +66,8 @@ export function ShortcutsSettings() {
   }, [recordingId, bind]);
 
   const q = filter.trim().toLowerCase();
-  const rows = q ? COMMANDS.filter((c) => c.title.toLowerCase().includes(q)) : COMMANDS;
+  const commands = allCommands(snippets);
+  const rows = q ? commands.filter((c) => c.title.toLowerCase().includes(q)) : commands;
 
   return (
     <div>

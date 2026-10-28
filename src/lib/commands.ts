@@ -18,8 +18,10 @@ import {
   Code2,
   Eraser,
   FileWarning,
+  Gauge,
   Keyboard,
   type LucideIcon,
+  Play,
   Plus,
   RotateCw,
   Search,
@@ -32,6 +34,7 @@ import { useUIStore, isFindOpen } from "@/stores/ui";
 import { useTabsStore } from "@/stores/tabs";
 import { useConsoleStore } from "@/stores/console";
 import { useWorkspacesStore } from "@/stores/workspaces";
+import { type Snippet, useSnippetsStore } from "@/stores/snippets";
 import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { openTab, closeTab, reopenLastClosedTab } from "@/lib/tabActions";
@@ -43,6 +46,8 @@ import {
   clearSiteData,
   hardReload,
   openDevtools,
+  runScript,
+  setNetworkConditions,
   setTabZoom,
   stopLoading,
   webviewGoBack,
@@ -158,11 +163,53 @@ function clearSite(): boolean {
   return true;
 }
 
+/** Chrome DevTools' presets (bytes/s, ms). */
+const THROTTLES = [
+  { id: "slow3g", name: "Slow 3G", download: 50_000, upload: 50_000, latency: 2000 },
+  { id: "fast3g", name: "Fast 3G", download: 180_000, upload: 84_375, latency: 563 },
+  { id: "offline", name: "Offline", download: 0, upload: 0, latency: 0, offline: true },
+];
+
+function throttle(t: (typeof THROTTLES)[number] | null): boolean {
+  const tabId = getActiveTabId();
+  if (!tabId) return false;
+  const conditions = t
+    ? {
+        offline: !!t.offline,
+        latency: t.latency,
+        downloadThroughput: t.download,
+        uploadThroughput: t.upload,
+      }
+    : { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 };
+  setNetworkConditions(tabId, conditions).catch(() => {});
+  useUIStore
+    .getState()
+    .pushToast(t ? `${t.name} on this tab` : "Network throttling off", t ? "danger" : "info");
+  return true;
+}
+
+/**
+ * Runs as an async function, so the snippet can `await` and `return`. A throw
+ * lands in the page console, and from there in the Console panel.
+ */
+function snippetCommand(s: Snippet): Command {
+  const script = `(async () => {
+${s.code}
+})().catch((e) => console.error(${JSON.stringify(`Snippet "${s.name}":`)}, e));`;
+  return {
+    id: `snippet.${s.id}`,
+    title: `Snippet: ${s.name}`,
+    keys: [],
+    icon: Play,
+    run: () => onActiveTab((tabId) => runScript(tabId, script)),
+  };
+}
+
 // ─── Registry ───────────────────────────────────────────────────────
 
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-export const COMMANDS: Command[] = [
+const COMMANDS: Command[] = [
   {
     id: "palette.open",
     title: "Command Palette",
@@ -289,6 +336,22 @@ export const COMMANDS: Command[] = [
     icon: FileWarning,
     run: copyBugReport,
   },
+  ...THROTTLES.map(
+    (t): Command => ({
+      id: `network.${t.id}`,
+      title: `Throttle Network: ${t.name}`,
+      keys: [],
+      icon: Gauge,
+      run: () => throttle(t),
+    }),
+  ),
+  {
+    id: "network.off",
+    title: "Stop Network Throttling",
+    keys: [],
+    icon: Gauge,
+    run: () => throttle(null),
+  },
   { id: "zoom.in", title: "Zoom In", keys: ["ctrl+=", "ctrl+shift+="], run: () => applyZoom(1) },
   { id: "zoom.out", title: "Zoom Out", keys: ["ctrl+-"], run: () => applyZoom(-1) },
   { id: "zoom.reset", title: "Reset Zoom", keys: ["ctrl+0"], run: () => applyZoom(0) },
@@ -388,6 +451,11 @@ export const COMMANDS: Command[] = [
 
 export const COMMANDS_BY_ID = new Map(COMMANDS.map((c) => [c.id, c]));
 
+/** The built-in commands plus one per user snippet. */
+export function allCommands(snippets = useSnippetsStore.getState().snippets): Command[] {
+  return [...COMMANDS, ...snippets.map(snippetCommand)];
+}
+
 // ─── Bindings ───────────────────────────────────────────────────────
 
 /** User overrides: command id → chords ([] = unbound). */
@@ -400,7 +468,7 @@ export function keysFor(cmd: Command, overrides: KeyOverrides): string[] {
 /** chord → command, after overrides. */
 export function bindingMap(overrides: KeyOverrides): Map<string, Command> {
   const map = new Map<string, Command>();
-  for (const cmd of COMMANDS) {
+  for (const cmd of allCommands()) {
     for (const chord of keysFor(cmd, overrides)) map.set(chord, cmd);
   }
   return map;
@@ -412,11 +480,12 @@ export function bindingMap(overrides: KeyOverrides): Map<string, Command> {
  */
 export function bindChord(overrides: KeyOverrides, id: string, chord: string): KeyOverrides {
   const next = { ...overrides };
-  for (const cmd of COMMANDS) {
+  const commands = allCommands();
+  for (const cmd of commands) {
     const keys = keysFor(cmd, next);
     if (cmd.id !== id && keys.includes(chord)) next[cmd.id] = keys.filter((k) => k !== chord);
   }
-  const target = COMMANDS_BY_ID.get(id);
+  const target = commands.find((c) => c.id === id);
   if (target) next[id] = [...keysFor(target, next).filter((k) => k !== chord), chord];
   return next;
 }

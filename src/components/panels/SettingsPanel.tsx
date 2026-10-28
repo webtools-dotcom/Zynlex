@@ -15,6 +15,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { getEngineOptions, setEngineOptions, type EngineOptions } from "@/services/browser";
 import { ShortcutsSettings } from "@/components/panels/ShortcutsSettings";
 import { EnvironmentsSettings } from "@/components/panels/EnvironmentsSettings";
+import { SnippetsSettings } from "@/components/panels/SnippetsSettings";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
@@ -401,6 +402,10 @@ export function SettingsPanel() {
       {/* ── Environments ────────────────────────────────────────────── */}
       <SectionHeader>Environments</SectionHeader>
       <EnvironmentsSettings />
+
+      {/* ── Snippets ────────────────────────────────────────────────── */}
+      <SectionHeader>Snippets</SectionHeader>
+      <SnippetsSettings />
 
       {/* ── Shortcuts ───────────────────────────────────────────────── */}
       <SectionHeader>Shortcuts</SectionHeader>
