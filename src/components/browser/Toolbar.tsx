@@ -23,18 +23,20 @@ import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { resolveInput } from "@/lib/url";
 import { focusAppWebview } from "@/services/browser";
 import { UpdateButton } from "@/components/browser/UpdateButton";
-import { COMMANDS_BY_ID, chordLabel, keysFor } from "@/lib/commands";
+import { allCommands, chordLabel, keysFor } from "@/lib/commands";
 import { EnvSwitcher } from "@/components/browser/EnvSwitcher";
 import { matchEnv } from "@/lib/envSwitch";
 import { useEnvironmentsStore } from "@/stores/environments";
 import { useKeybindingsStore } from "@/stores/keybindings";
+import { useSnippetsStore } from "@/stores/snippets";
 
 /** Commands the user pinned in Settings → Shortcuts, as icon buttons. */
 function PinnedCommands() {
   const pinned = useKeybindingsStore((s) => s.pinned);
   const overrides = useKeybindingsStore((s) => s.overrides);
+  const commands = allCommands(useSnippetsStore((s) => s.snippets));
   return pinned.map((id) => {
-    const cmd = COMMANDS_BY_ID.get(id);
+    const cmd = commands.find((c) => c.id === id);
     if (!cmd) return null;
     const Icon = cmd.icon ?? TerminalSquare;
     const keys = keysFor(cmd, overrides);

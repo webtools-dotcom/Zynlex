@@ -308,6 +308,8 @@ pub fn run() {
             commands::browser::browser_open_devtools,
             commands::browser::browser_capture_screenshot,
             commands::browser::clipboard_write_text,
+            commands::browser::browser_run_script,
+            commands::browser::browser_set_network_conditions,
             commands::browser::browser_clear_site_data,
             commands::browser::browser_set_shortcuts,
             commands::browser::open_download,

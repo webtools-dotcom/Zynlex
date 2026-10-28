@@ -103,6 +103,24 @@ export async function copyText(text: string): Promise<void> {
   await invoke<void>("clipboard_write_text", { text });
 }
 
+/** Runs `script` in the tab, through ExecuteScript (never page-initiated IPC). */
+export async function runScript(tabId: string, script: string): Promise<void> {
+  await invoke<void>("browser_run_script", { tabId, script });
+}
+
+/** CDP Network.emulateNetworkConditions for one tab. */
+export async function setNetworkConditions(
+  tabId: string,
+  conditions: {
+    offline: boolean;
+    latency: number;
+    downloadThroughput: number;
+    uploadThroughput: number;
+  },
+): Promise<void> {
+  await invoke<void>("browser_set_network_conditions", { tabId, conditions });
+}
+
 export async function openDevtools(tabId: string): Promise<void> {
   await invoke<void>("browser_open_devtools", { tabId });
 }

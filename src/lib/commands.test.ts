@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { bindChord, bindingMap, chordFromEvent, chordLabel, isBindable } from "@/lib/commands";
+import {
+  allCommands,
+  bindChord,
+  bindingMap,
+  chordFromEvent,
+  chordLabel,
+  isBindable,
+} from "@/lib/commands";
+import { useSnippetsStore } from "@/stores/snippets";
 
 const ev = (
   code: string,
@@ -66,5 +74,24 @@ describe("bindings", () => {
 
   it("labels chords", () => {
     expect(chordLabel("ctrl+shift+left")).toEqual(["Ctrl", "Shift", "←"]);
+  });
+});
+
+describe("snippet commands", () => {
+  it("are bindable like built-ins, and keep their chord by id", () => {
+    useSnippetsStore.setState({
+      snippets: [
+        { id: "a", name: "Fill login", code: "1" },
+        { id: "b", name: "Print CSS", code: "2" },
+      ],
+    });
+    expect(allCommands().find((c) => c.id === "snippet.b")?.title).toBe("Snippet: Print CSS");
+    const overrides = bindChord({}, "snippet.b", "ctrl+alt+p");
+    expect(bindingMap(overrides).get("ctrl+alt+p")?.id).toBe("snippet.b");
+    // Deleting another snippet doesn't move the chord.
+    useSnippetsStore.setState({ snippets: [{ id: "b", name: "Print CSS", code: "2" }] });
+    expect(bindingMap(overrides).get("ctrl+alt+p")?.id).toBe("snippet.b");
+    useSnippetsStore.setState({ snippets: [] });
+    expect(bindingMap(overrides).get("ctrl+alt+p")).toBeUndefined();
   });
 });

@@ -821,6 +821,32 @@ pub fn clipboard_write_text(text: String) -> Result<(), String> {
     }
 }
 
+/// Runs one of the user's snippets in the tab.
+#[tauri::command]
+pub async fn browser_run_script(
+    app: AppHandle,
+    tab_id: String,
+    script: String,
+) -> Result<(), String> {
+    let wv = find_tab_webview(&app, &webview_label_for_tab(&tab_id)).ok_or("tab not found")?;
+    wv.eval(&script).map_err(|e| e.to_string())
+}
+
+/// Throttles (or, with -1 throughput, un-throttles) the tab's network.
+/// Stays on for the tab across navigations until changed.
+#[tauri::command]
+pub async fn browser_set_network_conditions(
+    app: AppHandle,
+    tab_id: String,
+    conditions: serde_json::Value,
+) -> Result<(), String> {
+    let wv = find_tab_webview(&app, &webview_label_for_tab(&tab_id)).ok_or("tab not found")?;
+    let params = conditions.to_string();
+    with_core(&wv, "browser_set_network_conditions", move |core| {
+        cdp(&core, "Network.emulateNetworkConditions", &params)
+    })
+}
+
 /// Opens Chromium DevTools for the tab in its own window.
 #[tauri::command]
 pub async fn browser_open_devtools(app: AppHandle, tab_id: String) -> Result<(), String> {

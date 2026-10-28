@@ -27,7 +27,8 @@ import { useApiCollectionsStore } from "@/stores/apiCollections";
 import { LOAD_REQUEST_EVENT } from "@/components/panels/ApiTester";
 import { getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import { openTab } from "@/lib/tabActions";
-import { COMMANDS, chordLabel, keysFor } from "@/lib/commands";
+import { allCommands, chordLabel, keysFor } from "@/lib/commands";
+import { useSnippetsStore } from "@/stores/snippets";
 import { useKeybindingsStore } from "@/stores/keybindings";
 import { useEnvironmentsStore } from "@/stores/environments";
 import { displayOrigin, matchEnv } from "@/lib/envSwitch";
@@ -86,6 +87,7 @@ export function CommandPalette() {
   const collections = useApiCollectionsStore((s) => s.byWs[activeWorkspaceId]);
   const recentPaletteIds = useUIStore((s) => s.recentPaletteIds);
   const overrides = useKeybindingsStore((s) => s.overrides);
+  const snippets = useSnippetsStore((s) => s.snippets);
   const envsByWs = useEnvironmentsStore((s) => s.rulesByWs);
 
   const [query, setQuery] = useState("");
@@ -110,21 +112,23 @@ export function CommandPalette() {
       };
     });
 
-    const commandItems: PaletteItem[] = COMMANDS.filter((c) => !c.hidden).map((c) => {
-      const Icon = c.icon ?? TerminalSquare;
-      const keys = keysFor(c, overrides);
-      return {
-        id: c.id,
-        type: "command" as const,
-        label: c.title,
-        sublabel: keys.length ? chordLabel(keys[0]).join("+") : undefined,
-        icon: <Icon size={14} className="text-[var(--color-text-muted)]" />,
-        action: () => {
-          useUIStore.getState().closeCommandPalette();
-          c.run();
-        },
-      };
-    });
+    const commandItems: PaletteItem[] = allCommands(snippets)
+      .filter((c) => !c.hidden)
+      .map((c) => {
+        const Icon = c.icon ?? TerminalSquare;
+        const keys = keysFor(c, overrides);
+        return {
+          id: c.id,
+          type: "command" as const,
+          label: c.title,
+          sublabel: keys.length ? chordLabel(keys[0]).join("+") : undefined,
+          icon: <Icon size={14} className="text-[var(--color-text-muted)]" />,
+          action: () => {
+            useUIStore.getState().closeCommandPalette();
+            c.run();
+          },
+        };
+      });
 
     // The active page on the workspace's other environments.
     const wsEnvs = envsByWs[activeWorkspaceId] ?? [];
@@ -256,6 +260,7 @@ export function CommandPalette() {
     collections,
     recentPaletteIds,
     overrides,
+    snippets,
     envsByWs,
   ]);
 
