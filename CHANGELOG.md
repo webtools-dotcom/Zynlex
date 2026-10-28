@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-28
+
+Your own one-click actions on any site, and slow or offline networks on demand.
+Memory use is unchanged from 0.15 (within 1%, measured).
+
+### Added
+
+- **Snippets** (Settings → Snippets). Save a name and some JavaScript; each
+  snippet becomes a command ("Snippet: name") that runs on the current tab from
+  `Ctrl+K`, and can get its own shortcut or a toolbar button like any other
+  command. Snippets can use `await`, and errors show in the Console panel.
+- **Network throttling.** Throttle Network: Slow 3G, Fast 3G or Offline, and
+  Stop Network Throttling, in `Ctrl+K`. It applies to the current tab and stays
+  on through reloads until you stop it.
+
 ## [0.15.0] - 2026-10-28
 
 Fewer trips out of the browser: your own shortcuts and toolbar buttons for any
@@ -317,7 +332,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.16.0
 [0.15.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.15.0
 [0.14.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.14.0
 [0.13.2]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.13.2
