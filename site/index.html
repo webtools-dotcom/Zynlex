@@ -30,7 +30,7 @@
   "description": "A minimal browser for local web development: localhost dev server detection, network log, API response mocking without a proxy, device viewports, header rules and an API client.",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Windows 10, Windows 11",
-  "softwareVersion": "0.13.0",
+  "softwareVersion": "0.16.1",
   "fileSize": "3.6MB",
   "license": "https://www.apache.org/licenses/LICENSE-2.0",
   "url": "https://webtools-dotcom.github.io/Zynlex/",
@@ -207,6 +207,7 @@ footer a { color: var(--muted); }
     <a class="brand" href="#top"><img src="assets/logo.png" alt="" width="22" height="22">ZYNLEX</a>
     <nav>
       <a class="opt" href="#features">Features</a>
+      <a class="opt" href="#workflows">Workflows</a>
       <a class="opt" href="#faq">FAQ</a>
       <a href="https://github.com/webtools-dotcom/Zynlex">GitHub</a>
     </nav>
@@ -314,6 +315,38 @@ footer a { color: var(--muted); }
     </div>
   </section>
 
+  <section id="workflows">
+    <div class="wrap">
+      <div class="eyebrow">Beyond localhost</div>
+      <h2>The jobs you switch apps for, one command each.</h2>
+      <p class="intro">Every action is a command: find it with <code>Ctrl+K</code>, give it your own shortcut, or pin it to the toolbar as a button. Settings → Shortcuts lists them all.</p>
+
+      <div class="feature">
+        <div class="copy">
+          <div><div class="q">Is it broken on staging too?</div><h3>Local, staging and production, one click apart</h3></div>
+          <div class="body"><p>List a project's addresses once. While you're on one of them, the toolbar shows them all, and a click opens the same path and query on another, or in a new tab with <code>Ctrl</code>. <code>Alt+Shift+1</code>–<code>4</code> from the keyboard.</p><ul><li>Production is marked red and asks before you go there</li><li>Clear Site Data and Reload wipes cookies and storage for a first visit</li></ul></div>
+        </div>
+        <div class="shot"><img src="assets/environments.webp" alt="The Orbit dashboard on staging.localhost, with local, staging and prod in the toolbar; prod was clicked and asks Open prod? before switching" width="1600" height="950" loading="lazy"></div>
+      </div>
+
+      <div class="feature">
+        <div class="copy">
+          <div><div class="q">Did anything break?</div><h3>Errors on the tab, and a bug report in one command</h3></div>
+          <div class="body"><p>JS errors and failed requests show as a count on the tab itself, so you notice them with the console closed. Click it for the Console panel. <em>Copy Bug Report</em> puts the URL, environment, device, browser and recent errors on your clipboard as Markdown, and saves a screenshot to Downloads.</p><ul><li>Paste it straight into an issue or a chat</li><li><code>F12</code> still opens full DevTools</li></ul></div>
+        </div>
+        <div class="shot"><img src="assets/bug-report.webp" alt="The dashboard failing to load orders, a 1 on its tab, the Console panel showing the 500, and Bug report copied in the status bar" width="1600" height="950" loading="lazy"></div>
+      </div>
+
+      <div class="feature">
+        <div class="copy">
+          <div><div class="q">Doing the same thing again?</div><h3>Your own snippets, as buttons</h3></div>
+          <div class="body"><p>Save a bit of JavaScript, like filling a test login, turning on a feature flag or outlining every element, and it becomes a command that runs on the current tab. Pin it to the toolbar or give it a shortcut.</p><ul><li>Throttle a tab to Slow 3G, Fast 3G or offline</li><li>Snippet errors show in the Console panel</li></ul></div>
+        </div>
+        <div class="shot"><img src="assets/snippets.webp" alt="A Show layout grid snippet run from its pinned toolbar button, outlining every element of the dashboard; the button's tooltip shows its Ctrl+Alt+G shortcut" width="1600" height="950" loading="lazy"></div>
+      </div>
+    </div>
+  </section>
+
   <section>
     <div class="wrap">
       <div class="eyebrow">Small on purpose</div>
@@ -348,7 +381,7 @@ footer a { color: var(--muted); }
       <div class="faq">
         <details><summary>Can I use it as my everyday browser?</summary><p>You can browse in it like any browser, and it is minimal: no sync, no extensions, no account. It's built around development work, so most people keep it open next to their editor rather than replacing their main browser.</p></details>
         <details><summary>Will websites work in it?</summary><p>Yes. Tabs render with WebView2, Microsoft's packaging of Chromium, the same engine as Chrome and Edge. Pages look and behave the same.</p></details>
-        <details><summary>How is it different from Chrome DevTools?</summary><p>DevTools is a drawer inside a general browser. ZYNLEX puts the network log, device viewports and header rules in the browser's own sidebar, per tab and per project, and adds what DevTools doesn't have: localhost server detection, response mocking without a proxy, and an API client.</p></details>
+        <details><summary>How is it different from Chrome DevTools?</summary><p>DevTools is a drawer inside a general browser. ZYNLEX puts the network log, device viewports and header rules in the browser's own sidebar, per tab and per project, and adds what DevTools doesn't have: localhost server detection, response mocking without a proxy, environment switching, one-command bug reports and an API client. <code>F12</code> still opens full DevTools when you need it.</p></details>
         <details><summary>Do I need a proxy or certificate to mock responses?</summary><p>No. Mocks are answered inside the browser before the request reaches the network, so there's nothing to install or trust. Cross-origin requests work too.</p></details>
         <details><summary>Why is it so small? Is it Electron?</summary><p>It's not Electron. It's built with Tauri and Rust, and uses the WebView2 runtime that already ships with Windows instead of bundling its own copy of Chromium.</p></details>
         <details><summary>Does it collect any data?</summary><p>No account, no telemetry, no analytics. The only network call it makes on its own is an update check against the project's GitHub releases. This page makes no third-party requests either.</p></details>
