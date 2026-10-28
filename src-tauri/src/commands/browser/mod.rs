@@ -702,6 +702,39 @@ pub async fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String
     Ok(())
 }
 
+/// Clears everything the page's origin stored — cookies (HttpOnly too), local
+/// and session storage, IndexedDB, cache storage, service workers — then
+/// reloads, so the page starts as on a first visit. The reload waits for the
+/// clear to finish; sent back to back, it could race it.
+#[tauri::command]
+pub async fn browser_clear_site_data(
+    app: AppHandle,
+    tab_id: String,
+    origin: String,
+) -> Result<(), String> {
+    let label = webview_label_for_tab(&tab_id);
+    let Some(wv) = find_tab_webview(&app, &label) else {
+        return Ok(());
+    };
+    let params = serde_json::json!({ "origin": origin, "storageTypes": "all" }).to_string();
+    with_core(&wv, "browser_clear_site_data", move |core| unsafe {
+        use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
+        use windows_core::HSTRING;
+        let reload_core = core.clone();
+        let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+            move |_r: windows_core::Result<()>, _json: String| -> windows_core::Result<()> {
+                cdp(&reload_core, "Page.reload", r#"{"ignoreCache":true}"#);
+                Ok(())
+            },
+        ));
+        let _ = core.CallDevToolsProtocolMethod(
+            &HSTRING::from("Storage.clearDataForOrigin"),
+            &HSTRING::from(params),
+            &handler,
+        );
+    })
+}
+
 /// Opens Chromium DevTools for the tab in its own window.
 #[tauri::command]
 pub async fn browser_open_devtools(app: AppHandle, tab_id: String) -> Result<(), String> {

@@ -22,6 +22,7 @@ import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { useSettingsStore } from "@/stores/settings";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { NAVIGATE_EVENT } from "@/lib/envActions";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { onHoveredUrlChanged } from "@/services/browser";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
@@ -79,6 +80,13 @@ export function RootLayout() {
 
   useKeyboardShortcuts();
   const viewportMode = useViewportMode();
+
+  // Navigation requested from outside React (environment switching).
+  useEffect(() => {
+    const onNavigate = (e: Event) => void bridge?.navigate((e as CustomEvent<string>).detail);
+    window.addEventListener(NAVIGATE_EVENT, onNavigate);
+    return () => window.removeEventListener(NAVIGATE_EVENT, onNavigate);
+  }, [bridge]);
 
   return (
     <ErrorBoundary>

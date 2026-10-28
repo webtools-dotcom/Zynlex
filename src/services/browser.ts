@@ -88,6 +88,11 @@ export async function hardReload(tabId: string): Promise<void> {
   await invoke<void>("browser_hard_reload", { tabId });
 }
 
+/** Clears the origin's cookies and storage, then reloads the tab. */
+export async function clearSiteData(tabId: string, origin: string): Promise<void> {
+  await invoke<void>("browser_clear_site_data", { tabId, origin });
+}
+
 export async function openDevtools(tabId: string): Promise<void> {
   await invoke<void>("browser_open_devtools", { tabId });
 }

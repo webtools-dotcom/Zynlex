@@ -29,8 +29,19 @@ import { getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import { openTab } from "@/lib/tabActions";
 import { COMMANDS, chordLabel, keysFor } from "@/lib/commands";
 import { useKeybindingsStore } from "@/stores/keybindings";
+import { useEnvironmentsStore } from "@/stores/environments";
+import { displayOrigin, matchEnv } from "@/lib/envSwitch";
+import { switchEnv } from "@/lib/envActions";
 
-type PaletteType = "tab" | "command" | "bookmark" | "history" | "workspace" | "server" | "request";
+type PaletteType =
+  | "tab"
+  | "environment"
+  | "command"
+  | "bookmark"
+  | "history"
+  | "workspace"
+  | "server"
+  | "request";
 
 type PaletteItem = {
   id: string;
@@ -43,6 +54,7 @@ type PaletteItem = {
 
 const GROUP_LABELS: Record<PaletteType, string> = {
   tab: "Tabs",
+  environment: "Environments",
   command: "Commands",
   bookmark: "Bookmarks",
   history: "History",
@@ -54,6 +66,7 @@ const GROUP_LABELS: Record<PaletteType, string> = {
 /** Fixed group order, so results never reshuffle between keystrokes. */
 const GROUP_ORDER: PaletteType[] = [
   "tab",
+  "environment",
   "command",
   "bookmark",
   "request",
@@ -73,6 +86,7 @@ export function CommandPalette() {
   const collections = useApiCollectionsStore((s) => s.byWs[activeWorkspaceId]);
   const recentPaletteIds = useUIStore((s) => s.recentPaletteIds);
   const overrides = useKeybindingsStore((s) => s.overrides);
+  const envsByWs = useEnvironmentsStore((s) => s.rulesByWs);
 
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -111,6 +125,26 @@ export function CommandPalette() {
         },
       };
     });
+
+    // The active page on the workspace's other environments.
+    const wsEnvs = envsByWs[activeWorkspaceId] ?? [];
+    const activeUrl = tabs[ws?.activeTabId ?? ""]?.url ?? "";
+    const currentEnv = activeUrl ? matchEnv(activeUrl, wsEnvs) : null;
+    const envItems: PaletteItem[] = currentEnv
+      ? wsEnvs
+          .filter((e) => e.id !== currentEnv.id)
+          .map((e) => ({
+            id: `env-${e.id}`,
+            type: "environment" as const,
+            label: `Open on ${e.name}${e.isProd ? " (production)" : ""}`,
+            sublabel: displayOrigin(e.origin),
+            icon: <Layers size={14} className="text-[var(--color-text-muted)]" />,
+            action: () => {
+              useUIStore.getState().closeCommandPalette();
+              switchEnv(e);
+            },
+          }))
+      : [];
 
     /** Every non-command item ends up opening a URL in a new tab. */
     const openInNewTab = (url: string, title: string) => () => {
@@ -184,6 +218,7 @@ export function CommandPalette() {
 
     const allItems = [
       ...tabItems,
+      ...envItems,
       ...commandItems,
       ...bookmarkItems,
       ...requestItems,
@@ -221,6 +256,7 @@ export function CommandPalette() {
     collections,
     recentPaletteIds,
     overrides,
+    envsByWs,
   ]);
 
   function run(item: PaletteItem) {

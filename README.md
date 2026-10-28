@@ -38,6 +38,8 @@ The sidebar has the things you'd otherwise keep four apps around for:
 - **Header rules**: add, override or strip request headers, matched per URL pattern
 - **API client**: saved collections, cURL import, runs through Rust so page CORS doesn't apply
 - **Inspector**: meta tags, Open Graph previews, and cookies including HttpOnly
+- **Environments**: list a project's addresses (local, staging, production) and switch the page you're on between them in one click, same path and query. Production is marked in red and asks before you go there
+- **Clear site data**: one command wipes the site's cookies, storage, IndexedDB and service workers, then reloads, for testing a first visit
 - JWT decoder, Base64, user-agent switcher
 
 Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it, and every command can be given your own shortcut or pinned to the toolbar (**Settings → Shortcuts**).
