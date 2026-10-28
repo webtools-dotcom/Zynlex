@@ -16,6 +16,7 @@ import {
   Bug,
   Clock,
   Code2,
+  Eraser,
   Keyboard,
   type LucideIcon,
   Plus,
@@ -34,7 +35,10 @@ import { getLiveWorkspaceActiveTabId, getLiveWorkspaceTabIds } from "@/lib/works
 import { toggleBookmarkForActiveTab } from "@/lib/bookmarkAction";
 import { openTab, closeTab, reopenLastClosedTab } from "@/lib/tabActions";
 import { getActiveTabId } from "@/hooks/useActiveScope";
+import { activeEnv, switchEnv, workspaceEnvs } from "@/lib/envActions";
+import { originOf } from "@/lib/url";
 import {
+  clearSiteData,
   hardReload,
   openDevtools,
   setTabZoom,
@@ -120,6 +124,36 @@ function stopOrCloseFind(): boolean {
     return true;
   }
   return false;
+}
+
+/** Production needs a second press within this window, like the pill's confirm click. */
+const PROD_CONFIRM_MS = 3000;
+let prodArmedAt: { id: string; at: number } | null = null;
+
+function gotoEnv(n: number): boolean {
+  const target = workspaceEnvs()[n - 1];
+  const current = activeEnv();
+  if (!target || !current || current.id === target.id) return false;
+  if (target.isProd) {
+    const armed = prodArmedAt?.id === target.id && Date.now() - prodArmedAt.at < PROD_CONFIRM_MS;
+    if (!armed) {
+      prodArmedAt = { id: target.id, at: Date.now() };
+      useUIStore.getState().pushToast(`Press again to open ${target.name}`, "danger");
+      return true;
+    }
+    prodArmedAt = null;
+  }
+  return switchEnv(target);
+}
+
+function clearSite(): boolean {
+  const tabId = getActiveTabId();
+  const url = tabId && useTabsStore.getState().tabs[tabId]?.url;
+  const origin = url && originOf(url);
+  if (!tabId || !origin) return false;
+  clearSiteData(tabId, origin).catch(() => {});
+  useUIStore.getState().pushToast(`Cleared cookies and storage for ${origin}`, "info");
+  return true;
 }
 
 // ─── Registry ───────────────────────────────────────────────────────
@@ -239,6 +273,13 @@ export const COMMANDS: Command[] = [
     icon: Bug,
     run: () => onActiveTab(openDevtools),
   },
+  {
+    id: "site.clear",
+    title: "Clear Site Data and Reload",
+    keys: [],
+    icon: Eraser,
+    run: clearSite,
+  },
   { id: "zoom.in", title: "Zoom In", keys: ["ctrl+=", "ctrl+shift+="], run: () => applyZoom(1) },
   { id: "zoom.out", title: "Zoom Out", keys: ["ctrl+-"], run: () => applyZoom(-1) },
   { id: "zoom.reset", title: "Reset Zoom", keys: ["ctrl+0"], run: () => applyZoom(0) },
@@ -309,6 +350,15 @@ export const COMMANDS: Command[] = [
       keys: [`ctrl+${n}`],
       hidden: true,
       run: () => selectTab(() => n - 1),
+    }),
+  ),
+  ...[1, 2, 3, 4].map(
+    (n): Command => ({
+      id: `env.goto.${n}`,
+      title: `Switch to Environment ${n}`,
+      keys: [`alt+shift+${n}`],
+      hidden: true,
+      run: () => gotoEnv(n),
     }),
   ),
   ...DIGITS.map(

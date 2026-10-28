@@ -53,6 +53,9 @@
   --color-console-error: #ef4444;
   --color-console-warn:  #f59e0b;
 
+  /* Production environment marker — the env switcher and toolbar edge only. */
+  --color-env-prod: #ef4444;
+
   /* Typography */
   --font-ui:      "JetBrains Mono", "Fira Code", ui-monospace, monospace;
   --font-mono:    "JetBrains Mono", "Fira Code", ui-monospace, monospace;
@@ -274,6 +277,7 @@ input, textarea, [contenteditable], .selectable {
 
   --color-console-error: #dc2626;
   --color-console-warn:  #d97706;
+  --color-env-prod: #dc2626;
 
   /* Legacy aliases — light overrides */
   --zynlex-workspace-bar: var(--color-base);

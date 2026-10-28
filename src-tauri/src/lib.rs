@@ -306,6 +306,7 @@ pub fn run() {
             commands::browser::browser_set_zoom,
             commands::browser::browser_hard_reload,
             commands::browser::browser_open_devtools,
+            commands::browser::browser_clear_site_data,
             commands::browser::browser_set_shortcuts,
             commands::browser::open_download,
             commands::browser::browser_find,
