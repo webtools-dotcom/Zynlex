@@ -79,7 +79,7 @@
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body { margin: 0; background: var(--base); color: var(--text); font: 15px/1.65 var(--mono); }
-img { max-width: 100%; display: block; }
+img { max-width: 100%; height: auto; display: block; }
 a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 a:hover { color: #fff; }
 :focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
@@ -242,7 +242,7 @@ footer a { color: var(--muted); }
   <section class="tour" aria-label="Video tour">
     <div class="wrap">
       <div class="eyebrow">See it work · real footage</div>
-      <video controls preload="none" playsinline poster="assets/tour-poster.jpg" width="1920" height="1080">
+      <video controls preload="none" playsinline poster="assets/tour-poster.jpg" width="1920" height="1080" aria-label="A 70-second tour made from real recordings of ZYNLEX: dev servers on the new tab, the network log, a mocked 500 and the dashboard's error state, empty and slow responses, an iPhone viewport and the API client">
         <source src="assets/zynlex-tour.mp4" type="video/mp4">
         <a href="assets/zynlex-tour.mp4">Watch the tour (MP4)</a>
       </video>
