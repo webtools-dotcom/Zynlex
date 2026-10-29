@@ -28,13 +28,16 @@ export function ContentArea({ onBridgeReady }: ContentAreaProps) {
 
   // Honour settings.homePage: an empty tab shows the built-in start page only
   // while homePage is the zynlex://home sentinel; any real URL is navigated to
-  // instead. Keyed on the tab id so it fires once per newly-opened empty tab.
-  const homePage = useSettingsStore((s) => s.settings.homePage);
-  const isCustomHome = !!homePage && homePage !== "zynlex://home";
+  // instead. Keyed on the tab id only, so it fires once per newly-opened empty
+  // tab. The setting is read, not subscribed to: the Settings field saves on
+  // every keystroke, and reacting to it navigated the open empty tab to the
+  // first character typed ("h") while the URL was still being entered.
   useEffect(() => {
+    const homePage = useSettingsStore.getState().settings.homePage;
+    const isCustomHome = !!homePage && homePage !== "zynlex://home";
     if (!activeTab || activeTab.url || !isCustomHome) return;
     void bridge.navigate(homePage);
-  }, [activeTab?.id, isCustomHome]);
+  }, [activeTab?.id]);
 
   return (
     <div

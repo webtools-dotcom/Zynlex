@@ -425,10 +425,12 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
           // webview exists, long before the document it is navigating to has loaded,
           // and writing scroll position into a blank document does nothing.
           const saved = useTabsStore.getState().tabs[tabId]?.savedFormState;
+          // One shot: cleared before the restore, not after it succeeds. A failed
+          // restore used to keep the state, and the tab's next page load wrote
+          // these form values into a different page's inputs by index.
           if (saved) {
-            restoreTabState(tabId, saved)
-              .then(() => useTabsStore.getState().saveTabState(tabId, null))
-              .catch(() => {});
+            useTabsStore.getState().saveTabState(tabId, null);
+            restoreTabState(tabId, saved).catch(() => {});
           }
         }
       }),
