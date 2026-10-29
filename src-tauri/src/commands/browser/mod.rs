@@ -23,15 +23,13 @@ use tauri_plugin_opener::OpenerExt;
 
 /// Reads a single COM `PWSTR` out-parameter into an owned `String`, treating a
 /// null pointer as empty. `f` is the COM getter call, e.g. `|p| request.Uri(p)`.
+/// WebView2 allocates these strings with `CoTaskMemAlloc` and the caller owns
+/// them; `take_pwstr` frees the buffer after copying.
 #[cfg(target_os = "windows")]
 unsafe fn pwstr_to_string(f: impl FnOnce(*mut windows::core::PWSTR)) -> String {
     let mut p = windows::core::PWSTR::null();
     f(&mut p);
-    if p.is_null() {
-        String::new()
-    } else {
-        p.to_string().unwrap_or_default()
-    }
+    webview2_com::take_pwstr(p)
 }
 
 /// Run `f` against a webview's `ICoreWebView2` on its UI thread. Logs and skips

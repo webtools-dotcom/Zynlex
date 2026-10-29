@@ -126,11 +126,7 @@ unsafe fn request_header(
     headers
         .GetHeader(&windows::core::HSTRING::from(name), &mut value)
         .ok()?;
-    if value.is_null() {
-        None
-    } else {
-        value.to_string().ok()
-    }
+    (!value.is_null()).then(|| webview2_com::take_pwstr(value))
 }
 
 /// `ICoreWebView2Deferral` is a COM pointer and not `Send`, but completing it
@@ -583,11 +579,14 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                 }
                                 let mut name = PWSTR::null();
                                 let mut value = PWSTR::null();
-                                if iter.GetCurrentHeader(&mut name, &mut value).is_ok()
-                                    && !name.is_null()
-                                    && !value.is_null()
-                                {
-                                    if let (Ok(n), Ok(v)) = (name.to_string(), value.to_string()) {
+                                if iter.GetCurrentHeader(&mut name, &mut value).is_ok() {
+                                    // Take both even if one is null, so neither buffer leaks.
+                                    let (has_name, has_value) = (!name.is_null(), !value.is_null());
+                                    let (n, v) = (
+                                        webview2_com::take_pwstr(name),
+                                        webview2_com::take_pwstr(value),
+                                    );
+                                    if has_name && has_value {
                                         headers.push((n, v));
                                     }
                                 }
