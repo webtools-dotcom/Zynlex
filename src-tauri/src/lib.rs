@@ -1,3 +1,4 @@
+mod agent;
 mod commands;
 mod engine;
 
@@ -203,6 +204,7 @@ pub fn run() {
                 .devtools(cfg!(debug_assertions))
                 .build()?;
             let _ = _app.state::<BrowserState>().browser_args.set(args);
+            agent::start(_app.handle().clone());
 
             if let Some(main) = _app.get_window("main") {
                 let app_handle = _app.handle().clone();
@@ -321,6 +323,9 @@ pub fn run() {
             commands::browser::browser_set_mock_rules,
             commands::http::api_fetch,
             commands::ports::scan_ports,
+            agent::agent_reply,
+            agent::agent_status,
+            agent::agent_set_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

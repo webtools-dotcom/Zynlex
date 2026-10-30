@@ -735,7 +735,8 @@ pub async fn browser_clear_site_data(
 }
 
 /// Saves a PNG of the tab to Downloads and returns its path. `kind`: "bug" (the visible
-/// area, for a bug report), "visible", or "full" (the whole page, up to Chromium's 16384 px).
+/// area, for a bug report), "visible", "full" (the whole page, up to Chromium's 16384 px),
+/// or "agent" (the visible area, saved to %TEMP%\zynlex-agent instead).
 #[tauri::command]
 pub async fn browser_capture_screenshot(
     app: AppHandle,
@@ -747,6 +748,7 @@ pub async fn browser_capture_screenshot(
         "bug" => ("bug", false),
         "visible" => ("screenshot", false),
         "full" => ("screenshot", true),
+        "agent" => ("agent", false),
         _ => return Err(format!("screenshot: unknown kind {kind}")),
     };
     let wv = find_tab_webview(&app, &webview_label_for_tab(&tab_id)).ok_or("tab not found")?;
@@ -777,11 +779,15 @@ pub async fn browser_capture_screenshot(
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis());
-    let path = app
-        .path()
-        .download_dir()
-        .map_err(|e| e.to_string())?
-        .join(format!("zynlex-{prefix}-{millis}.png"));
+    // An agent's screenshots are working files, not something the user saved.
+    let dir = if kind == "agent" {
+        let dir = std::env::temp_dir().join("zynlex-agent");
+        std::fs::create_dir_all(&dir).map_err(|e| format!("screenshot: {e}"))?;
+        dir
+    } else {
+        app.path().download_dir().map_err(|e| e.to_string())?
+    };
+    let path = dir.join(format!("zynlex-{prefix}-{millis}.png"));
     std::fs::write(&path, png).map_err(|e| format!("screenshot: {e}"))?;
     Ok(path.to_string_lossy().into_owned())
 }

@@ -60,6 +60,7 @@ import { setHeaderRules, setMockRules } from "@/services/browser";
 import { useMocksStore } from "@/stores/mocks";
 import { isLoopbackUrl, titleFromUrl } from "@/lib/url";
 import { openTab } from "@/lib/tabActions";
+import { listenForAgents } from "@/lib/agent";
 
 let _netEntryId = 0;
 
@@ -896,6 +897,14 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     const { track, dispose } = tracker();
     const add = useConsoleStore.getState().add;
     track(onConsoleEntry(add));
+    return dispose;
+  }, []);
+
+  // ── Agent bridge (MCP tool calls, see lib/agent.ts) ───────────────
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const { track, dispose } = tracker();
+    for (const p of listenForAgents()) track(p);
     return dispose;
   }, []);
 

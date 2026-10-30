@@ -93,10 +93,10 @@ export async function clearSiteData(tabId: string, origin: string): Promise<void
   await invoke<void>("browser_clear_site_data", { tabId, origin });
 }
 
-/** PNG of the tab saved to Downloads: the visible area ("bug", "visible") or the whole page ("full"). Resolves to its path. */
+/** PNG of the tab saved to Downloads: the visible area ("bug", "visible") or the whole page ("full"). "agent" is the visible area saved to %TEMP%\zynlex-agent. Resolves to its path. */
 export async function captureScreenshot(
   tabId: string,
-  kind: "bug" | "visible" | "full",
+  kind: "bug" | "visible" | "full" | "agent",
 ): Promise<string> {
   return invoke<string>("browser_capture_screenshot", { tabId, kind });
 }
@@ -537,4 +537,41 @@ export async function focusAppWebview(): Promise<void> {
     // Best-effort. A failure here costs the caller its keyboard focus, not
     // correctness, and there is nothing useful to tell the user.
   }
+}
+
+// ─── Agent bridge (src-tauri/src/agent.rs) ───────────────────────
+
+/** Mirrors `AgentStatus` in agent.rs. */
+export interface AgentStatus {
+  /** False after the user pressed Stop, until they turn access back on. */
+  enabled: boolean;
+  /** Connected MCP clients ("claude-code", "codex", …), sorted. */
+  clients: string[];
+}
+
+export interface AgentRequest {
+  id: number;
+  tool: string;
+  args: Record<string, unknown> | null;
+}
+
+export async function getAgentStatus(): Promise<AgentStatus> {
+  return invoke<AgentStatus>("agent_status");
+}
+
+/** `false` disconnects every agent and refuses further calls until turned back on. */
+export async function setAgentEnabled(enabled: boolean): Promise<void> {
+  await invoke<void>("agent_set_enabled", { enabled });
+}
+
+export async function agentReply(id: number, ok: boolean, text: string): Promise<void> {
+  await invoke<void>("agent_reply", { id, ok, text });
+}
+
+export function onAgentStatus(callback: (status: AgentStatus) => void): Promise<UnlistenFn> {
+  return listen<AgentStatus>("agent://status", (e) => callback(e.payload));
+}
+
+export function onAgentRequest(callback: (req: AgentRequest) => void): Promise<UnlistenFn> {
+  return listen<AgentRequest>("agent://request", (e) => callback(e.payload));
 }
