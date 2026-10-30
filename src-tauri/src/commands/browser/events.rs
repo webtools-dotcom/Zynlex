@@ -126,7 +126,6 @@ pub fn register_webview_native_events(wv: &tauri::Webview, app: &tauri::AppHandl
     let app = app.clone();
     let tab_id = tab_id.to_string();
     let _ = wv.with_webview(move |platform| {
-        #[cfg(windows)]
         unsafe {
             use webview2_com::Microsoft::Web::WebView2::Win32::{
                 COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN,

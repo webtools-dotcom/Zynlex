@@ -116,7 +116,6 @@ fn resource_type_name(context: i32) -> &'static str {
 }
 
 /// Reads one request header, `None` when absent.
-#[cfg(windows)]
 unsafe fn request_header(
     request: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2WebResourceRequest,
     name: &str,
@@ -132,11 +131,8 @@ unsafe fn request_header(
 /// `ICoreWebView2Deferral` is a COM pointer and not `Send`, but completing it
 /// is only ever done back on the UI thread (via `run_on_main_thread`) — the
 /// worker thread just carries it across the sleep.
-#[cfg(windows)]
 struct SendDeferral(webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Deferral);
-#[cfg(windows)]
 unsafe impl Send for SendDeferral {}
-#[cfg(windows)]
 impl SendDeferral {
     fn complete(self) {
         let _ = unsafe { self.0.Complete() };
@@ -150,7 +146,6 @@ impl SendDeferral {
 /// at localhost:3000 calling a mocked localhost:8000 API would otherwise have
 /// its preflight go to a server that may not exist (or not allow the origin),
 /// and the real request would never be sent to be mocked.
-#[cfg(windows)]
 unsafe fn try_mock(
     app: &tauri::AppHandle,
     env: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Environment,
