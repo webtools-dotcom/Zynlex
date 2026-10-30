@@ -212,6 +212,42 @@ pub fn agent_reply(id: u64, ok: bool, text: String) {
     }
 }
 
+/// Un-minimizes the main window when an agent brings a tab forward: a
+/// minimized window has no content area to lay a new tab out in, and the user
+/// should be able to watch what the agent does. Doesn't take focus, so typing
+/// in their editor carries on — except for a window minimized from maximized,
+/// which Windows can only restore as maximized by activating it.
+#[tauri::command]
+pub fn agent_reveal_window(app: AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowPlacement, IsIconic, ShowWindow, SW_RESTORE, SW_SHOWNOACTIVATE, WINDOWPLACEMENT,
+        WPF_RESTORETOMAXIMIZED,
+    };
+    let win = app.get_window("main").ok_or("no main window")?;
+    let hwnd = win.hwnd().map_err(|e| e.to_string())?;
+    unsafe {
+        if !IsIconic(hwnd).as_bool() {
+            return Ok(());
+        }
+        let mut wp = WINDOWPLACEMENT {
+            length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
+            ..Default::default()
+        };
+        let maximized =
+            GetWindowPlacement(hwnd, &mut wp).is_ok() && wp.flags.contains(WPF_RESTORETOMAXIMIZED);
+        let _ = ShowWindow(
+            hwnd,
+            if maximized {
+                SW_RESTORE
+            } else {
+                SW_SHOWNOACTIVATE
+            },
+        );
+    }
+    Ok(())
+}
+
 /// For a frontend that (re)loaded after agents connected.
 #[tauri::command]
 pub fn agent_status() -> AgentStatus {

@@ -37,7 +37,7 @@ fn tools() -> Value {
             "description": "Waits for the page to settle, then lists new JS errors and failed requests since your last check. Call after each code change.",
             "inputSchema": { "type": "object", "properties": {
                 "tab": tab,
-                "reload": { "type": "boolean", "description": "Reload the page first." }
+                "reload": { "type": "boolean", "description": "Reload the page first; the reply then includes the new page and its refs." }
             } }
         },
         {

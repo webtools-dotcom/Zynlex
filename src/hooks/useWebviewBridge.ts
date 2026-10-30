@@ -575,13 +575,14 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       // Bounds are unmeasurable (<10px) while layout settles — most reliably right
       // after a minimize/restore. Bailing outright used to strand the switch
       // forever: nothing hid the old webview, nothing showed the new one, and the
-      // effect never re-ran because its deps hadn't changed. Retry instead, same
-      // bounded pattern as ensureWebviewVisible.
+      // effect never re-ran because its deps hadn't changed. Retry instead: fast
+      // while layout settles, then slowly for as long as the window stays
+      // minimized (a tab activated then — by an agent, or a page opening one —
+      // has to appear once the window is back). A newer switch cancels this
+      // via isStale and the effect cleanup.
       const bounds = getActiveBounds(contentAreaRef);
       if (!bounds) {
-        if (attempt < 8) {
-          retryTimer = setTimeout(() => runSwitch(attempt + 1), 50);
-        }
+        retryTimer = setTimeout(() => runSwitch(attempt + 1), attempt < 8 ? 50 : 500);
         return;
       }
 

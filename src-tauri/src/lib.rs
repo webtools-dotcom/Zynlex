@@ -328,6 +328,7 @@ pub fn run() {
             agent::agent_reply,
             agent::agent_status,
             agent::agent_set_enabled,
+            agent::agent_reveal_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

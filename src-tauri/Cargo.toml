@@ -33,7 +33,9 @@ tokio = { version = "1", features = ["net", "time", "io-util", "rt", "sync", "ma
 webview2-com = "0.38"
 windows-core = "0.61"
 windows = { version = "0.61", features = [
+    "Win32_Foundation",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Shell",
     "Win32_System_Com",
     "Win32_System_DataExchange",

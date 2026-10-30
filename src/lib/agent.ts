@@ -26,6 +26,7 @@ import {
   onAgentRequest,
   onAgentStatus,
   pendingRequests,
+  revealWindow,
   tabCdp,
   webviewReload,
 } from "@/services/browser";
@@ -222,6 +223,8 @@ async function settle(tabId: string): Promise<string | null> {
 
 /** Brings the tab to the front, so the user sees what the agent does, and waits for its webview. */
 async function showTab(tab: Tab): Promise<void> {
+  // A minimized window has no content area, so the tab could never lay out.
+  await revealWindow().catch(() => {});
   const ws = useWorkspacesStore.getState();
   if (ws.activeWorkspaceId !== tab.workspaceId) ws.setActiveWorkspace(tab.workspaceId);
   ws.setActiveTab(tab.workspaceId, tab.id);
@@ -236,12 +239,26 @@ async function showTab(tab: Tab): Promise<void> {
   throw new Error("The tab's page didn't come up within 5s.");
 }
 
-/** The last default snapshot per tab: the baseline diffs and "unchanged" are against. */
-const snapshots = new Map<string, string>();
+/**
+ * The page as last reported, per tab: `compact` is what an agent is shown,
+ * `full` (every piece of text) is what action diffs are taken against, so a
+ * total or message that changes shows up as a changed line, not only the
+ * buttons around it.
+ */
+interface Seen {
+  compact: string;
+  full: string;
+}
+const snapshots = new Map<string, Seen>();
 
-async function takeSnapshot(tabId: string, opts: { full?: boolean; within?: number } = {}) {
-  const { nodes } = await tabCdp<{ nodes: AXNode[] }>(tabId, "Accessibility.getFullAXTree");
-  return formatSnapshot(nodes, opts);
+async function axTree(tabId: string): Promise<AXNode[]> {
+  return (await tabCdp<{ nodes: AXNode[] }>(tabId, "Accessibility.getFullAXTree")).nodes;
+}
+
+/** Both views from one tree fetch. */
+async function takePage(tabId: string): Promise<Seen> {
+  const nodes = await axTree(tabId);
+  return { compact: formatSnapshot(nodes), full: formatSnapshot(nodes, { full: true }) };
 }
 
 function parseRef(ref: unknown): number {
@@ -255,13 +272,13 @@ async function consequences(tab: Tab, urlBefore: string): Promise<string[]> {
   const unsettled = await settle(tab.id);
   const now = useTabsStore.getState().tabs[tab.id] ?? tab;
   const before = snapshots.get(tab.id);
-  const after = await takeSnapshot(tab.id);
+  const after = await takePage(tab.id);
   snapshots.set(tab.id, after);
-  const diff = before == null ? [] : diffSnapshot(before, after);
+  const diff = before == null ? [] : diffSnapshot(before.full, after.full);
   // A diff longer than the page itself is worse than just the page.
   const page =
-    before == null || diff.length > after.split("\n").length
-      ? ["Page:", after]
+    before == null || diff.length > after.compact.split("\n").length
+      ? ["Page:", after.compact]
       : diff.length
         ? ["Page changes:", ...diff]
         : ["Page unchanged."];
@@ -280,6 +297,9 @@ async function checkTool(args: Args): Promise<string> {
   let unsettled: string | null;
   if (args.reload) {
     await showTab(tab);
+    // "After reload" must mean after: drop what the old page left, including
+    // a network row that landed just after the console line already reported.
+    newProblems(tab);
     await webviewReload(tab.id);
     unsettled = await settle(tab.id);
   } else {
@@ -297,11 +317,20 @@ async function checkTool(args: Args): Promise<string> {
     : since
       ? `Since last check ${Math.round((Date.now() - since.at) / 1000)}s ago:`
       : "First check, everything recorded so far:";
+  // A reload makes a new document, so every ref the agent had is stale:
+  // hand over the new page instead of making it ask.
+  let page: string[] = [];
+  if (args.reload) {
+    const now = await takePage(tab.id);
+    snapshots.set(tab.id, now);
+    page = ["Page:", now.compact];
+  }
   return [
     header(useTabsStore.getState().tabs[tab.id] ?? tab),
     ...(unsettled ? [unsettled] : []),
     when,
     ...(body.length ? body : ["No new errors or failed requests."]),
+    ...page,
   ].join("\n");
 }
 
@@ -309,11 +338,14 @@ async function snapshotTool(args: Args): Promise<string> {
   const tab = resolveTab(args.tab);
   const within = args.within == null ? undefined : parseRef(args.within);
   const full = !!args.full;
-  const text = await takeSnapshot(tab.id, { full, within });
-  if (full || within != null) return `${header(tab)}\n${text}`;
-  const unchanged = snapshots.get(tab.id) === text;
-  snapshots.set(tab.id, text);
-  return `${header(tab)}\n${unchanged ? "Unchanged since your last snapshot." : text}`;
+  if (full || within != null) {
+    return `${header(tab)}\n${formatSnapshot(await axTree(tab.id), { full, within })}`;
+  }
+  // "Unchanged" goes by the full text: a total that changed is a change.
+  const now = await takePage(tab.id);
+  const unchanged = snapshots.get(tab.id)?.full === now.full;
+  snapshots.set(tab.id, now);
+  return `${header(tab)}\n${unchanged ? "Unchanged since your last snapshot." : now.compact}`;
 }
 
 /** CDP key events for the keys an agent needs. */
@@ -398,13 +430,13 @@ async function actTool(args: Args): Promise<string> {
   const text = typeof args.text === "string" ? args.text : "";
   const ref = action === "press" && args.ref == null ? null : parseRef(args.ref);
   await showTab(tab);
-  if (!snapshots.has(tab.id)) snapshots.set(tab.id, await takeSnapshot(tab.id));
+  if (!snapshots.has(tab.id)) snapshots.set(tab.id, await takePage(tab.id));
   const label =
     ref == null
       ? ""
       : (snapshots
           .get(tab.id)
-          ?.split("\n")
+          ?.compact.split("\n")
           .find((l) => l.includes(`[e${ref}]`))
           ?.trim() ?? `e${ref}`);
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
@@ -433,9 +465,9 @@ async function actTool(args: Args): Promise<string> {
     // message; for an element-scoped call that almost always means the node
     // is gone (re-render, navigation, reload).
     if (ref != null && /0x80070057|no node|could not find node/i.test(msg)) {
-      const fresh = await takeSnapshot(tab.id);
+      const fresh = await takePage(tab.id);
       snapshots.set(tab.id, fresh);
-      throw new Error(`Stale ref e${ref}: that element is gone. Current page:\n${fresh}`);
+      throw new Error(`Stale ref e${ref}: that element is gone. Current page:\n${fresh.compact}`);
     }
     throw err;
   }
@@ -464,7 +496,12 @@ async function openTool(args: Args): Promise<string> {
   // A fresh page: report it whole, not as a diff against an old visit.
   snapshots.delete(id);
   const lines = await consequences(tab, url);
-  return [header(useTabsStore.getState().tabs[id] ?? tab), ...lines].join("\n");
+  // The header already says where the page is; "Navigated to" would only
+  // echo a redirect or a trailing slash.
+  return [
+    header(useTabsStore.getState().tabs[id] ?? tab),
+    ...lines.filter((l) => !l.startsWith("Navigated to ")),
+  ].join("\n");
 }
 
 function errorsTool(args: Args): string {

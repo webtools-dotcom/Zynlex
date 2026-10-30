@@ -110,7 +110,8 @@ export function formatSnapshot(
         const c = byId.get(id);
         return c ? walk(c, d) : [];
       });
-    if (n.ignored || role === "InlineTextBox") return kids(depth);
+    // ListMarker is a list's bullet or number: pure noise in a diff.
+    if (n.ignored || role === "InlineTextBox" || role === "ListMarker") return kids(depth);
 
     const pad = "  ".repeat(depth);
     if (INTERACTIVE.has(role)) {

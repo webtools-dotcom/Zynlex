@@ -240,6 +240,35 @@ Built before launch, not after — it decides whether this ships.
 
 Bar to ship: clearly better on tokens and tool calls, and no worse on success.
 
+### Pilot (2026-10-30)
+
+Harness, fixture and graders live in `D:\PROJECT-TESTINGS\agent-bench`
+(`run.py`, `grade.mjs`). Each run: headless Claude Code (Sonnet), a fresh copy
+of the fixture, the same prompt, file tools plus exactly one browser MCP server,
+no shell, no plugins. A headless-Edge grader checks the fix. Three tasks (500 on
+coupon apply, exception on item remove, search URL typo) × three tools × one
+run:
+
+| Tool | Pass | Browser calls | Input tokens | Wall time | Cost |
+|---|---|---|---|---|---|
+| ZYNLEX | 3/3 | 8.3 | 224k | 53 s | $0.16 |
+| Playwright MCP 0.0.83 (Edge) | 3/3 | 12.0 | 351k | 59 s | $0.24 |
+| chrome-devtools-mcp 1.12.0 (Edge) | 3/3 | 13.0 | 475k | 62 s | $0.27 |
+
+What the pilot found and fixed in ZYNLEX: a tab activated while the window was
+minimized never got its webview (the switch gave up after ~400 ms); an agent
+action now restores the window without taking focus. `check reload` repeated a
+failure from before the reload. Action diffs only covered interactive
+elements, so a changed total was invisible and the agent fell back to
+`snapshot full`; diffs now cover all text, and `check reload` returns the new
+page.
+
+Not yet evidence: one run per cell, three tasks, and ZYNLEX was tuned against
+these same tasks (its coupon and search runs predate the last two fixes). All
+three bugs can also be found by reading the code. The full run needs new
+tasks that only the running app reveals (layout, timing, data from the API),
+five repeats, and playwright-cli and agent-browser added.
+
 ## Phases
 
 1. **Read-only. Built.** Pipe, MCP server, frontend dispatcher

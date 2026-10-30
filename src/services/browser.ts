@@ -574,6 +574,11 @@ export async function pendingRequests(tabId: string): Promise<string[]> {
   return invoke<string[]>("browser_pending_requests", { tabId });
 }
 
+/** Un-minimizes the app window without taking focus (see `agent_reveal_window`). */
+export async function revealWindow(): Promise<void> {
+  await invoke<void>("agent_reveal_window");
+}
+
 export async function getAgentStatus(): Promise<AgentStatus> {
   return invoke<AgentStatus>("agent_status");
 }
