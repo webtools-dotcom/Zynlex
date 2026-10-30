@@ -4,22 +4,30 @@
  * `agent_reply`. Everything is read from the stores the panels already use.
  *
  * Output is terse plain text: it lands in a model's context, so every line
- * costs tokens. Only localhost tabs are visible to an agent.
+ * costs tokens. Only localhost tabs are visible to an agent. Every call that
+ * acts on a page returns what the action caused, so the agent never needs a
+ * second call to find out.
  */
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { getActiveTabId } from "@/hooks/useActiveScope";
+import { type AXNode, diffSnapshot, formatSnapshot } from "@/lib/agentSnapshot";
+import { openTab } from "@/lib/tabActions";
 import { isLoopbackUrl } from "@/lib/url";
 import { useAgentStore } from "@/stores/agent";
 import { type ConsoleEntry, isFailedRequest, useConsoleStore } from "@/stores/console";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useServersStore } from "@/stores/servers";
 import { useTabsStore } from "@/stores/tabs";
+import { useWorkspacesStore } from "@/stores/workspaces";
 import {
   agentReply,
   captureScreenshot,
   getAgentStatus,
   onAgentRequest,
   onAgentStatus,
+  pendingRequests,
+  tabCdp,
+  webviewReload,
 } from "@/services/browser";
 import type { Tab } from "@/types";
 
@@ -78,7 +86,9 @@ function consoleLine(e: ConsoleEntry): string {
 }
 
 const netNum = (n: NetworkLogEntry) => Number(n.id.replace(/\D/g, "")) || 0;
-const isFailedRow = (n: NetworkLogEntry) => n.statusCode >= 400;
+/** The browser's own favicon probe isn't the app's failure (console.rs drops it too). */
+const isFailedRow = (n: NetworkLogEntry) =>
+  n.statusCode >= 400 && !/\/favicon\.ico$/.test(n.url.split(/[?#]/)[0]);
 const netLine = (n: NetworkLogEntry) =>
   `  ${n.id} ${n.method} ${n.statusCode} ${n.durationMs}ms ${n.resourceType} ${n.url}${n.mocked ? " (mocked)" : ""}`;
 
@@ -126,14 +136,14 @@ function tabsTool(): string {
 }
 
 /**
- * Per tab, what `check` already reported: each console entry's repeat count
+ * Per tab, what's already been reported: each console entry's repeat count
  * (an entry seen again with a higher count is news) and the newest network
  * row number. Ids, not timestamps: two messages in one millisecond are common.
  */
 const cursors = new Map<string, { seen: Map<string, number>; net: number; at: number }>();
 
-function checkTool(args: Args): string {
-  const tab = resolveTab(args.tab);
+/** Errors and failed requests since the last report, as lines (none: empty). Advances the cursor. */
+function newProblems(tab: Tab): string[] {
   const since = cursors.get(tab.id);
   const entries = useConsoleStore.getState().entriesByTab[tab.id] ?? [];
   const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
@@ -144,16 +154,317 @@ function checkTool(args: Args): string {
     net: Math.max(since?.net ?? 0, ...rows.map(netNum)),
     at: Date.now(),
   });
-
   const errors = fresh.filter((e) => e.level === "error" && !isFailedRequest(e)).map(consoleLine);
   const failed = failures(freshRows, fresh.filter(isFailedRequest));
-  const when = since
-    ? `Since last check ${Math.round((Date.now() - since.at) / 1000)}s ago:`
-    : "First check, everything recorded so far:";
-  const body = [...section("errors", errors), ...section("failed requests", failed)];
-  return [header(tab), when, ...(body.length ? body : ["No new errors or failed requests."])].join(
-    "\n",
-  );
+  return [...section("errors", errors), ...section("failed requests", failed)];
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Installs (once per document) a MutationObserver in the page and reports the
+ * load state and how long the DOM has been still. Runs in the page's world, so
+ * the page can see `__zynlexQuiet`. ponytail: an isolated world would hide it.
+ */
+const QUIET_PROBE = `(() => {
+  const k = "__zynlexQuiet";
+  if (!window[k]) {
+    window[k] = { t: performance.now() };
+    new MutationObserver(() => { window[k].t = performance.now(); })
+      .observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  }
+  return { ready: document.readyState, quietMs: performance.now() - window[k].t };
+})()`;
+
+const SETTLE_TIMEOUT = 10_000;
+
+/**
+ * Waits until the page has loaded, has no requests in flight and its DOM has
+ * been still for 500ms. Resolves to null once settled, or to why it didn't.
+ * The 300ms floor gives an action's own requests time to start.
+ */
+async function settle(tabId: string): Promise<string | null> {
+  const start = Date.now();
+  let state = { ready: "", quietMs: 0 };
+  let pending: string[] = [];
+  while (Date.now() - start < SETTLE_TIMEOUT) {
+    await sleep(100);
+    try {
+      const r = await tabCdp<{ result: { value?: typeof state } }>(tabId, "Runtime.evaluate", {
+        expression: QUIET_PROBE,
+        returnByValue: true,
+      });
+      state = r.result.value ?? state;
+      pending = await pendingRequests(tabId);
+    } catch {
+      // Mid-navigation, or the webview isn't up yet.
+      continue;
+    }
+    const loading = useTabsStore.getState().tabs[tabId]?.isLoading;
+    if (
+      Date.now() - start >= 300 &&
+      !loading &&
+      state.ready === "complete" &&
+      state.quietMs >= 500 &&
+      !pending.length
+    ) {
+      return null;
+    }
+  }
+  if (pending.length) {
+    const shown = pending.slice(0, 3).join(", ");
+    return `Not settled after 10s: ${pending.length} requests pending (${shown}).`;
+  }
+  return state.ready !== "complete"
+    ? "Not settled after 10s: still loading."
+    : "Not settled after 10s: the DOM keeps changing (animation or polling?).";
+}
+
+/** Brings the tab to the front, so the user sees what the agent does, and waits for its webview. */
+async function showTab(tab: Tab): Promise<void> {
+  const ws = useWorkspacesStore.getState();
+  if (ws.activeWorkspaceId !== tab.workspaceId) ws.setActiveWorkspace(tab.workspaceId);
+  ws.setActiveTab(tab.workspaceId, tab.id);
+  for (let i = 0; i < 50; i++) {
+    try {
+      await tabCdp(tab.id, "Runtime.evaluate", { expression: "1" });
+      return;
+    } catch {
+      await sleep(100);
+    }
+  }
+  throw new Error("The tab's page didn't come up within 5s.");
+}
+
+/** The last default snapshot per tab: the baseline diffs and "unchanged" are against. */
+const snapshots = new Map<string, string>();
+
+async function takeSnapshot(tabId: string, opts: { full?: boolean; within?: number } = {}) {
+  const { nodes } = await tabCdp<{ nodes: AXNode[] }>(tabId, "Accessibility.getFullAXTree");
+  return formatSnapshot(nodes, opts);
+}
+
+function parseRef(ref: unknown): number {
+  const m = typeof ref === "string" ? /^e?(\d+)$/.exec(ref.trim()) : null;
+  if (!m) throw new Error(`Expected a ref like "e12" from snapshot, got ${JSON.stringify(ref)}.`);
+  return Number(m[1]);
+}
+
+/** What happened after an action: settle note, URL change, page diff, new problems. */
+async function consequences(tab: Tab, urlBefore: string): Promise<string[]> {
+  const unsettled = await settle(tab.id);
+  const now = useTabsStore.getState().tabs[tab.id] ?? tab;
+  const before = snapshots.get(tab.id);
+  const after = await takeSnapshot(tab.id);
+  snapshots.set(tab.id, after);
+  const diff = before == null ? [] : diffSnapshot(before, after);
+  // A diff longer than the page itself is worse than just the page.
+  const page =
+    before == null || diff.length > after.split("\n").length
+      ? ["Page:", after]
+      : diff.length
+        ? ["Page changes:", ...diff]
+        : ["Page unchanged."];
+  const problems = newProblems(now);
+  return [
+    ...(unsettled ? [unsettled] : []),
+    ...(now.url !== urlBefore ? [`Navigated to ${now.url}`] : []),
+    ...page,
+    ...(problems.length ? problems : ["No new errors or failed requests."]),
+  ];
+}
+
+async function checkTool(args: Args): Promise<string> {
+  const tab = resolveTab(args.tab);
+  const since = cursors.get(tab.id);
+  let unsettled: string | null;
+  if (args.reload) {
+    await showTab(tab);
+    await webviewReload(tab.id);
+    unsettled = await settle(tab.id);
+  } else {
+    // A read doesn't bring the tab forward, and a tab that isn't loaded
+    // (never shown, or discarded) has nothing to wait for.
+    const loaded = await tabCdp(tab.id, "Runtime.evaluate", { expression: "1" }).then(
+      () => true,
+      () => false,
+    );
+    unsettled = loaded ? await settle(tab.id) : null;
+  }
+  const body = newProblems(tab);
+  const when = args.reload
+    ? "After reload:"
+    : since
+      ? `Since last check ${Math.round((Date.now() - since.at) / 1000)}s ago:`
+      : "First check, everything recorded so far:";
+  return [
+    header(useTabsStore.getState().tabs[tab.id] ?? tab),
+    ...(unsettled ? [unsettled] : []),
+    when,
+    ...(body.length ? body : ["No new errors or failed requests."]),
+  ].join("\n");
+}
+
+async function snapshotTool(args: Args): Promise<string> {
+  const tab = resolveTab(args.tab);
+  const within = args.within == null ? undefined : parseRef(args.within);
+  const full = !!args.full;
+  const text = await takeSnapshot(tab.id, { full, within });
+  if (full || within != null) return `${header(tab)}\n${text}`;
+  const unchanged = snapshots.get(tab.id) === text;
+  snapshots.set(tab.id, text);
+  return `${header(tab)}\n${unchanged ? "Unchanged since your last snapshot." : text}`;
+}
+
+/** CDP key events for the keys an agent needs. */
+const KEYS: Record<string, { code: number; text?: string }> = {
+  Enter: { code: 13, text: "\r" },
+  Tab: { code: 9 },
+  Escape: { code: 27 },
+  Backspace: { code: 8 },
+  Delete: { code: 46 },
+  Space: { code: 32, text: " " },
+  ArrowUp: { code: 38 },
+  ArrowDown: { code: 40 },
+  ArrowLeft: { code: 37 },
+  ArrowRight: { code: 39 },
+  Home: { code: 36 },
+  End: { code: 35 },
+  PageUp: { code: 33 },
+  PageDown: { code: 34 },
+};
+
+async function pressKey(tabId: string, key: string): Promise<void> {
+  const k = KEYS[key];
+  if (!k) throw new Error(`Unknown key "${key}". Known: ${Object.keys(KEYS).join(", ")}.`);
+  const base = { key: key === "Space" ? " " : key, windowsVirtualKeyCode: k.code };
+  await tabCdp(tabId, "Input.dispatchKeyEvent", { type: "keyDown", ...base, text: k.text });
+  await tabCdp(tabId, "Input.dispatchKeyEvent", { type: "keyUp", ...base });
+}
+
+/** Runs `fn` in the page with the element as `this`; resolves to its return value. */
+async function callOn(tabId: string, backendNodeId: number, fn: string, arg?: unknown) {
+  const { object } = await tabCdp<{ object: { objectId: string } }>(tabId, "DOM.resolveNode", {
+    backendNodeId,
+  });
+  const r = await tabCdp<{ result: { value?: unknown } }>(tabId, "Runtime.callFunctionOn", {
+    objectId: object.objectId,
+    functionDeclaration: fn,
+    arguments: arg === undefined ? [] : [{ value: arg }],
+    returnByValue: true,
+  });
+  return r.result.value;
+}
+
+/** A real mouse click at the element's centre, after scrolling it into view. */
+async function click(tabId: string, backendNodeId: number): Promise<void> {
+  await tabCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId });
+  const { quads } = await tabCdp<{ quads: number[][] }>(tabId, "DOM.getContentQuads", {
+    backendNodeId,
+  });
+  const q = quads[0];
+  if (!q) throw new Error(`e${backendNodeId} has no box on screen (hidden or zero-size).`);
+  const x = (q[0] + q[2] + q[4] + q[6]) / 4;
+  const y = (q[1] + q[3] + q[5] + q[7]) / 4;
+  const at = { x, y, button: "left", clickCount: 1 };
+  await tabCdp(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+  await tabCdp(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", ...at });
+  await tabCdp(tabId, "Input.dispatchMouseEvent", { type: "mouseReleased", ...at });
+}
+
+const SELECT_ALL = `function () {
+  if (typeof this.select === "function") return this.select();
+  const r = document.createRange();
+  r.selectNodeContents(this);
+  const s = getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
+}`;
+
+/** Picks a <select> option by value or label, firing the events frameworks listen for. */
+const CHOOSE_OPTION = `function (v) {
+  const opts = [...(this.options || [])];
+  const o = opts.find((o) => o.value === v || o.label.trim() === v);
+  if (!o) return "No option " + JSON.stringify(v) + ". Options: " + opts.map((o) => o.label.trim()).join(", ");
+  this.value = o.value;
+  this.dispatchEvent(new Event("input", { bubbles: true }));
+  this.dispatchEvent(new Event("change", { bubbles: true }));
+  return "";
+}`;
+
+async function actTool(args: Args): Promise<string> {
+  const tab = resolveTab(args.tab);
+  const action = String(args.action ?? "");
+  const text = typeof args.text === "string" ? args.text : "";
+  const ref = action === "press" && args.ref == null ? null : parseRef(args.ref);
+  await showTab(tab);
+  if (!snapshots.has(tab.id)) snapshots.set(tab.id, await takeSnapshot(tab.id));
+  const label =
+    ref == null
+      ? ""
+      : (snapshots
+          .get(tab.id)
+          ?.split("\n")
+          .find((l) => l.includes(`[e${ref}]`))
+          ?.trim() ?? `e${ref}`);
+  const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+
+  try {
+    if (action === "click") {
+      await click(tab.id, ref as number);
+    } else if (action === "type") {
+      await tabCdp(tab.id, "DOM.focus", { backendNodeId: ref });
+      await callOn(tab.id, ref as number, SELECT_ALL);
+      // insertText replaces the selection; with nothing to insert, delete it.
+      if (text) await tabCdp(tab.id, "Input.insertText", { text });
+      else await pressKey(tab.id, "Backspace");
+    } else if (action === "select") {
+      const err = await callOn(tab.id, ref as number, CHOOSE_OPTION, text);
+      if (err) throw new Error(String(err));
+    } else if (action === "press") {
+      if (ref != null) await tabCdp(tab.id, "DOM.focus", { backendNodeId: ref });
+      await pressKey(tab.id, text);
+    } else {
+      throw new Error(`Unknown action "${action}". Use click, type, select or press.`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // WebView2 reports every CDP error as E_INVALIDARG, dropping CDP's own
+    // message; for an element-scoped call that almost always means the node
+    // is gone (re-render, navigation, reload).
+    if (ref != null && /0x80070057|no node|could not find node/i.test(msg)) {
+      const fresh = await takeSnapshot(tab.id);
+      snapshots.set(tab.id, fresh);
+      throw new Error(`Stale ref e${ref}: that element is gone. Current page:\n${fresh}`);
+    }
+    throw err;
+  }
+
+  const did =
+    action === "type"
+      ? `Typed ${JSON.stringify(text)} into ${label}`
+      : action === "select"
+        ? `Selected ${JSON.stringify(text)} in ${label}`
+        : action === "press"
+          ? `Pressed ${text}${label ? ` in ${label}` : ""}`
+          : `Clicked ${label}`;
+  return [did, ...(await consequences(tab, urlBefore))].join("\n");
+}
+
+async function openTool(args: Args): Promise<string> {
+  const raw = typeof args.url === "string" ? args.url.trim() : "";
+  const url = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+  if (!raw || !isLoopbackUrl(url)) {
+    throw new Error("open only takes localhost URLs (localhost, 127.0.0.1, *.localhost).");
+  }
+  const existing = scopedTabs().find((t) => t.url === url);
+  const id = existing?.id ?? openTab({ url });
+  const tab = useTabsStore.getState().tabs[id];
+  await showTab(tab);
+  // A fresh page: report it whole, not as a diff against an old visit.
+  snapshots.delete(id);
+  const lines = await consequences(tab, url);
+  return [header(useTabsStore.getState().tabs[id] ?? tab), ...lines].join("\n");
 }
 
 function errorsTool(args: Args): string {
@@ -235,6 +546,12 @@ export async function runAgentTool(tool: string, args: Args): Promise<string> {
       return tabsTool();
     case "check":
       return checkTool(args);
+    case "snapshot":
+      return snapshotTool(args);
+    case "act":
+      return actTool(args);
+    case "open":
+      return openTool(args);
     case "errors":
       return errorsTool(args);
     case "network":

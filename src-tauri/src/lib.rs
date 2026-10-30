@@ -323,6 +323,8 @@ pub fn run() {
             commands::browser::browser_set_mock_rules,
             commands::http::api_fetch,
             commands::ports::scan_ports,
+            commands::browser::browser_cdp,
+            commands::browser::browser_pending_requests,
             agent::agent_reply,
             agent::agent_status,
             agent::agent_set_enabled,

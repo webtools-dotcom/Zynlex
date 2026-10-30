@@ -709,6 +709,33 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
     });
 }
 
+/// URLs `tab_id` requested that have no response yet, for the agent's settle
+/// rule. Only tracked while capture is on, which it is while an agent is
+/// connected. Streams never finish, and a request older than 8s is more
+/// likely aborted than slow, so neither counts.
+#[tauri::command]
+pub fn browser_pending_requests(tab_id: String) -> Vec<String> {
+    let Some(store) = NETWORK_REQUEST_META.get() else {
+        return Vec::new();
+    };
+    let Ok(map) = store.lock() else {
+        return Vec::new();
+    };
+    let prefix = format!("{tab_id}:");
+    map.iter()
+        .filter_map(|(key, queue)| {
+            let uri = key.strip_prefix(&prefix)?;
+            queue
+                .iter()
+                .any(|(t, rt)| {
+                    t.elapsed() < Duration::from_secs(8)
+                        && !matches!(rt.as_str(), "websocket" | "eventsource" | "media" | "ping")
+                })
+                .then(|| uri.to_string())
+        })
+        .collect()
+}
+
 #[tauri::command]
 pub async fn browser_set_mock_rules(
     rules_by_tab: HashMap<String, Vec<MockRule>>,

@@ -1,6 +1,6 @@
 # Agent interface (design proposal)
 
-**Status:** Phase 1 (read-only) built; the rest is a proposal. Written 2026-10-30.
+**Status:** Phases 1 (read-only) and 2 (driving) built; the rest is a proposal. Written 2026-10-30.
 
 ZYNLEX stays a minimal browser for humans. This adds a side door for AI coding
 agents (Claude Code, Codex, OpenCode, Antigravity, Cursor, …): a thin MCP server
@@ -94,71 +94,84 @@ tab, including signed-in non-dev ones, and adding it would change the shared
 `additionalBrowserArgs`, which architecture.md notes takes a restart and must
 match across all webviews.
 
-## Commands
+## Tools
 
-Output is terse line-oriented text by default (cheaper than JSON for a model to
-read); `--json` for scripts. Anything over ~8 KB is written to
-`%TEMP%\zynlex\agent\` and the reply gives the path plus a summary.
+Output is terse plain text (cheaper than JSON for a model to read). Every tool
+that acts on a page ends with what the action caused — settle note, URL change,
+page diff, new errors and failed requests — so the agent never needs a second
+call to find out.
 
-Every response that follows an action ends with a short consequences block:
-new errors, new failed requests, and what changed on the page. The agent never
-has to make a second call to find out what its action did.
-
-| Command | Does | Notes |
+| Tool | Does | Status |
 |---|---|---|
-| `tabs` | In-scope tabs (id, url, title, workspace) + dev servers found by the port scanner that have no tab | Out-of-scope tabs are counted, not listed |
-| `open <url>` | Opens or focuses a tab, then runs `check` | |
-| `check [tab] [--reload]` | Optionally reload, settle, then report new errors, failed requests and page diff since the last `check` | The main command |
-| `errors [tab] [--since <cursor>]` | Console errors + failed requests since a cursor | Cursor is a timestamp; each reply gives the next one |
-| `snapshot [tab] [--full] [--within <ref>]` | Compact page tree, interactive elements only by default, each with a ref | Returns `unchanged` if identical to last |
-| `act <ref> click\|type <text>\|select <value>\|press <key>` | Real input events via CDP, then settle + consequences | |
-| `network [tab] [--failed] [--match <glob>] [--body <id>]` | Requests with method, status, ms; one body on request | |
-| `screenshot [tab] [--ref <ref>] [--full]` | Writes PNG, returns path | Element crop keeps images small |
-| `mock add\|list\|clear` | Through the mocks store, so it shows in the UI | |
-| `eval <js>` | Escape hatch | In-scope tabs only |
+| `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab | Built |
+| `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors | Built |
+| `check` | Settles, then new errors + failed requests since the last report; `reload` reloads first | Built |
+| `errors` | Every recorded error and failed request; `warnings` adds warnings | Built |
+| `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
+| `act` | `click` / `type` / `select` / `press` on a ref with real input, then the consequences | Built |
+| `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
+| `screenshot` | Visible area to `%TEMP%\zynlex-agent`, returns the path | Built (no element crop yet) |
+| `mock` | Add/list/clear mocks through the mocks store, so they show in the UI | Phase 4 |
+| `eval` | Escape hatch, in-scope tabs only | Phase 4 |
 
-Ten commands. Tool descriptions are written to fit under the 2k-token budget;
-the MCP server exposes exactly these, nothing more.
+`check`, `act` and `open` share one report cursor per tab: whatever one of them
+reported, the next one doesn't repeat. Bodies over 8 KB are cut inline (writing
+them to a file is not done yet).
 
 ### Snapshot and refs
 
-Built from CDP `Accessibility.getFullAXTree` (not an injected DOM walker — the AX
-tree already resolves roles, names and states). Default output keeps only
-interactive nodes plus the headings and landmarks needed to say where they are:
+Built from CDP `Accessibility.getFullAXTree`
+([agentSnapshot.ts](../src/lib/agentSnapshot.ts)), not an injected DOM walker:
+the AX tree already resolves roles, names and states. Default output keeps
+interactive nodes, plus headings, landmarks that contain something actionable,
+and `alert`/`status` text (validation and toast messages):
 
 ```
-main "Checkout"
-  textbox "Coupon" [e14] value=""
-  button "Apply" [e15]
-  button "Pay $42.00" [e16] disabled
+main
+  h1 "Checkout"
+  form
+    textbox "Coupon" [e3] value=""
+    combobox "Plan" [e4] value="Basic" collapsed
+      option "Basic" [e25] selected
+      option "Pro" [e28]
+    button "Apply" [e8]
+  link "Back home" [e33]
 ```
 
-Refs are derived from `backendDOMNodeId`, so they survive React re-renders that
-keep the same DOM node — the main cause of "stale ref" failures elsewhere. When
-a ref no longer resolves, `act` fails with `stale ref e15` plus a fresh diff,
-not a bare error.
+Refs are `e` + `backendDOMNodeId`, so they survive re-renders that keep the same
+DOM node. A reload or navigation makes a new document and new refs. `focused`
+is left out: it moves on every click and would put two noise lines in every
+diff. After an action the agent gets a multiset line diff (`-`/`+`), or the
+whole page when the diff would be longer than it.
 
-Acting resolves the ref with `DOM.getBoxModel`, scrolls into view, and sends
-`Input.dispatchMouseEvent` / `Input.insertText` / `Input.dispatchKeyEvent`:
-trusted input, the same as a human click, not `element.click()`.
+A stale ref fails with `Stale ref e8: that element is gone` plus the current
+page. WebView2 reports every CDP error as `E_INVALIDARG` and drops CDP's own
+message, so for an element-scoped call that HRESULT is read as "node gone".
 
-Known ceiling: canvas-rendered UIs expose nothing to the AX tree. Screenshot is
-the fallback there.
+Acting is real input, not `element.click()`: `DOM.scrollIntoViewIfNeeded` +
+`DOM.getContentQuads` + `Input.dispatchMouseEvent` at the centre for clicks;
+`DOM.focus`, select-all and `Input.insertText` for typing (replaces the value);
+a `change` + `input` event pair for `<select>`; `Input.dispatchKeyEvent` for
+keys. An action brings its tab to the front so the developer sees it happen.
+
+Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`); iframes
+aren't walked; the snapshot is cut at 300 lines (use `within`).
 
 ### Settle rule
 
-"Settled" means all of, for 500 ms:
+Settled means all of: the tab isn't loading, `document.readyState` is
+`complete`, no request is pending, and the DOM has been still for 500 ms — with
+a 300 ms floor so an action's own requests have time to start. Pending requests
+come from the network-capture map in Rust (`browser_pending_requests`), skipping
+WebSocket, EventSource, media and ping, and anything pending over 8 s (more
+likely aborted than slow). DOM stillness comes from a `MutationObserver` the
+probe installs once per document (in the page's world, so the page can see
+`__zynlexQuiet`).
 
-- `document.readyState === "complete"`
-- no in-flight fetch/XHR/document requests (WebSocket, EventSource and
-  long-poll requests excluded)
-- no DOM mutations (a `MutationObserver` installed with `ExecuteScript` and
-  polled, Rust-initiated)
-
-Hard timeout 10 s. On timeout the reply says why instead of hanging:
-`not settled after 10s: 2 requests pending (GET /api/feed, GET /api/notifications)`.
-HMR needs no special case: after the agent saves a file, `check` without
-`--reload` waits for Vite/Next to finish applying the update the same way.
+Hard timeout 10 s, and the reply says why:
+`Not settled after 10s: 2 requests pending (…)`, `still loading`, or `the DOM
+keeps changing (animation or polling?)`. HMR needs no special case: `check`
+without `reload` waits for the update to finish applying.
 
 ## Permissions and safety
 
@@ -181,12 +194,12 @@ The agent is untrusted by default, and page content is untrusted always.
   and refuses further calls ("the user turned off agent access") until the user
   clicks **Turn on**; it lasts until restart. Later: a per-tab marker and an
   activity list (nothing may float over the tab, so not a popover).
-- **Page text is labelled as page text.** Snapshot names, console messages and
-  response bodies come from the page and may contain prompt-injection attempts.
-  Output fences them so the agent can tell page content from ZYNLEX's own
-  messages.
-- **Tab suspension.** Localhost tabs are already never suspended. Any other
-  in-scope tab the agent has touched is exempt while the session is open.
+- **Page text is data.** Snapshot names, console messages and response bodies
+  come from the page and may carry prompt-injection attempts. The MCP server's
+  instructions tell the agent to treat them as data; fencing them in the
+  output is not done yet.
+- **Tab suspension.** Every in-scope tab is localhost, and localhost tabs are
+  never suspended.
 
 ## Human → agent handoff
 
@@ -205,11 +218,11 @@ MCP is pull-based; ZYNLEX can't push into the agent's conversation. So:
 claude mcp add zynlex -- "C:\path\to\zynlex-mcp.exe"
 ```
 
-Any MCP client takes the same command (no arguments, stdio transport). For now
-it's built with `cargo build --release --bin zynlex-mcp`; shipping it in the
-installer (and on `PATH`) is still to do. A `SKILL.md` in the repo teaches agents when to use `check` vs
-`snapshot` vs `screenshot`; skills are how agents learn to pick a tool, and
-chrome-devtools-mcp and agent-browser both ship one.
+Any MCP client takes the same command (no arguments, stdio transport). The NSIS
+installer ships `zynlex-mcp.exe` next to `zynlex.exe` (Cargo builds every bin
+target and the bundler packs them all); it isn't put on `PATH`. The MCP
+server's `instructions` say when to use `check` vs `snapshot` vs `act`. A
+`SKILL.md` that teaches the same is still to do.
 
 ## Benchmark
 
@@ -233,7 +246,8 @@ Bar to ship: clearly better on tokens and tool calls, and no worse on success.
    ([src/lib/agent.ts](../src/lib/agent.ts)), localhost-only scope, status-bar
    indicator + Stop. Tools: `tabs`, `check` (no reload), `errors`, `network`,
    `screenshot`. Useful on its own and can't change anything.
-2. **Driving.** `snapshot`, `act`, `open`, `check --reload`, settle rule.
+2. **Driving. Built.** `snapshot`, `act`, `open`, `check` with `reload`, settle
+   rule ([agentSnapshot.ts](../src/lib/agentSnapshot.ts)).
 3. **MCP + skill + benchmark.** Ship/no-ship decision here.
 4. **Developer features.** `mock`, `eval`, flag-for-agent, scope grants UI.
 
@@ -252,4 +266,5 @@ Bar to ship: clearly better on tokens and tool calls, and no worse on success.
   `check`/`act`? Bodies up to 64 KB each add memory on busy pages.
 - Should `errors` dedupe the way the console store does (`count`), or report
   every occurrence? Dedupe saves tokens but hides "it fired 40 times".
-- Ship `zynlex-mcp.exe` in the main installer, or as a separate download?
+- Put `zynlex-mcp.exe` on `PATH` from the installer, or have a "Copy MCP
+  setup command" button in ZYNLEX that fills in the real path?

@@ -555,6 +555,25 @@ export interface AgentRequest {
   args: Record<string, unknown> | null;
 }
 
+/** One DevTools-protocol call on a loaded tab (see `browser_cdp`). Resolves to CDP's parsed result. */
+export async function tabCdp<T = Record<string, unknown>>(
+  tabId: string,
+  method: string,
+  params: object = {},
+): Promise<T> {
+  const json = await invoke<string>("browser_cdp", {
+    tabId,
+    method,
+    params: JSON.stringify(params),
+  });
+  return JSON.parse(json) as T;
+}
+
+/** URLs the tab is still waiting on; only tracked while network capture is on. */
+export async function pendingRequests(tabId: string): Promise<string[]> {
+  return invoke<string[]>("browser_pending_requests", { tabId });
+}
+
 export async function getAgentStatus(): Promise<AgentStatus> {
   return invoke<AgentStatus>("agent_status");
 }

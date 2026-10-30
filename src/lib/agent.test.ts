@@ -99,11 +99,19 @@ describe("agent tools", () => {
     const url = "http://localhost:5173/api/coupon";
     error(url, "network");
     error("http://localhost:5173/api/down", "network");
-    useNetworkStore.setState({ entriesByTab: { "aaaaaaaa-1": [row("net-7", 500, url)] } });
+    useNetworkStore.setState({
+      entriesByTab: {
+        "aaaaaaaa-1": [
+          row("net-7", 500, url),
+          row("net-8", 404, "http://localhost:5173/favicon.ico"),
+        ],
+      },
+    });
     const out = await runAgentTool("errors", {});
     expect(out).toContain("2 failed requests:");
     expect(out).toContain("net-7 POST 500");
     expect(out).toContain("/api/down");
+    expect(out).not.toContain("favicon");
   });
 
   it("network hides assets unless asked and returns one request by id", async () => {
