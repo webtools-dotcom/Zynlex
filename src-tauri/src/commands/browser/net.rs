@@ -116,7 +116,6 @@ fn resource_type_name(context: i32) -> &'static str {
 }
 
 /// Reads one request header, `None` when absent.
-#[cfg(windows)]
 unsafe fn request_header(
     request: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2WebResourceRequest,
     name: &str,
@@ -126,21 +125,14 @@ unsafe fn request_header(
     headers
         .GetHeader(&windows::core::HSTRING::from(name), &mut value)
         .ok()?;
-    if value.is_null() {
-        None
-    } else {
-        value.to_string().ok()
-    }
+    (!value.is_null()).then(|| webview2_com::take_pwstr(value))
 }
 
 /// `ICoreWebView2Deferral` is a COM pointer and not `Send`, but completing it
 /// is only ever done back on the UI thread (via `run_on_main_thread`) — the
 /// worker thread just carries it across the sleep.
-#[cfg(windows)]
 struct SendDeferral(webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Deferral);
-#[cfg(windows)]
 unsafe impl Send for SendDeferral {}
-#[cfg(windows)]
 impl SendDeferral {
     fn complete(self) {
         let _ = unsafe { self.0.Complete() };
@@ -154,7 +146,6 @@ impl SendDeferral {
 /// at localhost:3000 calling a mocked localhost:8000 API would otherwise have
 /// its preflight go to a server that may not exist (or not allow the origin),
 /// and the real request would never be sent to be mocked.
-#[cfg(windows)]
 unsafe fn try_mock(
     app: &tauri::AppHandle,
     env: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Environment,
@@ -583,11 +574,14 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                 }
                                 let mut name = PWSTR::null();
                                 let mut value = PWSTR::null();
-                                if iter.GetCurrentHeader(&mut name, &mut value).is_ok()
-                                    && !name.is_null()
-                                    && !value.is_null()
-                                {
-                                    if let (Ok(n), Ok(v)) = (name.to_string(), value.to_string()) {
+                                if iter.GetCurrentHeader(&mut name, &mut value).is_ok() {
+                                    // Take both even if one is null, so neither buffer leaks.
+                                    let (has_name, has_value) = (!name.is_null(), !value.is_null());
+                                    let (n, v) = (
+                                        webview2_com::take_pwstr(name),
+                                        webview2_com::take_pwstr(value),
+                                    );
+                                    if has_name && has_value {
                                         headers.push((n, v));
                                     }
                                 }

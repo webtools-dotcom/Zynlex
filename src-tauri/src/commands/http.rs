@@ -88,6 +88,10 @@ pub async fn api_fetch(req: ApiFetchRequest) -> Result<ApiFetchResponse, String>
 
     // Streamed rather than `resp.text()`, so the cap applies to what is read
     // instead of to what has already been buffered.
+    // Read before the body is consumed. The body is capped below, so when it is
+    // cut this is the only record of the real size (no decompression is enabled,
+    // so it counts the same bytes we read).
+    let content_length = resp.content_length();
     let mut bytes: Vec<u8> = Vec::new();
     let mut truncated = false;
     while let Some(chunk) = resp.chunk().await.map_err(|e| describe(&e))? {
@@ -102,7 +106,10 @@ pub async fn api_fetch(req: ApiFetchRequest) -> Result<ApiFetchResponse, String>
     // Measured after the body, not after the headers: a response that takes ten
     // seconds to stream is not a fast response.
     let duration_ms = started.elapsed().as_millis() as u64;
-    let byte_length = bytes.len() as u64;
+    let byte_length = match content_length {
+        Some(n) if truncated => n,
+        _ => bytes.len() as u64,
+    };
 
     let (body, binary) = match String::from_utf8(bytes) {
         Ok(s) => (s, false),

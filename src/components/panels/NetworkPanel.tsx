@@ -9,11 +9,10 @@ import { useWorkspacesStore } from "@/stores/workspaces";
 import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceActiveTab } from "@/lib/workspaceTabs";
 import { entryToCurl, entryToFetch } from "@/lib/networkCopy";
-import { copyToClipboard } from "@/lib/clipboard";
 import { formatBytes, prettyBody, statusColor } from "@/lib/format";
 import { hostOf, splitUrl } from "@/lib/url";
 import { useCopy } from "@/hooks/useCopy";
-import { setNetworkCapture, webviewReload } from "@/services/browser";
+import { copyText, setNetworkCapture, webviewReload } from "@/services/browser";
 import { useMocksStore, mockRuleFromEntry } from "@/stores/mocks";
 import { useUIStore } from "@/stores/ui";
 import { Ghost } from "lucide-react";
@@ -285,7 +284,7 @@ function EntryRow({
 }) {
   const handleCopyCurl = (e: React.MouseEvent) => {
     e.stopPropagation();
-    copyToClipboard(entryToCurl(entry, true));
+    copyText(entryToCurl(entry, true)).catch(() => {});
   };
   const { path, host } = splitUrl(entry.url);
 

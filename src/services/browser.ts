@@ -230,16 +230,7 @@ export function onLoadingChanged(
 export function onTabInfoChanged(
   callback: (tabId: string, info: TabInfo) => void,
 ): Promise<UnlistenFn> {
-  return listen<{ tabId: string; title: string; url: string; favicon: string | null }>(
-    "browser://tab-info",
-    (e) =>
-      callback(e.payload.tabId, {
-        tabId: e.payload.tabId,
-        title: e.payload.title,
-        url: e.payload.url,
-        favicon: e.payload.favicon,
-      }),
-  );
+  return listen<TabInfo>("browser://tab-info", (e) => callback(e.payload.tabId, e.payload));
 }
 
 export function onHistoryState(

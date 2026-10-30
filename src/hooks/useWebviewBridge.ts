@@ -5,6 +5,7 @@
  * closes on tab close, keeps bounds synced with the content area, subscribes
  * to per-tab events from Rust, and exposes navigate/goBack/goForward/reload.
  */
+import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useWorkspacesStore } from "@/stores/workspaces";
@@ -62,7 +63,7 @@ import { openTab } from "@/lib/tabActions";
 
 let _netEntryId = 0;
 
-const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = isTauri();
 
 /**
  * Computes the webview's bounds from the content area's DOMRect.
@@ -425,10 +426,12 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
           // webview exists, long before the document it is navigating to has loaded,
           // and writing scroll position into a blank document does nothing.
           const saved = useTabsStore.getState().tabs[tabId]?.savedFormState;
+          // One shot: cleared before the restore, not after it succeeds. A failed
+          // restore used to keep the state, and the tab's next page load wrote
+          // these form values into a different page's inputs by index.
           if (saved) {
-            restoreTabState(tabId, saved)
-              .then(() => useTabsStore.getState().saveTabState(tabId, null))
-              .catch(() => {});
+            useTabsStore.getState().saveTabState(tabId, null);
+            restoreTabState(tabId, saved).catch(() => {});
           }
         }
       }),
@@ -1045,9 +1048,8 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     // this window's webview belongs to too, so forcing a value pinned
     // `prefers-color-scheme` here and the next read returned our own last answer
     // rather than the OS. Auto left the whole "System" setting inert.
-    setWebviewTheme(theme === "light" ? "light" : theme === "system" ? "system" : "dark").catch(
-      () => {},
-    );
+    // Anything unrecognised falls back to dark in Rust (scheme_for_theme).
+    setWebviewTheme(theme).catch(() => {});
   }, [theme]);
 
   return useMemo(

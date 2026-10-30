@@ -12,7 +12,6 @@ use tauri::{AppHandle, Emitter};
 /// ponytail: ExecuteScript returns the whole result as one JSON string, so a
 /// multi-megabyte localStorage dump could be slow to marshal. Upgrade path:
 /// chunk large stores if this becomes a real complaint.
-#[cfg(target_os = "windows")]
 pub(super) async fn eval_json(
     wv: &tauri::Webview,
     script: String,
@@ -26,46 +25,43 @@ pub(super) async fn eval_json(
     let tx = Arc::new(Mutex::new(Some(inner_tx)));
     let tx_outer = tx.clone();
 
-    wv.with_webview(move |platform| {
-        #[cfg(windows)]
-        unsafe {
-            let controller = platform.controller();
-            let core_webview = match controller.CoreWebView2() {
-                Ok(wv) => wv,
-                Err(e) => {
-                    if let Some(s) = tx_outer.lock().unwrap_or_else(|e| e.into_inner()).take() {
-                        let _ = s.send(Err(format!("CoreWebView2 failed: {:?}", e)));
-                    }
-                    return;
+    wv.with_webview(move |platform| unsafe {
+        let controller = platform.controller();
+        let core_webview = match controller.CoreWebView2() {
+            Ok(wv) => wv,
+            Err(e) => {
+                if let Some(s) = tx_outer.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                    let _ = s.send(Err(format!("CoreWebView2 failed: {:?}", e)));
                 }
-            };
+                return;
+            }
+        };
 
-            let tx_inner = tx_outer.clone();
-            let handler = ExecuteScriptCompletedHandler::create(Box::new(
-                move |result: windows_core::Result<()>, json: String| -> windows_core::Result<()> {
-                    let sender = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take();
-                    if let Some(s) = sender {
-                        if let Err(e) = result {
-                            let _ = s.send(Err(format!("ExecuteScript failed: {:?}", e)));
-                        } else {
-                            match serde_json::from_str::<serde_json::Value>(&json) {
-                                Ok(v) => {
-                                    let _ = s.send(Ok(v));
-                                }
-                                Err(e) => {
-                                    let _ = s.send(Err(format!("JSON parse failed: {e}")));
-                                }
+        let tx_inner = tx_outer.clone();
+        let handler = ExecuteScriptCompletedHandler::create(Box::new(
+            move |result: windows_core::Result<()>, json: String| -> windows_core::Result<()> {
+                let sender = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take();
+                if let Some(s) = sender {
+                    if let Err(e) = result {
+                        let _ = s.send(Err(format!("ExecuteScript failed: {:?}", e)));
+                    } else {
+                        match serde_json::from_str::<serde_json::Value>(&json) {
+                            Ok(v) => {
+                                let _ = s.send(Ok(v));
+                            }
+                            Err(e) => {
+                                let _ = s.send(Err(format!("JSON parse failed: {e}")));
                             }
                         }
                     }
-                    Ok(())
-                },
-            ));
-
-            if let Err(e) = core_webview.ExecuteScript(&HSTRING::from(script.as_str()), &handler) {
-                if let Some(s) = tx_outer.lock().unwrap_or_else(|e| e.into_inner()).take() {
-                    let _ = s.send(Err(format!("ExecuteScript call failed: {:?}", e)));
                 }
+                Ok(())
+            },
+        ));
+
+        if let Err(e) = core_webview.ExecuteScript(&HSTRING::from(script.as_str()), &handler) {
+            if let Some(s) = tx_outer.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                let _ = s.send(Err(format!("ExecuteScript call failed: {:?}", e)));
             }
         }
     })
@@ -78,7 +74,6 @@ pub(super) async fn eval_json(
 /// Marshal one WebView2 cookie into JSON. Must be called on the UI thread —
 /// COM interface pointers are not `Send`, so every field is read out here and
 /// only the plain JSON crosses the channel.
-#[cfg(target_os = "windows")]
 unsafe fn cookie_to_json(
     c: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Cookie,
 ) -> serde_json::Value {
@@ -131,13 +126,11 @@ unsafe fn cookie_to_json(
 
 /// The shared slot every WebView2 async COM call in this file uses to bridge
 /// a completion handler back to an `async fn` via `oneshot`.
-#[cfg(target_os = "windows")]
 type OneshotSlot<T> =
     std::sync::Arc<Mutex<Option<tokio::sync::oneshot::Sender<Result<T, String>>>>>;
 
 /// Sends `msg` as the (only) error response on a one-shot channel, if nothing
 /// has claimed it yet.
-#[cfg(target_os = "windows")]
 fn cookie_op_failed<T>(tx: &OneshotSlot<T>, msg: String) {
     if let Some(s) = tx.lock().unwrap_or_else(|e| e.into_inner()).take() {
         let _ = s.send(Err(msg));
@@ -148,7 +141,6 @@ fn cookie_op_failed<T>(tx: &OneshotSlot<T>, msg: String) {
 /// Shared setup for every cookie read/write — `read_cookies` and
 /// `mutate_cookies` differ only in what they do with the manager once they
 /// have it.
-#[cfg(target_os = "windows")]
 unsafe fn get_cookie_manager(
     platform: &tauri::webview::PlatformWebview,
 ) -> Result<
@@ -186,7 +178,6 @@ unsafe fn get_cookie_manager(
 /// Deliberately not `document.cookie`: that hides HttpOnly cookies entirely
 /// (the ones that matter most when debugging auth) and exposes no domain/path,
 /// which made precise deletion impossible.
-#[cfg(target_os = "windows")]
 async fn read_cookies(wv: &tauri::Webview) -> Result<serde_json::Value, String> {
     use std::sync::Arc;
     use tokio::sync::oneshot;
@@ -197,43 +188,40 @@ async fn read_cookies(wv: &tauri::Webview) -> Result<serde_json::Value, String> 
     let tx = Arc::new(Mutex::new(Some(inner_tx)));
     let tx_outer = tx.clone();
 
-    wv.with_webview(move |platform| {
-        #[cfg(windows)]
-        unsafe {
-            let (manager, url) = match get_cookie_manager(&platform) {
-                Ok(v) => v,
-                Err(e) => return cookie_op_failed(&tx_outer, e),
-            };
+    wv.with_webview(move |platform| unsafe {
+        let (manager, url) = match get_cookie_manager(&platform) {
+            Ok(v) => v,
+            Err(e) => return cookie_op_failed(&tx_outer, e),
+        };
 
-            let tx_inner = tx_outer.clone();
-            let url_for_handler = url.clone();
-            let handler = GetCookiesCompletedHandler::create(Box::new(move |result, list| {
-                if let Some(s) = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take() {
-                    if let Err(e) = result {
-                        let _ = s.send(Err(format!("GetCookies failed: {e:?}")));
-                        return Ok(());
-                    }
-                    let mut cookies = Vec::new();
-                    if let Some(list) = list {
-                        let mut count: u32 = 0;
-                        let _ = list.Count(&mut count);
-                        for i in 0..count {
-                            if let Ok(c) = list.GetValueAtIndex(i) {
-                                cookies.push(cookie_to_json(&c));
-                            }
+        let tx_inner = tx_outer.clone();
+        let url_for_handler = url.clone();
+        let handler = GetCookiesCompletedHandler::create(Box::new(move |result, list| {
+            if let Some(s) = tx_inner.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                if let Err(e) = result {
+                    let _ = s.send(Err(format!("GetCookies failed: {e:?}")));
+                    return Ok(());
+                }
+                let mut cookies = Vec::new();
+                if let Some(list) = list {
+                    let mut count: u32 = 0;
+                    let _ = list.Count(&mut count);
+                    for i in 0..count {
+                        if let Ok(c) = list.GetValueAtIndex(i) {
+                            cookies.push(cookie_to_json(&c));
                         }
                     }
-                    let _ = s.send(Ok(serde_json::json!({
-                        "cookies": cookies,
-                        "url": url_for_handler,
-                    })));
                 }
-                Ok(())
-            }));
-
-            if let Err(e) = manager.GetCookies(&HSTRING::from(url.as_str()), &handler) {
-                cookie_op_failed(&tx_outer, format!("GetCookies call failed: {e:?}"));
+                let _ = s.send(Ok(serde_json::json!({
+                    "cookies": cookies,
+                    "url": url_for_handler,
+                })));
             }
+            Ok(())
+        }));
+
+        if let Err(e) = manager.GetCookies(&HSTRING::from(url.as_str()), &handler) {
+            cookie_op_failed(&tx_outer, format!("GetCookies call failed: {e:?}"));
         }
     })
     .map_err(|e| format!("with_webview error: {e}"))?;
@@ -249,7 +237,6 @@ async fn read_cookies(wv: &tauri::Webview) -> Result<serde_json::Value, String> 
 /// Always reads the cookie list first so an edit can mutate the real cookie
 /// object — that preserves httpOnly/secure/expires/sameSite across a value
 /// change instead of replacing it with a bare duplicate.
-#[cfg(target_os = "windows")]
 async fn mutate_cookies(
     wv: &tauri::Webview,
     operation: String,
@@ -265,7 +252,6 @@ async fn mutate_cookies(
     let tx_outer = tx.clone();
 
     wv.with_webview(move |platform| {
-        #[cfg(windows)]
         unsafe {
             let (manager, url) = match get_cookie_manager(&platform) {
                 Ok(v) => v,
@@ -387,45 +373,37 @@ pub async fn browser_eval_inspector(
     tab_id: String,
     inspector_type: String,
 ) -> Result<(), String> {
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app, tab_id, inspector_type);
-        return Err("Inspector requires WebView2".to_string());
+    let label = webview_label_for_tab(&tab_id);
+    let wv =
+        find_tab_webview(&app, &label).ok_or_else(|| format!("No webview for tab {}", tab_id))?;
+
+    // Cookies come from the native cookie manager, not injected JS — see
+    // `read_cookies`. Same event contract, so the frontend is unaffected.
+    if inspector_type == "cookies" {
+        let data = read_cookies(&wv).await?;
+        return app
+            .emit(
+                "zynlex://inspector-data",
+                serde_json::json!({
+                    "tabId": tab_id,
+                    "dataType": inspector_type,
+                    "data": data,
+                }),
+            )
+            .map_err(|e| e.to_string());
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        let label = webview_label_for_tab(&tab_id);
-        let wv = find_tab_webview(&app, &label)
-            .ok_or_else(|| format!("No webview for tab {}", tab_id))?;
+    let script = match inspector_type.as_str() {
+        "meta" => include_str!("scripts/meta_scrape.js").to_string(),
 
-        // Cookies come from the native cookie manager, not injected JS — see
-        // `read_cookies`. Same event contract, so the frontend is unaffected.
-        if inspector_type == "cookies" {
-            let data = read_cookies(&wv).await?;
-            return app
-                .emit(
-                    "zynlex://inspector-data",
-                    serde_json::json!({
-                        "tabId": tab_id,
-                        "dataType": inspector_type,
-                        "data": data,
-                    }),
-                )
-                .map_err(|e| e.to_string());
-        }
-
-        let script = match inspector_type.as_str() {
-            "meta" => include_str!("scripts/meta_scrape.js").to_string(),
-
-            "localStorage" | "sessionStorage" => {
-                let store = if inspector_type == "localStorage" {
-                    "localStorage"
-                } else {
-                    "sessionStorage"
-                };
-                format!(
-                    r#"(function() {{
+        "localStorage" | "sessionStorage" => {
+            let store = if inspector_type == "localStorage" {
+                "localStorage"
+            } else {
+                "sessionStorage"
+            };
+            format!(
+                r#"(function() {{
   try {{
     var store = window.{};
     var items = [];
@@ -441,24 +419,23 @@ pub async fn browser_eval_inspector(
     return {{ items: [], totalSize: 0, url: location.href, error: String(e) }};
   }}
 }})()"#,
-                    store
-                )
-            }
+                store
+            )
+        }
 
-            _ => return Err(format!("Unknown inspector type: {}", inspector_type)),
-        };
+        _ => return Err(format!("Unknown inspector type: {}", inspector_type)),
+    };
 
-        let data = eval_json(&wv, script).await?;
-        app.emit(
-            "zynlex://inspector-data",
-            serde_json::json!({
-                "tabId": tab_id,
-                "dataType": inspector_type,
-                "data": data,
-            }),
-        )
-        .map_err(|e| e.to_string())
-    }
+    let data = eval_json(&wv, script).await?;
+    app.emit(
+        "zynlex://inspector-data",
+        serde_json::json!({
+            "tabId": tab_id,
+            "dataType": inspector_type,
+            "data": data,
+        }),
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -472,7 +449,6 @@ pub async fn inspector_mutate(
     let wv =
         find_tab_webview(&app, &label).ok_or_else(|| format!("No webview for tab {}", tab_id))?;
 
-    #[cfg(target_os = "windows")]
     if matches!(
         operation.as_str(),
         "set-cookie" | "delete-cookie" | "clear-cookies"
@@ -480,37 +456,20 @@ pub async fn inspector_mutate(
         return mutate_cookies(&wv, operation, params).await;
     }
 
+    // Only these two names ever reach the script; anything else is localStorage.
+    let store_var = if params["storeType"].as_str() == Some("sessionStorage") {
+        "sessionStorage"
+    } else {
+        "localStorage"
+    };
+    let key = js_string_literal(params["key"].as_str().unwrap_or(""));
     let script = match operation.as_str() {
         "set-storage" => {
-            let store = params["storeType"].as_str().unwrap_or("localStorage");
-            let key = js_string_literal(params["key"].as_str().unwrap_or(""));
             let value = js_string_literal(params["value"].as_str().unwrap_or(""));
-            let store_var = if store == "sessionStorage" {
-                "sessionStorage"
-            } else {
-                "localStorage"
-            };
             format!("window.{}.setItem({}, {});", store_var, key, value)
         }
-        "delete-storage" => {
-            let store = params["storeType"].as_str().unwrap_or("localStorage");
-            let key = js_string_literal(params["key"].as_str().unwrap_or(""));
-            let store_var = if store == "sessionStorage" {
-                "sessionStorage"
-            } else {
-                "localStorage"
-            };
-            format!("window.{}.removeItem({});", store_var, key)
-        }
-        "clear-storage" => {
-            let store = params["storeType"].as_str().unwrap_or("localStorage");
-            let store_var = if store == "sessionStorage" {
-                "sessionStorage"
-            } else {
-                "localStorage"
-            };
-            format!("window.{}.clear();", store_var)
-        }
+        "delete-storage" => format!("window.{}.removeItem({});", store_var, key),
+        "clear-storage" => format!("window.{}.clear();", store_var),
         _ => return Err(format!("Unknown mutation operation: {}", operation)),
     };
 

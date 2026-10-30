@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { copyToClipboard } from "@/lib/clipboard";
+import { copyText } from "@/services/browser";
 
 /** Copies `text` and reports back which `label` was last copied for
  * `resetMs`, so a UI can show a per-button "Copied!" state. Pass no label
@@ -9,10 +9,12 @@ export function useCopy(resetMs = 1500) {
 
   const copy = useCallback(
     (text: string, label = "copied") => {
-      copyToClipboard(text).then(() => {
-        setCopiedLabel(label);
-        setTimeout(() => setCopiedLabel((c) => (c === label ? null : c)), resetMs);
-      });
+      copyText(text)
+        .then(() => {
+          setCopiedLabel(label);
+          setTimeout(() => setCopiedLabel((c) => (c === label ? null : c)), resetMs);
+        })
+        .catch(() => {}); // Clipboard busy — not critical, the copy just no-ops.
     },
     [resetMs],
   );

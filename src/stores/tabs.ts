@@ -31,10 +31,7 @@ interface TabsStore {
   addTab: (workspaceId: string, opts?: NewTabOptions) => string;
   closeTab: (tabId: string) => void;
   updateTab: (tabId: string, updates: Partial<Tab>) => void;
-  duplicateTab: (tabId: string, targetWorkspaceId: string) => string;
   pinTab: (tabId: string) => void;
-  setLoading: (tabId: string, val: boolean) => void;
-  setFavicon: (tabId: string, favicon: string) => void;
   clearLastClosedTab: () => void;
   discardTab: (tabId: string) => void;
   restoreTab: (tabId: string) => void;
@@ -55,7 +52,7 @@ type TabSnapshot = Pick<
 
 export const useTabsStore = create<TabsStore>()(
   persist(
-    immer((set, get) => ({
+    immer((set) => ({
       tabs: {},
       lastClosedTab: null,
 
@@ -85,35 +82,9 @@ export const useTabsStore = create<TabsStore>()(
         });
       },
 
-      duplicateTab: (tabId, targetWorkspaceId) => {
-        const src = get().tabs[tabId];
-        if (!src) return "";
-        const tab = buildTab(targetWorkspaceId, {
-          url: src.url,
-          title: src.title,
-          favicon: src.favicon ?? undefined,
-        });
-        set((s) => {
-          s.tabs[tab.id] = tab;
-        });
-        return tab.id;
-      },
-
       pinTab: (tabId) => {
         set((s) => {
           if (s.tabs[tabId]) s.tabs[tabId].isPinned = !s.tabs[tabId].isPinned;
-        });
-      },
-
-      setLoading: (tabId, val) => {
-        set((s) => {
-          if (s.tabs[tabId]) s.tabs[tabId].isLoading = val;
-        });
-      },
-
-      setFavicon: (tabId, favicon) => {
-        set((s) => {
-          if (s.tabs[tabId]) s.tabs[tabId].favicon = favicon;
         });
       },
 

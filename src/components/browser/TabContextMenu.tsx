@@ -12,6 +12,7 @@ import { useTabsStore } from "@/stores/tabs";
 import { getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 import { openTab, closeTab } from "@/lib/tabActions";
+import { fitMenuOnScreen } from "@/lib/utils";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
 
@@ -25,20 +26,7 @@ interface TabContextMenuProps {
 }
 
 const MENU_WIDTH = 180;
-const ESTIMATED_HEIGHT = 220;
 
-function adjustPosition(x: number, y: number): { x: number; y: number } {
-  let nx = x;
-  let ny = y;
-  if (typeof window === "undefined") return { x: nx, y: ny };
-  if (nx + MENU_WIDTH > window.innerWidth) nx = window.innerWidth - MENU_WIDTH - 4;
-  if (ny + ESTIMATED_HEIGHT > window.innerHeight) {
-    ny = window.innerHeight - ESTIMATED_HEIGHT - 4;
-  }
-  if (nx < 4) nx = 4;
-  if (ny < 4) ny = 4;
-  return { x: nx, y: ny };
-}
 
 export function TabContextMenu({ tabId, workspaceId, x, y, onClose, bridge }: TabContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -65,7 +53,7 @@ export function TabContextMenu({ tabId, workspaceId, x, y, onClose, bridge }: Ta
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const pos = adjustPosition(x, y);
+  const pos = fitMenuOnScreen(x, y, MENU_WIDTH, 220);
 
   function handleReload() {
     if (bridge) bridge.reload(tabId);

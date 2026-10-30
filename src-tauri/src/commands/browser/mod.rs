@@ -23,21 +23,17 @@ use tauri_plugin_opener::OpenerExt;
 
 /// Reads a single COM `PWSTR` out-parameter into an owned `String`, treating a
 /// null pointer as empty. `f` is the COM getter call, e.g. `|p| request.Uri(p)`.
-#[cfg(target_os = "windows")]
+/// WebView2 allocates these strings with `CoTaskMemAlloc` and the caller owns
+/// them; `take_pwstr` frees the buffer after copying.
 unsafe fn pwstr_to_string(f: impl FnOnce(*mut windows::core::PWSTR)) -> String {
     let mut p = windows::core::PWSTR::null();
     f(&mut p);
-    if p.is_null() {
-        String::new()
-    } else {
-        p.to_string().unwrap_or_default()
-    }
+    webview2_com::take_pwstr(p)
 }
 
 /// Run `f` against a webview's `ICoreWebView2` on its UI thread. Logs and skips
 /// when the core isn't available. Fire-and-forget, like `with_webview` itself —
 /// the `Err` only covers failing to dispatch to the UI thread.
-#[cfg(windows)]
 pub(crate) fn with_core(
     wv: &tauri::Webview,
     what: &'static str,
@@ -54,7 +50,6 @@ pub(crate) fn with_core(
 
 /// Fire-and-forget DevTools protocol call. CDP reports completion, but none of
 /// the callers have anything to do with it.
-#[cfg(windows)]
 pub(crate) fn cdp(
     core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
     method: &str,
@@ -75,7 +70,6 @@ pub(crate) fn cdp(
 }
 
 /// DevTools protocol call that waits for CDP's reply and returns its JSON.
-#[cfg(windows)]
 async fn cdp_result(
     wv: &tauri::Webview,
     method: &'static str,
@@ -217,7 +211,6 @@ async fn wait_until_absent(app: &AppHandle, state: &crate::BrowserState, label: 
 /// Callers MUST be async: a sync `#[tauri::command]` runs on the main thread and
 /// creating a webview needs to pump the event loop that thread is blocked on,
 /// which deadlocks (the webview is created and hit-tests but never paints).
-#[allow(clippy::too_many_arguments)]
 fn create_webview_for_tab(
     app: &AppHandle,
     tab_id: &str,
@@ -226,7 +219,6 @@ fn create_webview_for_tab(
     y: f64,
     width: f64,
     height: f64,
-    show_immediately: bool,
 ) -> Result<tauri::Webview, String> {
     let width = width.max(1.0);
     let height = height.max(1.0);
@@ -391,9 +383,7 @@ fn create_webview_for_tab(
     // Navigate to the real URL now that network handlers are registered
     let _ = webview.navigate(target_url);
 
-    if show_immediately {
-        webview.show().map_err(|e| e.to_string())?;
-    }
+    webview.show().map_err(|e| e.to_string())?;
     Ok(webview)
 }
 
@@ -473,7 +463,7 @@ pub async fn browser_create_tab(
 
     // A child webview is hidden and restored by the OS along with its parent
     // window, so minimize state no longer gates creation.
-    let webview = create_webview_for_tab(&app, &tab_id, &url, x, y, width, height, true)?;
+    let webview = create_webview_for_tab(&app, &tab_id, &url, x, y, width, height)?;
 
     // Store a persistent strong reference to prevent the Webview
     // from being destroyed when this async function returns (Tauri #14843).
@@ -673,7 +663,6 @@ pub async fn browser_set_bounds(
 /// `eval("window.history.back()")`: a strict page CSP can refuse an injected
 /// script, and the eval acts on whichever frame it lands in instead of the
 /// top-level navigation the button means.
-#[cfg(target_os = "windows")]
 fn navigate_history(app: &AppHandle, tab_id: &str, back: bool) -> Result<(), String> {
     let label = webview_label_for_tab(tab_id);
     let wv = match find_tab_webview(app, &label) {
@@ -691,28 +680,12 @@ fn navigate_history(app: &AppHandle, tab_id: &str, back: bool) -> Result<(), Str
 
 #[tauri::command]
 pub async fn browser_go_back(app: AppHandle, tab_id: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        navigate_history(&app, &tab_id, true)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app, tab_id);
-        Err("Back navigation is only supported on Windows".to_string())
-    }
+    navigate_history(&app, &tab_id, true)
 }
 
 #[tauri::command]
 pub async fn browser_go_forward(app: AppHandle, tab_id: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        navigate_history(&app, &tab_id, false)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app, tab_id);
-        Err("Forward navigation is only supported on Windows".to_string())
-    }
+    navigate_history(&app, &tab_id, false)
 }
 
 /// Native `Reload()`, not `eval("location.reload()")` — same reason as
@@ -892,22 +865,14 @@ pub async fn browser_open_devtools(app: AppHandle, tab_id: String) -> Result<(),
 /// Fire-and-forget: CDP reports completion, but there is nothing to report back.
 #[tauri::command]
 pub async fn browser_hard_reload(app: AppHandle, tab_id: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        let label = webview_label_for_tab(&tab_id);
-        let wv = match find_tab_webview(&app, &label) {
-            Some(wv) => wv,
-            None => return Ok(()),
-        };
-        with_core(&wv, "browser_hard_reload", |core| {
-            cdp(&core, "Page.reload", r#"{"ignoreCache":true}"#)
-        })
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app, tab_id);
-        Err("Hard reload is only supported on Windows".to_string())
-    }
+    let label = webview_label_for_tab(&tab_id);
+    let wv = match find_tab_webview(&app, &label) {
+        Some(wv) => wv,
+        None => return Ok(()),
+    };
+    with_core(&wv, "browser_hard_reload", |core| {
+        cdp(&core, "Page.reload", r#"{"ignoreCache":true}"#)
+    })
 }
 
 #[tauri::command]
@@ -1258,23 +1223,15 @@ pub async fn browser_save_tab_state(
     app: AppHandle,
     tab_id: String,
 ) -> Result<Option<String>, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let label = webview_label_for_tab(&tab_id);
-        let wv = find_tab_webview(&app, &label)
-            .ok_or_else(|| format!("no webview for tab {}", tab_id))?;
-        let value = eval_json(
-            &wv,
-            include_str!("scripts/capture_tab_state.js").to_string(),
-        )
-        .await?;
-        Ok(value.as_str().map(|s| s.to_string()))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app, tab_id);
-        Err("Tab state capture is only supported on Windows".to_string())
-    }
+    let label = webview_label_for_tab(&tab_id);
+    let wv =
+        find_tab_webview(&app, &label).ok_or_else(|| format!("no webview for tab {}", tab_id))?;
+    let value = eval_json(
+        &wv,
+        include_str!("scripts/capture_tab_state.js").to_string(),
+    )
+    .await?;
+    Ok(value.as_str().map(|s| s.to_string()))
 }
 
 /// Restore a tab's scroll position and form input values from a JSON string.

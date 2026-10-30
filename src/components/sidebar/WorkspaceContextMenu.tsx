@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { fitMenuOnScreen } from "@/lib/utils";
 
 interface WorkspaceContextMenuProps {
   workspaceId: string;
@@ -15,16 +16,6 @@ interface WorkspaceContextMenuProps {
 
 const MENU_WIDTH = 180;
 
-function adjustPosition(x: number, y: number): { x: number; y: number } {
-  let nx = x;
-  let ny = y;
-  if (typeof window === "undefined") return { x: nx, y: ny };
-  if (nx + MENU_WIDTH > window.innerWidth) nx = window.innerWidth - MENU_WIDTH - 4;
-  if (ny + 60 > window.innerHeight) ny = window.innerHeight - 60 - 4;
-  if (nx < 4) nx = 4;
-  if (ny < 4) ny = 4;
-  return { x: nx, y: ny };
-}
 
 export function WorkspaceContextMenu({
   workspaceName,
@@ -35,7 +26,7 @@ export function WorkspaceContextMenu({
   onClose,
 }: WorkspaceContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const pos = adjustPosition(x, y);
+  const pos = fitMenuOnScreen(x, y, MENU_WIDTH, 60);
 
   useEffect(() => {
     function onMouseDown(e: MouseEvent) {

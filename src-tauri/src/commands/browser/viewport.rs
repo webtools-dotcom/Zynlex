@@ -38,76 +38,73 @@ pub struct DeviceSpec {
 /// (which is what makes a page with no viewport meta lay out at Chromium's 980px
 /// default and scale down, exactly as a real phone does) and touch.
 fn apply_viewport_emulation(webview: &tauri::Webview, spec: &DeviceSpec) {
-    #[cfg(windows)]
-    {
-        let spec = spec.clone();
-        let _ = super::with_core(webview, "viewport emulation", move |core| {
-            let call = |method: &str, params: String| super::cdp(&core, method, &params);
+    let spec = spec.clone();
+    let _ = super::with_core(webview, "viewport emulation", move |core| {
+        let call = |method: &str, params: String| super::cdp(&core, method, &params);
+        call(
+            "Emulation.setDeviceMetricsOverride",
+            serde_json::json!({
+                "width": spec.width,
+                "height": spec.height,
+                "deviceScaleFactor": spec.device_scale_factor,
+                "mobile": spec.mobile,
+            })
+            .to_string(),
+        );
+        call(
+            "Emulation.setTouchEmulationEnabled",
+            serde_json::json!({
+                "enabled": spec.touch,
+                "maxTouchPoints": if spec.touch { 5 } else { 0 },
+            })
+            .to_string(),
+        );
+        // Pin the page to 1:1. With `mobile: true` Chromium shrink-to-fits
+        // when anything overflows the viewport (an ad banner is enough),
+        // which showed up as a page scale of exactly 2/3 in both axes: the
+        // layout viewport was a correct 412 but `innerWidth` read 618 and
+        // the page rendered zoomed out. A real phone with
+        // `initial-scale=1`, and Chrome's device toolbar at 100%, both stay
+        // at scale 1 and let the overflow scroll.
+        call(
+            "Emulation.setPageScaleFactor",
+            serde_json::json!({ "pageScaleFactor": 1 }).to_string(),
+        );
+        // User-Agent Client Hints. The build-time UA sets the header and
+        // `navigator.userAgent`, but NOT `Sec-CH-UA*` — so a site reading
+        // client hints still saw the real Edge-on-Windows and warned about
+        // the mismatch. Chromium prefers hints over the UA string, so this
+        // has to be overridden too or modern sites still serve desktop.
+        if let Some(ua) = &spec.user_agent {
+            let platform = if ua.contains("iPhone") || ua.contains("iPad") {
+                "iOS"
+            } else if ua.contains("Android") {
+                "Android"
+            } else {
+                "Windows"
+            };
             call(
-                "Emulation.setDeviceMetricsOverride",
+                "Emulation.setUserAgentOverride",
                 serde_json::json!({
-                    "width": spec.width,
-                    "height": spec.height,
-                    "deviceScaleFactor": spec.device_scale_factor,
-                    "mobile": spec.mobile,
-                })
-                .to_string(),
-            );
-            call(
-                "Emulation.setTouchEmulationEnabled",
-                serde_json::json!({
-                    "enabled": spec.touch,
-                    "maxTouchPoints": if spec.touch { 5 } else { 0 },
-                })
-                .to_string(),
-            );
-            // Pin the page to 1:1. With `mobile: true` Chromium shrink-to-fits
-            // when anything overflows the viewport (an ad banner is enough),
-            // which showed up as a page scale of exactly 2/3 in both axes: the
-            // layout viewport was a correct 412 but `innerWidth` read 618 and
-            // the page rendered zoomed out. A real phone with
-            // `initial-scale=1`, and Chrome's device toolbar at 100%, both stay
-            // at scale 1 and let the overflow scroll.
-            call(
-                "Emulation.setPageScaleFactor",
-                serde_json::json!({ "pageScaleFactor": 1 }).to_string(),
-            );
-            // User-Agent Client Hints. The build-time UA sets the header and
-            // `navigator.userAgent`, but NOT `Sec-CH-UA*` — so a site reading
-            // client hints still saw the real Edge-on-Windows and warned about
-            // the mismatch. Chromium prefers hints over the UA string, so this
-            // has to be overridden too or modern sites still serve desktop.
-            if let Some(ua) = &spec.user_agent {
-                let platform = if ua.contains("iPhone") || ua.contains("iPad") {
-                    "iOS"
-                } else if ua.contains("Android") {
-                    "Android"
-                } else {
-                    "Windows"
-                };
-                call(
-                    "Emulation.setUserAgentOverride",
-                    serde_json::json!({
-                        "userAgent": ua,
+                    "userAgent": ua,
+                    "platform": platform,
+                    "userAgentMetadata": {
                         "platform": platform,
-                        "userAgentMetadata": {
-                            "platform": platform,
-                            "platformVersion": "",
-                            "architecture": "",
-                            "model": "",
-                            "mobile": spec.mobile,
-                            "brands": [
-                                { "brand": "Chromium", "version": "125" },
-                                { "brand": "Google Chrome", "version": "125" },
-                                { "brand": "Not.A/Brand", "version": "24" },
-                            ],
-                        },
-                    })
-                    .to_string(),
-                );
-            }
-        });
-    }
+                        "platformVersion": "",
+                        "architecture": "",
+                        "model": "",
+                        "mobile": spec.mobile,
+                        "brands": [
+                            { "brand": "Chromium", "version": "125" },
+                            { "brand": "Google Chrome", "version": "125" },
+                            { "brand": "Not.A/Brand", "version": "24" },
+                        ],
+                    },
+                })
+                .to_string(),
+            );
+        }
+    });
 }
 
 /// Create the viewport webview, built the same way a tab is: blank first,
@@ -216,20 +213,12 @@ pub async fn navigate_viewport(app: AppHandle, label: String, url: String) -> Re
 /// page-originated IPC is silently dropped for `https://` content.
 #[tauri::command]
 pub async fn probe_viewport(app: AppHandle, label: String) -> Result<serde_json::Value, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let wv = find_tab_webview(&app, &label).ok_or("viewport not found")?;
-        // `screen.*` is also overwritten by setDeviceMetricsOverride, so it
-        // distinguishes "the override never applied" from "it applied and
-        // something else resized the viewport afterwards" — the two have
-        // completely different fixes.
-        eval_json(&wv, include_str!("scripts/viewport_probe.js").to_string()).await
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app, label);
-        Err("Viewport probe is only supported on Windows".to_string())
-    }
+    let wv = find_tab_webview(&app, &label).ok_or("viewport not found")?;
+    // `screen.*` is also overwritten by setDeviceMetricsOverride, so it
+    // distinguishes "the override never applied" from "it applied and
+    // something else resized the viewport afterwards" — the two have
+    // completely different fixes.
+    eval_json(&wv, include_str!("scripts/viewport_probe.js").to_string()).await
 }
 
 /// Destroy a viewport webview

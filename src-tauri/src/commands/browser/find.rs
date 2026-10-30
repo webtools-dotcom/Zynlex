@@ -42,7 +42,6 @@ pub(super) fn js_string_literal(s: &str) -> String {
 /// (init script not yet injected, or an about:blank tab), a thrown exception —
 /// to a zero result, so the caller never has to distinguish "no matches" from
 /// "the page wasn't ready".
-#[cfg(target_os = "windows")]
 async fn run_find_script(
     app: &AppHandle,
     tab_id: &str,
@@ -70,20 +69,12 @@ pub async fn browser_find(
     tab_id: String,
     query: String,
 ) -> Result<FindResult, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let body = if query.is_empty() {
-            "window.__zynlexClearFind()".to_string()
-        } else {
-            format!("window.__zynlexFind({})", js_string_literal(&query))
-        };
-        run_find_script(&app, &tab_id, &body).await
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app, tab_id, query);
-        Err("Find in page is only supported on Windows".to_string())
-    }
+    let body = if query.is_empty() {
+        "window.__zynlexClearFind()".to_string()
+    } else {
+        format!("window.__zynlexFind({})", js_string_literal(&query))
+    };
+    run_find_script(&app, &tab_id, &body).await
 }
 
 #[tauri::command]
@@ -92,16 +83,8 @@ pub async fn browser_find_next(
     tab_id: String,
     forward: Option<bool>,
 ) -> Result<FindResult, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let body = format!("window.__zynlexFindNext({})", forward.unwrap_or(true));
-        run_find_script(&app, &tab_id, &body).await
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app, tab_id, forward);
-        Err("Find in page is only supported on Windows".to_string())
-    }
+    let body = format!("window.__zynlexFindNext({})", forward.unwrap_or(true));
+    run_find_script(&app, &tab_id, &body).await
 }
 
 #[tauri::command]

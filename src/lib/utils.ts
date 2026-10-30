@@ -8,3 +8,12 @@ const twMerge = extendTailwindMerge({ extend: { theme: { text: ["micro", "md"] }
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+/** Keeps a `width`×`height` context menu opened at (x, y) on screen, 4px from the edges. */
+export function fitMenuOnScreen(x: number, y: number, width: number, height: number) {
+  let nx = x;
+  let ny = y;
+  if (nx + width > window.innerWidth) nx = window.innerWidth - width - 4;
+  if (ny + height > window.innerHeight) ny = window.innerHeight - height - 4;
+  return { x: Math.max(4, nx), y: Math.max(4, ny) };
+}

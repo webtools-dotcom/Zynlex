@@ -81,7 +81,6 @@ pub struct BrowserState {
 /// child visually stuck at the wrong size even though its controller bounds are
 /// correct. Setting height-1 then the real height once (settle timer only, never
 /// per frame) forces the surface to re-render.
-#[cfg(target_os = "windows")]
 pub(crate) fn apply_active_child_bounds(
     app: &tauri::AppHandle,
     win_w: f64,
@@ -173,116 +172,98 @@ pub fn run() {
             // the browser process early, and the main window's own webview
             // already does that.
 
-            // ZYNLEX is Windows-only. Every dev feature — network capture,
-            // header injection, cookies, tab titles/favicons, in-page shortcuts,
-            // zoom, hard reload, viewport emulation, memory targeting — is
-            // implemented against WebView2 COM behind #[cfg(windows)], with no
-            // WebKit fallbacks. A non-Windows build compiles and silently loses
-            // all of it, so refuse to start rather than pretend to work.
-            #[cfg(not(target_os = "windows"))]
-            {
-                let _ = _app;
-                eprintln!(
-                    "ZYNLEX is Windows-only: every developer feature is built on \
-                     WebView2 COM APIs with no macOS/Linux equivalent implemented yet. \
-                     Refusing to start rather than launch a browser with none of them."
-                );
-                std::process::exit(1);
-            }
+            // ZYNLEX is Windows-only: every dev feature is built on WebView2 COM
+            // (webview2-com, windows), so the crate does not build elsewhere.
+            // Reposition the active child webview directly from Rust, inside
+            // the native resize event, instead of going through the JS
+            // ResizeObserver → rAF → invoke() → Tokio round trip (which put
+            // the page 3-5 frames behind the window during a drag-resize or
+            // maximize). Safe to call set_bounds re-entrantly here: Tauri's
+            // event loop drops its window-registry borrow before invoking
+            // window-event listeners (verified against tauri-runtime-wry
+            // 2.11.2's WindowEvent match arm).
+            use tauri::Manager;
 
-            #[cfg(target_os = "windows")]
-            {
-                // Reposition the active child webview directly from Rust, inside
-                // the native resize event, instead of going through the JS
-                // ResizeObserver → rAF → invoke() → Tokio round trip (which put
-                // the page 3-5 frames behind the window during a drag-resize or
-                // maximize). Safe to call set_bounds re-entrantly here: Tauri's
-                // event loop drops its window-registry borrow before invoking
-                // window-event listeners (verified against tauri-runtime-wry
-                // 2.11.2's WindowEvent match arm).
-                use tauri::Manager;
+            // The main window is created here rather than from tauri.conf.json
+            // ("create": false) so its WebView2 environment gets the Chromium
+            // switches from engine.json, which only apply at browser start.
+            let args = engine::browser_args(&engine::load(_app.handle()));
+            let config = _app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .cloned()
+                .ok_or("main window config missing")?;
+            tauri::WebviewWindowBuilder::from_config(_app.handle(), &config)?
+                .additional_browser_args(&args)
+                // The `devtools` feature (for tab DevTools) would otherwise
+                // open the app's own UI to inspection in release builds.
+                .devtools(cfg!(debug_assertions))
+                .build()?;
+            let _ = _app.state::<BrowserState>().browser_args.set(args);
 
-                // The main window is created here rather than from tauri.conf.json
-                // ("create": false) so its WebView2 environment gets the Chromium
-                // switches from engine.json, which only apply at browser start.
-                let args = engine::browser_args(&engine::load(_app.handle()));
-                let config = _app
-                    .config()
-                    .app
-                    .windows
-                    .iter()
-                    .find(|w| w.label == "main")
-                    .cloned()
-                    .ok_or("main window config missing")?;
-                tauri::WebviewWindowBuilder::from_config(_app.handle(), &config)?
-                    .additional_browser_args(&args)
-                    // The `devtools` feature (for tab DevTools) would otherwise
-                    // open the app's own UI to inspection in release builds.
-                    .devtools(cfg!(debug_assertions))
-                    .build()?;
-                let _ = _app.state::<BrowserState>().browser_args.set(args);
+            if let Some(main) = _app.get_window("main") {
+                let app_handle = _app.handle().clone();
+                main.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Resized(physical_size) = event {
+                        // Synchronous re-apply from THIS event's size — keeps
+                        // the child tracking the window smoothly during a drag.
+                        let Some(win) = app_handle.get_window("main") else {
+                            return;
+                        };
+                        let scale = win.scale_factor().unwrap_or(1.0);
+                        let win_w = physical_size.width as f64 / scale;
+                        let win_h = physical_size.height as f64 / scale;
+                        apply_active_child_bounds(&app_handle, win_w, win_h, false);
 
-                if let Some(main) = _app.get_window("main") {
-                    let app_handle = _app.handle().clone();
-                    main.on_window_event(move |event| {
-                        if let tauri::WindowEvent::Resized(physical_size) = event {
-                            // Synchronous re-apply from THIS event's size — keeps
-                            // the child tracking the window smoothly during a drag.
-                            let Some(win) = app_handle.get_window("main") else {
-                                return;
-                            };
-                            let scale = win.scale_factor().unwrap_or(1.0);
-                            let win_w = physical_size.width as f64 / scale;
-                            let win_h = physical_size.height as f64 / scale;
-                            apply_active_child_bounds(&app_handle, win_w, win_h, false);
-
-                            // Settle-timer resync: the size above can be a
-                            // mid-animation value on an animated maximize, leaving
-                            // the child stuck. Re-read the settled size ~320ms later
-                            // (outlasts the Windows maximize animation) and re-apply,
-                            // forcing a recomposite only when actually maximized.
-                            // Coalesced so a drag burst spawns at most one timer.
-                            let state = app_handle.state::<BrowserState>();
-                            if !state.resync_pending.swap(true, Ordering::SeqCst) {
-                                let app2 = app_handle.clone();
-                                std::thread::spawn(move || {
-                                    std::thread::sleep(std::time::Duration::from_millis(320));
-                                    let app3 = app2.clone();
-                                    let _ = app2.run_on_main_thread(move || {
-                                        let st = app3.state::<BrowserState>();
-                                        st.resync_pending.store(false, Ordering::SeqCst);
-                                        // Fullscreen bounds are owned by the sync
-                                        // resize handler (monitor-sized); a settle
-                                        // re-apply here just adds a mid-transition
-                                        // jump.
-                                        if st
-                                            .fullscreen_tab
-                                            .lock()
-                                            .unwrap_or_else(|e| e.into_inner())
-                                            .is_some()
-                                        {
-                                            return;
-                                        }
-                                        let Some(win) = app3.get_window("main") else {
-                                            return;
-                                        };
-                                        let Ok(sz) = win.inner_size() else { return };
-                                        let scale = win.scale_factor().unwrap_or(1.0);
-                                        let maximized = win.is_maximized().unwrap_or(false);
-                                        apply_active_child_bounds(
-                                            &app3,
-                                            sz.width as f64 / scale,
-                                            sz.height as f64 / scale,
-                                            maximized,
-                                        );
-                                    });
+                        // Settle-timer resync: the size above can be a
+                        // mid-animation value on an animated maximize, leaving
+                        // the child stuck. Re-read the settled size ~320ms later
+                        // (outlasts the Windows maximize animation) and re-apply,
+                        // forcing a recomposite only when actually maximized.
+                        // Coalesced so a drag burst spawns at most one timer.
+                        let state = app_handle.state::<BrowserState>();
+                        if !state.resync_pending.swap(true, Ordering::SeqCst) {
+                            let app2 = app_handle.clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(320));
+                                let app3 = app2.clone();
+                                let _ = app2.run_on_main_thread(move || {
+                                    let st = app3.state::<BrowserState>();
+                                    st.resync_pending.store(false, Ordering::SeqCst);
+                                    // Fullscreen bounds are owned by the sync
+                                    // resize handler (monitor-sized); a settle
+                                    // re-apply here just adds a mid-transition
+                                    // jump.
+                                    if st
+                                        .fullscreen_tab
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner())
+                                        .is_some()
+                                    {
+                                        return;
+                                    }
+                                    let Some(win) = app3.get_window("main") else {
+                                        return;
+                                    };
+                                    let Ok(sz) = win.inner_size() else { return };
+                                    let scale = win.scale_factor().unwrap_or(1.0);
+                                    let maximized = win.is_maximized().unwrap_or(false);
+                                    apply_active_child_bounds(
+                                        &app3,
+                                        sz.width as f64 / scale,
+                                        sz.height as f64 / scale,
+                                        maximized,
+                                    );
                                 });
-                            }
+                            });
                         }
-                    });
-                }
-                Ok(())
+                    }
+                });
             }
+            Ok(())
         })
         .manage(BrowserState {
             active_tab_label: Mutex::new(None),
