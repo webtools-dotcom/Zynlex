@@ -11,9 +11,6 @@ interface ServersStore {
   updateFromScan: (scanned: ScannedPort[]) => void;
   setIsScanning: (v: boolean) => void;
   setLastScanAt: (value: number | null) => void;
-  setLabel: (port: number, label: string | null) => void;
-  togglePinned: (port: number) => void;
-  removeServer: (port: number) => void;
 }
 
 export const useServersStore = create<ServersStore>()(
@@ -88,26 +85,6 @@ export const useServersStore = create<ServersStore>()(
       setLastScanAt: (value) => {
         set((s) => {
           s.lastScanAt = value;
-        });
-      },
-
-      setLabel: (port, label) => {
-        set((s) => {
-          const server = s.servers.find((sv: LocalServer) => sv.port === port);
-          if (server) server.label = label;
-        });
-      },
-
-      togglePinned: (port) => {
-        set((s) => {
-          const server = s.servers.find((sv: LocalServer) => sv.port === port);
-          if (server) server.isPinned = !server.isPinned;
-        });
-      },
-
-      removeServer: (port) => {
-        set((s) => {
-          s.servers = s.servers.filter((sv: LocalServer) => sv.port !== port);
         });
       },
     })),

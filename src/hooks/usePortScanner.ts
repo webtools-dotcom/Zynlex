@@ -1,9 +1,10 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { useEffect } from "react";
 import { useServersStore } from "@/stores/servers";
 import { useSettingsStore } from "@/stores/settings";
 import { scanPorts } from "@/services/browser";
 
-const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = isTauri();
 
 // The standard list of dev server ports to scan
 const DEFAULT_SCAN_PORTS: number[] = [

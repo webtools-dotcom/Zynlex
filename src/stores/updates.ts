@@ -9,6 +9,7 @@
  * Checks on launch and when asked from Settings. Nothing is downloaded until
  * the user clicks.
  */
+import { isTauri } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import { check as checkForUpdate, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -26,7 +27,7 @@ interface UpdatesStore {
   restart: () => Promise<void>;
 }
 
-const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = isTauri();
 
 export const useUpdatesStore = create<UpdatesStore>()((set, get) => ({
   update: null,

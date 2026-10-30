@@ -29,7 +29,6 @@ interface BookmarksStore {
   renameBookmark: (id: string, title: string) => void;
   moveBookmark: (id: string, folderId: string | null) => void;
   clearForWorkspace: (workspaceId: string) => void;
-  getBookmarksByWorkspace: (workspaceId: string) => Bookmark[];
   isBookmarked: (workspaceId: string, url: string) => boolean;
   clearLastAddedId: () => void;
 
@@ -37,7 +36,6 @@ interface BookmarksStore {
   renameFolder: (id: string, name: string) => void;
   /** Removes the folder; its bookmarks fall back to the root level. */
   removeFolder: (id: string) => void;
-  getFoldersByWorkspace: (workspaceId: string) => BookmarkFolder[];
 
   exportWorkspace: (workspaceId: string) => BookmarkExport;
   /** Re-ids everything on import, so importing twice never collides. */
@@ -96,9 +94,6 @@ export const useBookmarksStore = create<BookmarksStore>()(
         });
       },
 
-      getBookmarksByWorkspace: (workspaceId) =>
-        get().bookmarks.filter((b) => b.workspaceId === workspaceId),
-
       isBookmarked: (workspaceId, url) =>
         get().bookmarks.some((b) => b.workspaceId === workspaceId && b.url === url),
 
@@ -138,9 +133,6 @@ export const useBookmarksStore = create<BookmarksStore>()(
           }
         });
       },
-
-      getFoldersByWorkspace: (workspaceId) =>
-        get().folders.filter((f) => f.workspaceId === workspaceId),
 
       exportWorkspace: (workspaceId) => ({
         version: 1,

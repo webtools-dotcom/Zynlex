@@ -13,13 +13,14 @@
  * ExecuteScript — a page cannot invoke IPC back into the app, so the old
  * `browser://find-result` event was never emitted and the counter never moved.
  */
+import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, useCallback } from "react";
 import { Search, X, ChevronUp, ChevronDown } from "lucide-react";
 import { webviewFind, webviewFindNext, webviewStopFind, focusAppWebview } from "@/services/browser";
 import { useUIStore, useFindOpen } from "@/stores/ui";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 
-const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = isTauri();
 
 export function FindBar() {
   const findOpen = useFindOpen();

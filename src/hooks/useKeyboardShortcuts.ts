@@ -10,13 +10,14 @@
  * Commands and their default chords: src/lib/commands.ts. User overrides:
  * src/stores/keybindings.ts.
  */
+import { isTauri } from "@tauri-apps/api/core";
 import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { bindingMap, chordFromEvent, type Command } from "@/lib/commands";
 import { useKeybindingsStore } from "@/stores/keybindings";
 import { setShortcuts } from "@/services/browser";
 
-const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = isTauri();
 
 /** Set while the Settings shortcut recorder is listening for a new chord. */
 let recording = false;

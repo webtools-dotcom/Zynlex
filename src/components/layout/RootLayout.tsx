@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { useState, useCallback, useEffect } from "react";
 import { usePortScanner } from "@/hooks/usePortScanner";
 import { WorkspaceSwitcher } from "@/components/sidebar/WorkspaceSwitcher";
@@ -32,7 +33,7 @@ function PortScannerMount() {
 }
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
-const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = isTauri();
 
 export function RootLayout() {
   // One update check per launch; the result shows as a toolbar pill.

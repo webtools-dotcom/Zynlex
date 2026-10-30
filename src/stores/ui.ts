@@ -62,11 +62,9 @@ interface UIStore {
   setSidebarWidth: (w: number) => void;
   setActivePanel: (p: PanelId | null) => void;
   togglePanel: (p: PanelId) => void;
-  setCommandPaletteOpen: (v: boolean) => void;
   openCommandPalette: () => void;
   closeCommandPalette: () => void;
   toggleSettingsPanel: () => void;
-  setSettingsPanelOpen: (v: boolean) => void;
   openShortcutHelp: () => void;
   closeShortcutHelp: () => void;
   openFind: () => void;
@@ -140,10 +138,6 @@ export const useUIStore = create<UIStore>()(
       set((s) => {
         s.activePanel = s.activePanel === p ? null : p;
       }),
-    setCommandPaletteOpen: (v) =>
-      set((s) => {
-        s.commandPaletteOpen = v;
-      }),
     openCommandPalette: () =>
       set((s) => {
         s.commandPaletteOpen = true;
@@ -155,10 +149,6 @@ export const useUIStore = create<UIStore>()(
     toggleSettingsPanel: () =>
       set((s) => {
         s.settingsPanelOpen = !s.settingsPanelOpen;
-      }),
-    setSettingsPanelOpen: (v) =>
-      set((s) => {
-        s.settingsPanelOpen = v;
       }),
     openShortcutHelp: () =>
       set((s) => {

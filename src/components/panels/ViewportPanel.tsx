@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, Monitor, Plus, RotateCw, Smartphone, Tablet, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -20,7 +21,7 @@ import {
   type ViewportProbe,
 } from "@/services/browser";
 
-const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = isTauri();
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
   mobile: Smartphone,

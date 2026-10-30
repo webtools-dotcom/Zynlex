@@ -1,8 +1,9 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { Minus, Square, X, Copy } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useState, useEffect, useRef } from "react";
 
-const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const IS_TAURI = isTauri();
 
 // IS_TAURI is fixed for the process lifetime, so this early-return is never
 // actually conditional across renders of a mounted instance — but hooks must
