@@ -269,6 +269,62 @@ three bugs can also be found by reading the code. The full run needs new
 tasks that only the running app reveals (layout, timing, data from the API),
 five repeats, and playwright-cli and agent-browser added.
 
+### Full run (2026-10-31, paused at 135 of 150)
+
+Six new tasks in `fixture2`, each a bug the running page shows: deal prices
+in cents, a discount reset on add, a 1 s timeout on a 1.5 s endpoint, an email
+pattern that rejects `.com`, a session cookie scoped to `Path=/api/login`, and
+a closed promo that still covers Checkout. Five tools (adding playwright-cli
+0.1.22 and agent-browser 0.41.0, both CLIs the agent runs through Bash limited
+to that one command), five repeats. External tools drive installed Chrome;
+ZYNLEX ran as a release build of commit 1dfa3d1. Every run so far passed.
+
+| Tool | Runs | Pass | Browser calls (median) | Input tokens (median) | Wall (median) | Cost (avg) |
+|---|---|---|---|---|---|---|
+| ZYNLEX | 27 | 100% | 8 | 256k | 46 s | $0.27 |
+| Playwright MCP | 27 | 100% | 10 | 369k | 51 s | $0.25 |
+| chrome-devtools-mcp | 27 | 100% | 11 | 402k | 45 s | $0.28 |
+| playwright-cli | 27 | 100% | 11 | 387k | 121 s | $0.24 |
+| agent-browser | 27 | 100% | 8 | 394k | 90 s | $0.29 |
+
+Median input tokens per task:
+
+| Task | ZYNLEX | Playwright MCP | DevTools MCP | playwright-cli | agent-browser |
+|---|---|---|---|---|---|
+| deals | **180k** | 229k | 298k | 280k | 272k |
+| discount | **261k** | 472k | 531k | 473k | 553k |
+| stock | **217k** | 329k | 362k | 319k | 409k |
+| checkout | **239k** | 366k | 402k | 436k | 330k |
+| login | 837k | **327k** | 504k | 361k | 393k |
+| signup | 906k | 404k | 399k | 399k | **381k** |
+
+ZYNLEX is cheapest on four tasks by 20–50%, and worst by far on login and
+signup. Cause, from the transcripts: both forms sit low on the page, under
+the fixed promo bar. `DOM.scrollIntoViewIfNeeded` scrolls an element only just
+into view, so the submit button ended up under the bar; the click landed on
+the bar and ZYNLEX reported "Page unchanged". Agents retried for 20+ calls
+before trying Enter. The Playwright-based tools check what's under the point
+before clicking, so they don't hit this.
+
+Fix (committed after the run, not yet verified live): `click` hit-tests the
+element's centre with `elementFromPoint`; if something else is on top it
+scrolls the element to the middle of the viewport and tests again; if it's
+still covered, `act` fails with what covers it (`e15 is covered by div#promo
+"Free shipping…"`) instead of clicking the wrong thing.
+
+**To finish:**
+
+1. Turn McAfee off while running (it quarantines fresh unsigned release builds:
+   `zynlex.exe` ends up 0 bytes). Build: `pnpm tauri build --no-bundle`, then
+   start `src-tauri\target\release\zynlex.exe`.
+2. Before rebuilding, finish the baseline on the *old* build if possible, or
+   accept that the last 15 runs come from the new one: in
+   `D:\PROJECT-TESTINGS\agent-bench`,
+   `python run.py --repeats 5 --tag full --resume --port-base 5600`.
+3. Verify the click fix live (login and checkout tasks), then re-run ZYNLEX
+   alone as v2: `python run.py --tools zynlex --repeats 5 --tag zynlex-v2 --port-base 5700`.
+4. `python analyze.py full zynlex-v2` and update this section.
+
 ## Phases
 
 1. **Read-only. Built.** Pipe, MCP server, frontend dispatcher

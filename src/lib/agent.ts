@@ -388,16 +388,54 @@ async function callOn(tabId: string, backendNodeId: number, fn: string, arg?: un
   return r.result.value;
 }
 
-/** A real mouse click at the element's centre, after scrolling it into view. */
-async function click(tabId: string, backendNodeId: number): Promise<void> {
-  await tabCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId });
+/** The element's centre in viewport CSS pixels, as it lies now. */
+async function centre(tabId: string, backendNodeId: number): Promise<{ x: number; y: number }> {
   const { quads } = await tabCdp<{ quads: number[][] }>(tabId, "DOM.getContentQuads", {
     backendNodeId,
   });
   const q = quads[0];
   if (!q) throw new Error(`e${backendNodeId} has no box on screen (hidden or zero-size).`);
-  const x = (q[0] + q[2] + q[4] + q[6]) / 4;
-  const y = (q[1] + q[3] + q[5] + q[7]) / 4;
+  return { x: (q[0] + q[2] + q[4] + q[6]) / 4, y: (q[1] + q[3] + q[5] + q[7]) / 4 };
+}
+
+/**
+ * "" when a click at the point lands on the element (or inside it), else what
+ * is on top of it there. Asks the element's own root, so an element inside a
+ * shadow tree isn't mistaken for being covered by its host.
+ */
+const HIT_TEST = `function (p) {
+  const root = this.getRootNode();
+  const t = (root.elementFromPoint ? root : document).elementFromPoint(p.x, p.y);
+  if (!t) return "nothing (it is off screen)";
+  if (this === t || this.contains(t)) return "";
+  const name = (t.getAttribute("aria-label") || t.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 40);
+  return t.tagName.toLowerCase() + (t.id ? "#" + t.id : "") + (name ? ' "' + name + '"' : "");
+}`;
+
+/**
+ * A real mouse click at the element's centre. Checks first that the element
+ * is what's actually there: scrolled only just into view, it can sit under a
+ * fixed header or footer, and a click would silently land on that instead.
+ */
+async function click(tabId: string, backendNodeId: number): Promise<void> {
+  await tabCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId });
+  let p = await centre(tabId, backendNodeId);
+  let cover = await callOn(tabId, backendNodeId, HIT_TEST, p);
+  if (cover) {
+    await callOn(
+      tabId,
+      backendNodeId,
+      `function () { this.scrollIntoView({ block: "center", inline: "center", behavior: "instant" }); }`,
+    );
+    p = await centre(tabId, backendNodeId);
+    cover = await callOn(tabId, backendNodeId, HIT_TEST, p);
+  }
+  if (cover) {
+    throw new Error(
+      `e${backendNodeId} is covered by ${cover} at its centre, so a click would land on that instead. Nothing was clicked.`,
+    );
+  }
+  const { x, y } = p;
   const at = { x, y, button: "left", clickCount: 1 };
   await tabCdp(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
   await tabCdp(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", ...at });
