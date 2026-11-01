@@ -269,61 +269,67 @@ three bugs can also be found by reading the code. The full run needs new
 tasks that only the running app reveals (layout, timing, data from the API),
 five repeats, and playwright-cli and agent-browser added.
 
-### Full run (2026-10-31, paused at 135 of 150)
+### Full run (2026-10-31 to 11-01)
 
 Six new tasks in `fixture2`, each a bug the running page shows: deal prices
 in cents, a discount reset on add, a 1 s timeout on a 1.5 s endpoint, an email
 pattern that rejects `.com`, a session cookie scoped to `Path=/api/login`, and
 a closed promo that still covers Checkout. Five tools (adding playwright-cli
 0.1.22 and agent-browser 0.41.0, both CLIs the agent runs through Bash limited
-to that one command), five repeats. External tools drive installed Chrome;
-ZYNLEX ran as a release build of commit 1dfa3d1. Every run so far passed.
+to that one command), five repeats each: 150 runs, then 30 more for ZYNLEX v2.
+External tools drive installed Chrome, headless, with a fresh profile per run.
+Harness, fixtures, raw results and transcripts: `D:\PROJECT-TESTINGS\agent-bench`
+(`run.py`, `grade.mjs`, `analyze.py`, `results-*.jsonl`, `runs-*`).
 
-| Tool | Runs | Pass | Browser calls (median) | Input tokens (median) | Wall (median) | Cost (avg) |
+**Baseline** (ZYNLEX at 1dfa3d1) and **ZYNLEX v2** (022991d, the click fix
+below). All 180 runs passed the grader.
+
+| Tool | Pass | Browser calls (avg) | Input tokens (median) | Input tokens (avg) | Wall (median) | Cost (avg) |
 |---|---|---|---|---|---|---|
-| ZYNLEX | 27 | 100% | 8 | 256k | 46 s | $0.27 |
-| Playwright MCP | 27 | 100% | 10 | 369k | 51 s | $0.25 |
-| chrome-devtools-mcp | 27 | 100% | 11 | 402k | 45 s | $0.28 |
-| playwright-cli | 27 | 100% | 11 | 387k | 121 s | $0.24 |
-| agent-browser | 27 | 100% | 8 | 394k | 90 s | $0.29 |
+| **ZYNLEX v2** | 30/30 | 7.5 | **213k** | **223k** | **43 s** | **$0.16** |
+| ZYNLEX baseline | 30/30 | 13.6 | 258k | 429k | 48 s | $0.28 |
+| Playwright MCP | 30/30 | 10.8 | 370k | 355k | 52 s | $0.26 |
+| chrome-devtools-mcp | 30/30 | 11.1 | 404k | 424k | 46 s | $0.28 |
+| playwright-cli | 30/30 | 10.6 | 387k | 388k | 116 s | $0.25 |
+| agent-browser | 30/30 | 7.6 | 385k | 391k | 88 s | $0.28 |
 
 Median input tokens per task:
 
-| Task | ZYNLEX | Playwright MCP | DevTools MCP | playwright-cli | agent-browser |
-|---|---|---|---|---|---|
-| deals | **180k** | 229k | 298k | 280k | 272k |
-| discount | **261k** | 472k | 531k | 473k | 553k |
-| stock | **217k** | 329k | 362k | 319k | 409k |
-| checkout | **239k** | 366k | 402k | 436k | 330k |
-| login | 837k | **327k** | 504k | 361k | 393k |
-| signup | 906k | 404k | 399k | 399k | **381k** |
+| Task | ZYNLEX v2 | ZYNLEX baseline | Playwright MCP | DevTools MCP | playwright-cli | agent-browser |
+|---|---|---|---|---|---|---|
+| deals | **196k** | 180k | 229k | 298k | 280k | 272k |
+| discount | **261k** | 261k | 472k | 531k | 473k | 553k |
+| stock | **158k** | 217k | 329k | 362k | 319k | 409k |
+| checkout | **226k** | 229k | 339k | 403k | 444k | 301k |
+| login | **215k** | 943k | 369k | 501k | 370k | 393k |
+| signup | **202k** | 851k | 393k | 406k | 409k | 363k |
 
-ZYNLEX is cheapest on four tasks by 20–50%, and worst by far on login and
-signup. Cause, from the transcripts: both forms sit low on the page, under
-the fixed promo bar. `DOM.scrollIntoViewIfNeeded` scrolls an element only just
-into view, so the submit button ended up under the bar; the click landed on
-the bar and ZYNLEX reported "Page unchanged". Agents retried for 20+ calls
-before trying Enter. The Playwright-based tools check what's under the point
-before clicking, so they don't hit this.
+ZYNLEX v2 is cheapest on every task: 42% fewer input tokens than the next tool
+at the median, about 40% lower cost, and the fastest. Browser calls tie with
+agent-browser; ZYNLEX's calls each return more of what the agent needs, so
+fewer turns re-read context.
 
-Fix (committed after the run, not yet verified live): `click` hit-tests the
-element's centre with `elementFromPoint`; if something else is on top it
-scrolls the element to the middle of the viewport and tests again; if it's
-still covered, `act` fails with what covers it (`e15 is covered by div#promo
-"Free shipping…"`) instead of clicking the wrong thing.
+What the baseline exposed and v2 fixed: on login and signup the submit button
+sat under a fixed promo bar after `DOM.scrollIntoViewIfNeeded`, the click
+landed on the bar, and `act` said "Page unchanged"; agents retried for 20+
+calls. `click` now hit-tests the element's centre (`elementFromPoint`),
+re-scrolls it to the middle when covered, and otherwise fails with what covers
+it (`e18 is covered by div#promo "Promo" … Nothing was clicked`). Verified live
+on both tasks.
 
-**To finish:**
+Caveats, in order of weight:
 
-1. Turn McAfee off while running (it quarantines fresh unsigned release builds:
-   `zynlex.exe` ends up 0 bytes). Build: `pnpm tauri build --no-bundle`, then
-   start `src-tauri\target\release\zynlex.exe`.
-2. Before rebuilding, finish the baseline on the *old* build if possible, or
-   accept that the last 15 runs come from the new one: in
-   `D:\PROJECT-TESTINGS\agent-bench`,
-   `python run.py --repeats 5 --tag full --resume --port-base 5600`.
-3. Verify the click fix live (login and checkout tasks), then re-run ZYNLEX
-   alone as v2: `python run.py --tools zynlex --repeats 5 --tag zynlex-v2 --port-base 5700`.
-4. `python analyze.py full zynlex-v2` and update this section.
+- ZYNLEX was improved against these same tasks. The fix is generic (Playwright
+  does the same check), but a held-out set of new tasks is the honest next test.
+- Login for v2 ran with a host per run (`run<port>.localhost`). On
+  `127.0.0.1`, ZYNLEX's persistent profile kept the session cookie a previous
+  run had set after fixing the bug (cookies ignore ports), so the bug didn't
+  reproduce and agents lost calls on it. The other tools start a fresh profile
+  per run and weren't affected. Real use has the same trait: the profile that
+  keeps you signed in can also hide a cookie bug.
+- The CLI tools ran without the agent skill files they ship (the agent got
+  `--help`); with them they may need fewer calls.
+- One model (Sonnet), one small app, one grader check per task, Windows only.
 
 ## Phases
 
@@ -333,7 +339,8 @@ still covered, `act` fails with what covers it (`e15 is covered by div#promo
    `screenshot`. Useful on its own and can't change anything.
 2. **Driving. Built.** `snapshot`, `act`, `open`, `check` with `reload`, settle
    rule ([agentSnapshot.ts](../src/lib/agentSnapshot.ts)).
-3. **MCP + skill + benchmark.** Ship/no-ship decision here.
+3. **MCP + skill + benchmark.** MCP and benchmark done (see above);
+   `SKILL.md` and a held-out task set still to do.
 4. **Developer features.** `mock`, `eval`, flag-for-agent, scope grants UI.
 
 ## Not doing
