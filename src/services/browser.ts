@@ -579,6 +579,19 @@ export async function revealWindow(): Promise<void> {
   await invoke<void>("agent_reveal_window");
 }
 
+/** alert/confirm/prompt/beforeunload opened (or closed) in a tab — see console.rs. */
+export interface DialogEvent {
+  tabId: string;
+  open: boolean;
+  type?: "alert" | "confirm" | "prompt" | "beforeunload";
+  message?: string;
+  defaultPrompt?: string;
+}
+
+export function onDialog(callback: (e: DialogEvent) => void): Promise<UnlistenFn> {
+  return listen<DialogEvent>("browser://dialog", (e) => callback(e.payload));
+}
+
 export async function getAgentStatus(): Promise<AgentStatus> {
   return invoke<AgentStatus>("agent_status");
 }

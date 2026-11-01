@@ -2,7 +2,30 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/hooks/useActiveScope", () => ({ getActiveTabId: () => null }));
 
-import { resolveTab, runAgentTool } from "./agent";
+// The dialog listener and every CDP call, so a test can open a dialog and see
+// which calls reach the (paused) page.
+const hooks = vi.hoisted(() => ({
+  dialog: null as
+    | null
+    | ((e: { tabId: string; open: boolean; type?: string; message?: string }) => void),
+  cdp: [] as string[],
+}));
+vi.mock("@/services/browser", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getAgentStatus: () => Promise.resolve({ enabled: true, clients: [] }),
+  onAgentStatus: () => Promise.resolve(() => {}),
+  onAgentRequest: () => Promise.resolve(() => {}),
+  onDialog: (cb: typeof hooks.dialog) => {
+    hooks.dialog = cb;
+    return Promise.resolve(() => {});
+  },
+  tabCdp: (_tab: string, method: string) => {
+    hooks.cdp.push(method);
+    return Promise.reject(new Error("tab not loaded"));
+  },
+}));
+
+import { listenForAgents, resolveTab, runAgentTool } from "./agent";
 import { useConsoleStore } from "@/stores/console";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useTabsStore } from "@/stores/tabs";
@@ -128,5 +151,28 @@ describe("agent tools", () => {
     expect(list).not.toContain("main.js");
     expect(await runAgentTool("network", { all: true })).toContain("main.js");
     expect(await runAgentTool("network", { id: "net-2" })).toContain('{"items":[]}');
+  });
+
+  it("reports an open dialog instead of calling into the paused page", async () => {
+    listenForAgents();
+    hooks.dialog?.({
+      tabId: "aaaaaaaa-1",
+      open: true,
+      type: "confirm",
+      message: 'Delete "Buy milk"?',
+    });
+    hooks.cdp.length = 0;
+    for (const tool of ["check", "snapshot", "screenshot"]) {
+      const out = await runAgentTool(tool, {});
+      expect(out).toContain('A confirm dialog is open: "Delete "Buy milk"?"');
+      expect(out).toContain('action="accept"');
+    }
+    expect(await runAgentTool("act", { ref: "e5", action: "click" })).toContain("dialog is open");
+    expect(hooks.cdp).toEqual([]);
+    // Reads that don't need the page still work.
+    expect(await runAgentTool("errors", {})).not.toContain("dialog");
+
+    hooks.dialog?.({ tabId: "aaaaaaaa-1", open: false });
+    await expect(runAgentTool("act", { action: "dismiss" })).rejects.toThrow("No dialog is open");
   });
 });

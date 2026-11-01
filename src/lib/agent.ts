@@ -25,6 +25,7 @@ import {
   getAgentStatus,
   onAgentRequest,
   onAgentStatus,
+  onDialog,
   pendingRequests,
   revealWindow,
   tabCdp,
@@ -163,6 +164,41 @@ function newProblems(tab: Tab): string[] {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * Per tab, the alert/confirm/prompt that has paused its page. While one is
+ * open the page answers no DevTools calls that need its main thread (input,
+ * evaluate, the accessibility tree), so every page tool reports the dialog
+ * instead of waiting on a page that can't reply.
+ */
+const dialogs = new Map<string, { type: string; message: string }>();
+
+function dialogNote(tabId: string): string | null {
+  const d = dialogs.get(tabId);
+  if (!d) return null;
+  const reply = d.type === "prompt" ? " (text = your reply)" : "";
+  return `A ${d.type} dialog is open: "${d.message}". The page is paused until it's answered: act action="accept" or action="dismiss"${reply}.`;
+}
+
+const DIALOG = Symbol("dialog");
+
+/** `p`, unless a dialog opens in the tab first; then DIALOG, and `p` is left to settle whenever the dialog is answered. */
+async function orDialog<T>(tabId: string, p: Promise<T>): Promise<T | typeof DIALOG> {
+  let done = false;
+  p.then(
+    () => {
+      done = true;
+    },
+    () => {
+      done = true;
+    },
+  );
+  const watch = (async (): Promise<typeof DIALOG> => {
+    while (!done && !dialogs.has(tabId)) await sleep(25);
+    return DIALOG;
+  })();
+  return Promise.race([p, watch]);
+}
+
+/**
  * Installs (once per document) a MutationObserver in the page and reports the
  * load state and how long the DOM has been still. Runs in the page's world, so
  * the page can see `__zynlexQuiet`. ponytail: an isolated world would hide it.
@@ -190,11 +226,16 @@ async function settle(tabId: string): Promise<string | null> {
   let pending: string[] = [];
   while (Date.now() - start < SETTLE_TIMEOUT) {
     await sleep(100);
+    if (dialogs.has(tabId)) return dialogNote(tabId);
     try {
-      const r = await tabCdp<{ result: { value?: typeof state } }>(tabId, "Runtime.evaluate", {
-        expression: QUIET_PROBE,
-        returnByValue: true,
-      });
+      const r = await orDialog(
+        tabId,
+        tabCdp<{ result: { value?: typeof state } }>(tabId, "Runtime.evaluate", {
+          expression: QUIET_PROBE,
+          returnByValue: true,
+        }),
+      );
+      if (r === DIALOG) return dialogNote(tabId);
       state = r.result.value ?? state;
       pending = await pendingRequests(tabId);
     } catch {
@@ -271,6 +312,11 @@ function parseRef(ref: unknown): number {
 async function consequences(tab: Tab, urlBefore: string): Promise<string[]> {
   const unsettled = await settle(tab.id);
   const now = useTabsStore.getState().tabs[tab.id] ?? tab;
+  if (dialogs.has(tab.id)) {
+    // The page is paused: its tree can't be read until the dialog is answered.
+    const problems = newProblems(now);
+    return [dialogNote(tab.id) as string, ...problems];
+  }
   const before = snapshots.get(tab.id);
   const after = await takePage(tab.id);
   snapshots.set(tab.id, after);
@@ -366,12 +412,26 @@ const KEYS: Record<string, { code: number; text?: string }> = {
   PageDown: { code: 34 },
 };
 
+/**
+ * Sends input events in order. A handler that opens a dialog pauses the page
+ * before its event's CDP call returns, so stop as soon as a dialog is open:
+ * the rest of the sequence (a key-up, a mouse release) goes nowhere until the
+ * dialog is answered.
+ */
+async function sendInput(tabId: string, method: string, events: object[]): Promise<void> {
+  for (const params of events) {
+    if ((await orDialog(tabId, tabCdp(tabId, method, params))) === DIALOG) return;
+  }
+}
+
 async function pressKey(tabId: string, key: string): Promise<void> {
   const k = KEYS[key];
   if (!k) throw new Error(`Unknown key "${key}". Known: ${Object.keys(KEYS).join(", ")}.`);
   const base = { key: key === "Space" ? " " : key, windowsVirtualKeyCode: k.code };
-  await tabCdp(tabId, "Input.dispatchKeyEvent", { type: "keyDown", ...base, text: k.text });
-  await tabCdp(tabId, "Input.dispatchKeyEvent", { type: "keyUp", ...base });
+  await sendInput(tabId, "Input.dispatchKeyEvent", [
+    { type: "keyDown", ...base, text: k.text },
+    { type: "keyUp", ...base },
+  ]);
 }
 
 /** Runs `fn` in the page with the element as `this`; resolves to its return value. */
@@ -437,9 +497,11 @@ async function click(tabId: string, backendNodeId: number): Promise<void> {
   }
   const { x, y } = p;
   const at = { x, y, button: "left", clickCount: 1 };
-  await tabCdp(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-  await tabCdp(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", ...at });
-  await tabCdp(tabId, "Input.dispatchMouseEvent", { type: "mouseReleased", ...at });
+  await sendInput(tabId, "Input.dispatchMouseEvent", [
+    { type: "mouseMoved", x, y },
+    { type: "mousePressed", ...at },
+    { type: "mouseReleased", ...at },
+  ]);
 }
 
 const SELECT_ALL = `function () {
@@ -462,10 +524,27 @@ const CHOOSE_OPTION = `function (v) {
   return "";
 }`;
 
+/** accept/dismiss: answers the open dialog, then reports what the page did next. */
+async function answerDialog(tab: Tab, accept: boolean, text: string): Promise<string> {
+  const d = dialogs.get(tab.id);
+  if (!d) throw new Error("No dialog is open in this tab.");
+  const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+  await tabCdp(tab.id, "Page.handleJavaScriptDialog", {
+    accept,
+    ...(d.type === "prompt" && accept ? { promptText: text } : {}),
+  });
+  dialogs.delete(tab.id);
+  const did = `${accept ? "Accepted" : "Dismissed"} the ${d.type} dialog "${d.message}"`;
+  return [did, ...(await consequences(tab, urlBefore))].join("\n");
+}
+
 async function actTool(args: Args): Promise<string> {
   const tab = resolveTab(args.tab);
   const action = String(args.action ?? "");
   const text = typeof args.text === "string" ? args.text : "";
+  if (action === "accept" || action === "dismiss") {
+    return answerDialog(tab, action === "accept", text);
+  }
   const ref = action === "press" && args.ref == null ? null : parseRef(args.ref);
   await showTab(tab);
   if (!snapshots.has(tab.id)) snapshots.set(tab.id, await takePage(tab.id));
@@ -495,7 +574,9 @@ async function actTool(args: Args): Promise<string> {
       if (ref != null) await tabCdp(tab.id, "DOM.focus", { backendNodeId: ref });
       await pressKey(tab.id, text);
     } else {
-      throw new Error(`Unknown action "${action}". Use click, type, select or press.`);
+      throw new Error(
+        `Unknown action "${action}". Use click, type, select, press, accept or dismiss.`,
+      );
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -615,7 +696,18 @@ async function screenshotTool(args: Args): Promise<string> {
   return `${header(tab)}\nSaved ${path}`;
 }
 
+/** Tools that need the page itself to answer; a dialog pauses it. */
+const PAGE_TOOLS = new Set(["check", "snapshot", "act", "screenshot"]);
+
 export async function runAgentTool(tool: string, args: Args): Promise<string> {
+  const answering = tool === "act" && (args.action === "accept" || args.action === "dismiss");
+  if (PAGE_TOOLS.has(tool) && !answering) {
+    const tab = resolveTab(args.tab);
+    const note = dialogNote(tab.id);
+    if (note)
+      return `${header(tab)}
+${note}`;
+  }
   switch (tool) {
     case "tabs":
       return tabsTool();
@@ -645,6 +737,10 @@ export function listenForAgents(): Promise<UnlistenFn>[] {
     .catch(() => {});
   return [
     onAgentStatus((s) => useAgentStore.setState(s)),
+    onDialog(({ tabId, open, type, message }) => {
+      if (open) dialogs.set(tabId, { type: type ?? "alert", message: message ?? "" });
+      else dialogs.delete(tabId);
+    }),
     onAgentRequest(async ({ id, tool, args }) => {
       let ok = true;
       let text: string;

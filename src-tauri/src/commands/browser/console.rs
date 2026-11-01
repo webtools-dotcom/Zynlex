@@ -102,11 +102,30 @@ fn console_entry(event: &str, p: &Value) -> Option<Value> {
     }))
 }
 
-const EVENTS: [&str; 3] = [
+const EVENTS: [&str; 5] = [
     "Runtime.exceptionThrown",
     "Runtime.consoleAPICalled",
     "Log.entryAdded",
+    // Not console output, but the same per-tab subscription: an agent has to
+    // know when alert/confirm/prompt has paused the page (src/lib/agent.ts).
+    "Page.javascriptDialogOpening",
+    "Page.javascriptDialogClosed",
 ];
+
+/// A dialog event as the frontend wants it: `open` with type and message, or
+/// closed.
+fn dialog_event(event: &str, p: &Value) -> Option<Value> {
+    match event {
+        "Page.javascriptDialogOpening" => Some(json!({
+            "open": true,
+            "type": p["type"].as_str().unwrap_or("alert"),
+            "message": truncate(p["message"].as_str().unwrap_or_default()),
+            "defaultPrompt": p["defaultPrompt"].as_str().unwrap_or_default(),
+        })),
+        "Page.javascriptDialogClosed" => Some(json!({ "open": false })),
+        _ => None,
+    }
+}
 
 pub fn register_webview_console_capture(wv: &tauri::Webview, app: &AppHandle, tab_id: &str) {
     let app = app.clone();
@@ -134,6 +153,9 @@ pub fn register_webview_console_capture(wv: &tauri::Webview, app: &AppHandle, ta
                     if let Some(mut entry) = console_entry(event, &params) {
                         entry["tabId"] = json!(tab_id);
                         let _ = app.emit("browser://console", entry);
+                    } else if let Some(mut dialog) = dialog_event(event, &params) {
+                        dialog["tabId"] = json!(tab_id);
+                        let _ = app.emit("browser://dialog", dialog);
                     }
                     Ok(())
                 }));
@@ -144,13 +166,31 @@ pub fn register_webview_console_capture(wv: &tauri::Webview, app: &AppHandle, ta
         // logged by the current page, and those should not be missed.
         super::cdp(&core, "Runtime.enable", "{}");
         super::cdp(&core, "Log.enable", "{}");
+        super::cdp(&core, "Page.enable", "{}");
     });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::console_entry;
+    use super::{console_entry, dialog_event};
     use serde_json::json;
+
+    #[test]
+    fn dialog_events() {
+        let open = dialog_event(
+            "Page.javascriptDialogOpening",
+            &json!({"type": "confirm", "message": "Delete \"Buy milk\"?", "url": "http://x/"}),
+        )
+        .unwrap();
+        assert_eq!(open["open"], true);
+        assert_eq!(open["type"], "confirm");
+        assert_eq!(open["message"], "Delete \"Buy milk\"?");
+        assert_eq!(
+            dialog_event("Page.javascriptDialogClosed", &json!({"result": true})).unwrap()["open"],
+            false
+        );
+        assert!(dialog_event("Runtime.consoleAPICalled", &json!({})).is_none());
+    }
 
     #[test]
     fn exception_uses_description_and_one_based_line() {
