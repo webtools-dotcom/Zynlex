@@ -221,8 +221,16 @@ claude mcp add zynlex -- "C:\path\to\zynlex-mcp.exe"
 Any MCP client takes the same command (no arguments, stdio transport). The NSIS
 installer ships `zynlex-mcp.exe` next to `zynlex.exe` (Cargo builds every bin
 target and the bundler packs them all); it isn't put on `PATH`. The MCP
-server's `instructions` say when to use `check` vs `snapshot` vs `act`. A
-`SKILL.md` that teaches the same is still to do.
+server's `instructions` give the short version of when to use which tool.
+
+The longer version is an agent skill,
+[agent/skills/zynlex/SKILL.md](../agent/skills/zynlex/SKILL.md): the
+open → act → fix → check loop, which replies need a different next step (an
+open dialog, a covered element, a stale ref, a page that won't settle), and
+iframes. It's built from what the benchmark transcripts show agents wasting
+calls on. For Claude Code, copy the `zynlex` folder to `~/.claude/skills/` (all
+projects) or a project's `.claude/skills/`. Other agents: paste its body into
+their instructions file (`AGENTS.md` and the like).
 
 ## Benchmark
 
@@ -429,8 +437,9 @@ harness now retries the grader and keeps its errors.
    `screenshot`. Useful on its own and can't change anything.
 2. **Driving. Built.** `snapshot`, `act`, `open`, `check` with `reload`, settle
    rule ([agentSnapshot.ts](../src/lib/agentSnapshot.ts)).
-3. **MCP + skill + benchmark.** MCP and benchmark done (see above);
-   `SKILL.md` and a held-out task set still to do.
+3. **MCP + skill + benchmark. Done.** MCP server, tuned and held-out
+   benchmarks, dialog support (v3), and the agent skill. Not yet measured: how
+   much the skill itself saves.
 4. **Developer features.** `mock`, `eval`, flag-for-agent, scope grants UI.
 
 ## Not doing
