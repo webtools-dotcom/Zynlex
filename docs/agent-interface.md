@@ -368,17 +368,17 @@ run: killed at the 900 s cap, fix already written, so the grader passed it).
 The other four tools report the dialog and let the agent answer it. The cost
 column for a killed run reads $0 (it never reported one); count its tokens.
 
-**To finish** (McAfee off, or `src-tauri	arget` and `D:\PROJECT-TESTINGSgent-bench`
+**To finish** (McAfee off, or `src-tauri\target` and `D:\PROJECT-TESTINGS\agent-bench`
 excluded):
 
 1. The run must keep using the **v2 build (022991d)**, not the branch tip,
    which now has dialog support (116188d). If
-   `D:\PROJECT-TESTINGSgent-bench\zynlex-v2-targetelease\zynlex.exe` is 0
+   `D:\PROJECT-TESTINGS\agent-bench\zynlex-v2-target\release\zynlex.exe` is 0
    bytes (quarantined), rebuild it from that commit:
-   `git worktree add D:\PROJECT-TESTINGSgent-bench2-src 022991d`, then in
+   `git worktree add D:\PROJECT-TESTINGS\agent-bench\v2-src 022991d`, then in
    `v2-src`: `pnpm install` and
    `CARGO_TARGET_DIR=D:/PROJECT-TESTINGS/agent-bench/zynlex-v2-target pnpm tauri build --no-bundle`.
-2. Start that `zynlex.exe`, then in `D:\PROJECT-TESTINGSgent-bench`:
+2. Start that `zynlex.exe`, then in `D:\PROJECT-TESTINGS\agent-bench`:
    `python run.py --tasks iframe,confirm,storage,enter,loadmore --repeats 5 --tag heldout --resume --port-base 6700 --host-per-run`
    (45 runs left; ZYNLEX's two confirm runs take ~15 min each).
 3. `python analyze.py heldout`, write it up here.
