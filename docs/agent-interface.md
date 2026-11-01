@@ -331,7 +331,7 @@ Caveats, in order of weight:
   `--help`); with them they may need fewer calls.
 - One model (Sonnet), one small app, one grader check per task, Windows only.
 
-### Held-out run (started 2026-11-01, paused at 80 of 125)
+### Held-out run (2026-11-01, 125 runs)
 
 Answers the first caveat above. Five tasks written *after* ZYNLEX v2, in a new
 app (`fixture3`, a task board), including areas ZYNLEX was never built or tuned
@@ -348,43 +348,42 @@ for. Rule: no ZYNLEX changes until the run is finished, whatever it shows.
 Same harness, ZYNLEX v2 build, every tool on its own host per run
 (`--host-per-run`), five repeats.
 
-So far (80 runs, all passed the grader; ZYNLEX timed out on all 3 of its
-confirm runs), median input tokens:
+All 125 runs passed the grader. ZYNLEX was killed at the 900 s cap on 3 of its
+5 confirm runs (fix already written each time, so they still graded as passes).
 
-| Task | ZYNLEX | Playwright MCP | DevTools MCP | playwright-cli | agent-browser |
+| Tool | Browser calls (median) | Input tokens (median) | Wall (median) | Timeouts |
+|---|---|---|---|---|
+| **ZYNLEX v2** | 6 | **179k** | **34 s** | 3 |
+| Playwright MCP | 9 | 278k | 42 s | 0 |
+| chrome-devtools-mcp | 11 | 396k | 44 s | 0 |
+| playwright-cli | 11 | 365k | 88 s | 0 |
+| agent-browser | 6 | 323k | 64 s | 0 |
+
+Median input tokens per task:
+
+| Task | ZYNLEX v2 | Playwright MCP | DevTools MCP | playwright-cli | agent-browser |
 |---|---|---|---|---|---|
-| iframe | **201k** | 271k | 384k | 368k | 398k |
-| enter | **162k** | 217k | 400k | 324k | 197k |
-| loadmore | **180k** | 317k | 403k | 330k | 257k |
-| storage | **179k** | 234k | 365k | 380k | 292k |
-| confirm | 1,038k, timed out | **296k** | 396k | 406k | 362k |
+| iframe | **206k** | 278k | 355k | 372k | 384k |
+| enter | **162k** | 220k | 391k | 324k | 228k |
+| loadmore | **167k** | 305k | 403k | 330k | 299k |
+| storage | **164k** | 260k | 341k | 248k | 292k |
+| confirm | 1,038k | **296k** | 396k | 422k | 358k |
 
-Found so far: **ZYNLEX can't handle a native dialog.** Once `confirm()` is
+On tasks it was never tuned for, ZYNLEX is still cheapest on four of five, by
+26–45% against the next tool, including iframe, which its page outline
+doesn't even reach (the network log carried it). The fifth is the one gap the
+held-out set was built to find:
+
+**ZYNLEX can't handle a native dialog.** Once `confirm()` is
 open, the page's script is paused, so every call that touches the page waits
 until the 30 s bridge timeout and returns "ZYNLEX didn't answer"; ZYNLEX
 neither reports the dialog nor can accept or dismiss it. Agents fix it from
 the code alone after 11+ timeouts (smoke run: 1.13M tokens, 896 s; held-out
 run: killed at the 900 s cap, fix already written, so the grader passed it).
-The other four tools report the dialog and let the agent answer it. The cost
-column for a killed run reads $0 (it never reported one); count its tokens.
+The other four tools report the dialog and let the agent answer it. Costs of
+killed runs aren't reported, so the tables use tokens.
 
-**To finish** (McAfee off, or `src-tauri\target` and `D:\PROJECT-TESTINGS\agent-bench`
-excluded):
-
-1. The run must keep using the **v2 build (022991d)**, not the branch tip,
-   which now has dialog support (116188d). If
-   `D:\PROJECT-TESTINGS\agent-bench\zynlex-v2-target\release\zynlex.exe` is 0
-   bytes (quarantined), rebuild it from that commit:
-   `git worktree add D:\PROJECT-TESTINGS\agent-bench\v2-src 022991d`, then in
-   `v2-src`: `pnpm install` and
-   `CARGO_TARGET_DIR=D:/PROJECT-TESTINGS/agent-bench/zynlex-v2-target pnpm tauri build --no-bundle`.
-2. Start that `zynlex.exe`, then in `D:\PROJECT-TESTINGS\agent-bench`:
-   `python run.py --tasks iframe,confirm,storage,enter,loadmore --repeats 5 --tag heldout --resume --port-base 6700 --host-per-run`
-   (45 runs left; ZYNLEX's two confirm runs take ~15 min each).
-3. `python analyze.py heldout`, write it up here.
-4. Then live-test dialog support (116188d): does `Page.enable` change the
-   dialogs a person sees? Does a click that opens `confirm()` return at once,
-   and does `act accept` close it? Re-run ZYNLEX on the held-out tasks as v3.
+Dialog support followed in 116188d (see below for its v3 results).
 
 ## Phases
 
