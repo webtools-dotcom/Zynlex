@@ -383,7 +383,43 @@ run: killed at the 900 s cap, fix already written, so the grader passed it).
 The other four tools report the dialog and let the agent answer it. Costs of
 killed runs aren't reported, so the tables use tokens.
 
-Dialog support followed in 116188d (see below for its v3 results).
+Dialog support followed in 116188d (v3, below).
+
+### Dialog support, v3 (2026-11-01, 25 runs)
+
+ZYNLEX now subscribes to `Page.javascriptDialogOpening/Closed` per tab. While
+a dialog is open, page tools reply at once with its type and message instead
+of waiting on the paused page; a click or key press that opens one returns as
+soon as it opens; `act` gains `accept`/`dismiss` (with `text` for `prompt()`)
+through `Page.handleJavaScriptDialog`. Checked live: the click returns in
+0.1–0.2 s with "A confirm dialog is open: …", `accept` and `dismiss` close it,
+and a person still sees the same native dialog: `Page.enable` doesn't hide it
+(window captures of v2 and v3 match).
+
+ZYNLEX v3 on the same five held-out tasks, five repeats:
+
+| | Pass | Timeouts | Browser calls (median) | Input tokens (median) | Input tokens (avg) | Wall (median) |
+|---|---|---|---|---|---|---|
+| **ZYNLEX v3** | 25/25 | 0 | 7 | **186k** | **191k** | 39 s |
+| ZYNLEX v2 | 25/25 | 3 | 6 | 179k | 345k | 34 s |
+| Playwright MCP | 25/25 | 0 | 9 | 278k | 275k | 42 s |
+
+| Task | ZYNLEX v3 | ZYNLEX v2 | Best other tool |
+|---|---|---|---|
+| confirm | **179k** | 1,038k | 296k (Playwright MCP) |
+| storage | **128k** | 164k | 248k (playwright-cli) |
+| loadmore | **169k** | 167k | 299k (agent-browser) |
+| iframe | **223k** | 206k | 278k (Playwright MCP) |
+| enter | **198k** | 162k | 220k (Playwright MCP) |
+
+ZYNLEX v3 is cheapest on all five, a third fewer input tokens than the next
+tool on average, with no timeouts. Caveats: `confirm` is no longer held out
+for v3 (the fix came after seeing it fail); `enter` and `iframe` moved by
+about 20k between v2 and v3 with no related code change, which is
+run-to-run noise at five repeats. One v3 run (`iframe-0`) was re-graded:
+its first grader run printed nothing (Edge didn't start, right after a
+reboot) and passed when re-run on the run's own files (`regrade.py`); the
+harness now retries the grader and keeps its errors.
 
 ## Phases
 
