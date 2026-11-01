@@ -331,6 +331,49 @@ Caveats, in order of weight:
   `--help`); with them they may need fewer calls.
 - One model (Sonnet), one small app, one grader check per task, Windows only.
 
+### Held-out run (started 2026-11-01, paused at 30 of 125)
+
+Answers the first caveat above. Five tasks written *after* ZYNLEX v2, in a new
+app (`fixture3`, a task board), including areas ZYNLEX was never built or tuned
+for. Rule: no ZYNLEX changes until the run is finished, whatever it shows.
+
+| Task | Symptom | Tests |
+|---|---|---|
+| iframe | "Send feedback" (in an iframe) does nothing | ZYNLEX snapshots don't walk iframes |
+| confirm | Confirming "Delete …?" doesn't delete | Native `confirm()`; ZYNLEX has no dialog tool |
+| storage | Dark mode doesn't survive a reload | Reload + localStorage |
+| enter | Enter in "New task" doesn't add it | Keyboard input |
+| loadmore | "Load more" repeats the first page | Only visible in network requests |
+
+Same harness, ZYNLEX v2 build, every tool on its own host per run
+(`--host-per-run`), five repeats.
+
+So far (30 runs, all passed the grader), median input tokens:
+
+| Task | ZYNLEX | Playwright MCP | DevTools MCP | playwright-cli | agent-browser |
+|---|---|---|---|---|---|
+| iframe | **214k** | 293k | 426k | 368k | 376k |
+| enter | **146k** | 216k | 401k | 324k | 197k |
+| loadmore | **166k** | 305k | 402k | 330k | 257k |
+| storage | **202k** | 234k | 444k | 380k | 323k |
+| confirm | 952k, timed out | **296k** | 397k | 422k | 366k |
+
+Found so far: **ZYNLEX can't handle a native dialog.** Once `confirm()` is
+open, the page's script is paused, so every call that touches the page waits
+until the 30 s bridge timeout and returns "ZYNLEX didn't answer"; ZYNLEX
+neither reports the dialog nor can accept or dismiss it. Agents fix it from
+the code alone after 11+ timeouts (smoke run: 1.13M tokens, 896 s; held-out
+run: killed at the 900 s cap, fix already written, so the grader passed it).
+The other four tools report the dialog and let the agent answer it. The cost
+column for a killed run reads $0 (it never reported one); count its tokens.
+
+**To finish:** start `D:\PROJECT-TESTINGS\agent-bench\zynlex-v2-target\release\zynlex.exe`
+(McAfee off), then in `D:\PROJECT-TESTINGS\agent-bench`:
+`python run.py --tasks iframe,confirm,storage,enter,loadmore --repeats 5 --tag heldout --resume --port-base 6400 --host-per-run`,
+then `python analyze.py heldout`. Only after that: dialog support (report an
+open dialog in every reply, an `act` to accept/dismiss it, and time out page
+calls instead of waiting).
+
 ## Phases
 
 1. **Read-only. Built.** Pipe, MCP server, frontend dispatcher
