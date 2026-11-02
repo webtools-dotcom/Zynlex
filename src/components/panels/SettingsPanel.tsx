@@ -16,10 +16,15 @@ import { getEngineOptions, setEngineOptions, type EngineOptions } from "@/servic
 import { ShortcutsSettings } from "@/components/panels/ShortcutsSettings";
 import { EnvironmentsSettings } from "@/components/panels/EnvironmentsSettings";
 import { SnippetsSettings } from "@/components/panels/SnippetsSettings";
+import { AgentSettings } from "@/components/panels/AgentSettings";
+import { AI_AGENTS_SECTION } from "@/lib/mcpSetup";
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+function SectionHeader({ children, id }: { children: React.ReactNode; id?: string }) {
   return (
-    <div className="text-xs uppercase tracking-wider text-[var(--color-text-disabled)] mt-5 mb-2 pt-4 border-t border-[var(--color-border-subtle)] first:mt-0 first:pt-0 first:border-t-0">
+    <div
+      id={id}
+      className="text-xs uppercase tracking-wider text-[var(--color-text-disabled)] mt-5 mb-2 pt-4 border-t border-[var(--color-border-subtle)] first:mt-0 first:pt-0 first:border-t-0"
+    >
       {children}
     </div>
   );
@@ -402,6 +407,10 @@ export function SettingsPanel() {
       {/* ── Environments ────────────────────────────────────────────── */}
       <SectionHeader>Environments</SectionHeader>
       <EnvironmentsSettings />
+
+      {/* ── AI agents ───────────────────────────────────────────────── */}
+      <SectionHeader id={AI_AGENTS_SECTION}>AI agents</SectionHeader>
+      <AgentSettings />
 
       {/* ── Snippets ────────────────────────────────────────────────── */}
       <SectionHeader>Snippets</SectionHeader>

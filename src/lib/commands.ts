@@ -28,11 +28,13 @@ import {
   RotateCw,
   Search,
   Settings,
+  Bot,
   Star,
   TerminalSquare,
   X,
 } from "lucide-react";
 import { useUIStore, isFindOpen } from "@/stores/ui";
+import { AI_AGENTS_SECTION } from "@/lib/mcpSetup";
 import { useTabsStore } from "@/stores/tabs";
 import { useConsoleStore } from "@/stores/console";
 import { useWorkspacesStore } from "@/stores/workspaces";
@@ -465,6 +467,18 @@ const COMMANDS: Command[] = [
     keys: ["ctrl+,"],
     icon: Settings,
     run: () => void useUIStore.getState().toggleSettingsPanel(),
+  },
+  {
+    id: "settings.agents",
+    title: "Connect an AI Agent (MCP)",
+    keys: [],
+    icon: Bot,
+    run: () => {
+      const ui = useUIStore.getState();
+      if (!ui.settingsPanelOpen) ui.toggleSettingsPanel();
+      // The panel mounts on the next render; scroll once it's there.
+      setTimeout(() => document.getElementById(AI_AGENTS_SECTION)?.scrollIntoView(), 50);
+    },
   },
   {
     id: "help.shortcuts",

@@ -248,6 +248,16 @@ pub fn agent_reveal_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Where `zynlex-mcp.exe` is, for the setup snippets in Settings: next to
+/// this executable, where the installer puts it. None when it isn't there.
+#[tauri::command]
+pub fn agent_mcp_path() -> Option<String> {
+    let path = std::env::current_exe()
+        .ok()?
+        .with_file_name("zynlex-mcp.exe");
+    path.is_file().then(|| path.to_string_lossy().into_owned())
+}
+
 /// For a frontend that (re)loaded after agents connected.
 #[tauri::command]
 pub fn agent_status() -> AgentStatus {

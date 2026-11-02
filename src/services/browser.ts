@@ -579,6 +579,11 @@ export async function revealWindow(): Promise<void> {
   await invoke<void>("agent_reveal_window");
 }
 
+/** Path of zynlex-mcp.exe next to the app, or null if it isn't there (see `agent_mcp_path`). */
+export async function getMcpPath(): Promise<string | null> {
+  return invoke<string | null>("agent_mcp_path");
+}
+
 /** alert/confirm/prompt/beforeunload opened (or closed) in a tab — see console.rs. */
 export interface DialogEvent {
   tabId: string;
