@@ -232,6 +232,10 @@ calls on. For Claude Code, copy the `zynlex` folder to `~/.claude/skills/` (all
 projects) or a project's `.claude/skills/`. Other agents: paste its body into
 their instructions file (`AGENTS.md` and the like).
 
+Measured, it adds nothing the MCP `instructions` don't already give (see "Agent
+skill" under Benchmark), so it's optional: worth installing only in a client
+that ignores a server's `instructions`.
+
 ## Benchmark
 
 Built before launch, not after — it decides whether this ships.
@@ -429,6 +433,27 @@ its first grader run printed nothing (Edge didn't start, right after a
 reboot) and passed when re-run on the run's own files (`regrade.py`); the
 harness now retries the grader and keeps its errors.
 
+### Agent skill (2026-11-02, 50 runs)
+
+Does `agent/skills/zynlex/SKILL.md` make agents cheaper? ZYNLEX v3 on the five
+held-out tasks, five repeats per arm. Turning skills on also loads Claude
+Code's own built-in skills, so the comparison needs a control arm with skills
+on but without this one.
+
+| Arm | Pass | Input tokens (median) | Input tokens (avg) | Browser calls (avg) |
+|---|---|---|---|---|
+| Skills off (v3, above) | 25/25 | 186k | 191k | 6.8 |
+| Skills on, without ZYNLEX's (control) | 25/25 | 194k | 201k | 6.0 |
+| Skills on, with ZYNLEX's | 25/25 | 224k | 221k | 6.4 |
+
+No benefit. Agents loaded the skill in only 8 of 25 runs. Those 8 cost no
+more than the 17 that didn't load it (222k vs 231k median; 5.9 vs 6.7 browser
+calls), yet both sit above the control, so the arm-to-arm gap is run-to-run
+noise, not the skill's text, and five repeats can't resolve an effect this
+small. The tool descriptions and the server's `instructions` already teach the
+loop; the skill stays as an optional extra (see Setup). 21 control runs were
+re-run after the account's usage limit cut them off mid-run.
+
 ## Phases
 
 1. **Read-only. Built.** Pipe, MCP server, frontend dispatcher
@@ -438,8 +463,8 @@ harness now retries the grader and keeps its errors.
 2. **Driving. Built.** `snapshot`, `act`, `open`, `check` with `reload`, settle
    rule ([agentSnapshot.ts](../src/lib/agentSnapshot.ts)).
 3. **MCP + skill + benchmark. Done.** MCP server, tuned and held-out
-   benchmarks, dialog support (v3), and the agent skill. Not yet measured: how
-   much the skill itself saves.
+   benchmarks, dialog support (v3), and the agent skill (measured: no
+   benefit over the MCP instructions; kept as optional).
 4. **Developer features.** `mock`, `eval`, flag-for-agent, scope grants UI.
 
 ## Not doing
