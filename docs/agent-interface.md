@@ -454,6 +454,21 @@ small. The tool descriptions and the server's `instructions` already teach the
 loop; the skill stays as an optional extra (see Setup). 21 control runs were
 re-run after the account's usage limit cut them off mid-run.
 
+### Other agents (2026-11-02)
+
+Every run above used Claude Code. Single manual runs with other MCP clients,
+same app, prompt and grader (kit: `D:\PROJECT-TESTINGS\agent-try`), ZYNLEX v3:
+
+| Agent | Task | Connected | Grader | Notes |
+|---|---|---|---|---|
+| Antigravity | confirm | yes (asked to allow each tool) | **PASS** | Used ZYNLEX, not its own browser. One-line fix (`=== "true"` removed). Root cause in its words: "strictly compared the boolean return value of confirm() against the string 'true', which always evaluated to false." |
+| OpenCode | confirm | yes (`opencode mcp list`) | not run | CLI: every free model answered "Free usage limit reached". To run from the desktop app. |
+| Codex (app) | confirm | yes (asked to approve each tool) | **PASS** | About 1 minute. Same one-line fix. Has its own browser plugin, but ZYNLEX held the active tab on its test app afterwards, so the browser work went through ZYNLEX. |
+
+With Claude Code, that's three agents from three vendors working through the
+same MCP server unchanged. No token counts here: these are "does it work with
+another client" checks, not benchmark runs.
+
 ## Phases
 
 1. **Read-only. Built.** Pipe, MCP server, frontend dispatcher
