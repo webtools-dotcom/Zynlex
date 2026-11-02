@@ -70,15 +70,13 @@ pub(crate) fn cdp(
 }
 
 /// DevTools protocol call that waits for CDP's reply and returns its JSON.
-async fn cdp_result(
-    wv: &tauri::Webview,
-    method: &'static str,
-    params: String,
-) -> Result<String, String> {
+async fn cdp_result(wv: &tauri::Webview, method: &str, params: String) -> Result<String, String> {
     use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
     use windows_core::HSTRING;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    with_core(wv, method, move |core| unsafe {
+    let method = method.to_string();
+    let err_method = method.clone();
+    with_core(wv, "cdp_result", move |core| unsafe {
         let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
             move |r: windows_core::Result<()>, json: String| -> windows_core::Result<()> {
                 let _ = tx.send(r.map(|_| json).map_err(|e| format!("{method}: {e:?}")));
@@ -86,12 +84,26 @@ async fn cdp_result(
             },
         ));
         let _ = core.CallDevToolsProtocolMethod(
-            &HSTRING::from(method),
+            &HSTRING::from(err_method.as_str()),
             &HSTRING::from(params),
             &handler,
         );
     })?;
-    rx.await.map_err(|_| format!("{method}: no reply"))?
+    rx.await.map_err(|_| "CDP: no reply".to_string())?
+}
+
+/// One DevTools-protocol call on a tab, for the agent dispatcher
+/// (src/lib/agent.ts): accessibility snapshots and trusted input. Main-window
+/// IPC like every command; pages can't reach it.
+#[tauri::command]
+pub async fn browser_cdp(
+    app: AppHandle,
+    tab_id: String,
+    method: String,
+    params: String,
+) -> Result<String, String> {
+    let wv = find_tab_webview(&app, &webview_label_for_tab(&tab_id)).ok_or("tab not loaded")?;
+    cdp_result(&wv, &method, params).await
 }
 
 // ─── Injected Scripts ────────────────────────────────────────────────
@@ -735,7 +747,8 @@ pub async fn browser_clear_site_data(
 }
 
 /// Saves a PNG of the tab to Downloads and returns its path. `kind`: "bug" (the visible
-/// area, for a bug report), "visible", or "full" (the whole page, up to Chromium's 16384 px).
+/// area, for a bug report), "visible", "full" (the whole page, up to Chromium's 16384 px),
+/// or "agent" (the visible area, saved to %TEMP%\zynlex-agent instead).
 #[tauri::command]
 pub async fn browser_capture_screenshot(
     app: AppHandle,
@@ -747,6 +760,7 @@ pub async fn browser_capture_screenshot(
         "bug" => ("bug", false),
         "visible" => ("screenshot", false),
         "full" => ("screenshot", true),
+        "agent" => ("agent", false),
         _ => return Err(format!("screenshot: unknown kind {kind}")),
     };
     let wv = find_tab_webview(&app, &webview_label_for_tab(&tab_id)).ok_or("tab not found")?;
@@ -777,11 +791,15 @@ pub async fn browser_capture_screenshot(
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis());
-    let path = app
-        .path()
-        .download_dir()
-        .map_err(|e| e.to_string())?
-        .join(format!("zynlex-{prefix}-{millis}.png"));
+    // An agent's screenshots are working files, not something the user saved.
+    let dir = if kind == "agent" {
+        let dir = std::env::temp_dir().join("zynlex-agent");
+        std::fs::create_dir_all(&dir).map_err(|e| format!("screenshot: {e}"))?;
+        dir
+    } else {
+        app.path().download_dir().map_err(|e| e.to_string())?
+    };
+    let path = dir.join(format!("zynlex-{prefix}-{millis}.png"));
     std::fs::write(&path, png).map_err(|e| format!("screenshot: {e}"))?;
     Ok(path.to_string_lossy().into_owned())
 }

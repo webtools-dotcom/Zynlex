@@ -1,0 +1,501 @@
+# Agent interface (design proposal)
+
+**Status:** Phases 1 (read-only) and 2 (driving) built; the rest is a proposal. Written 2026-10-30.
+
+ZYNLEX stays a minimal browser for humans. This adds a side door for AI coding
+agents (Claude Code, Codex, OpenCode, Antigravity, Cursor, …): a thin MCP server
+that lets an agent see and drive the same tabs the developer is looking at. No AI
+chat panel, no bundled model.
+
+The goal is narrow: **an agent verifying a web app in ZYNLEX should use fewer
+tokens, fewer tool calls and less wall time, and succeed more often, than with
+Playwright MCP, chrome-devtools-mcp, playwright-cli or agent-browser.** If a
+benchmark (below) doesn't show that, the feature isn't worth keeping.
+
+## Problems this solves
+
+These are the documented failure modes of existing agent browser tools, as of
+late 2026:
+
+| Problem | Evidence | ZYNLEX answer |
+|---|---|---|
+| Context overflow | Playwright MCP returns the full accessibility tree + console after every action; 50–540 KB per page ([playwright-mcp#1233](https://github.com/microsoft/playwright-mcp/issues/1233), [#1216](https://github.com/microsoft/playwright-mcp/issues/1216)). Screenshots stay in context for the rest of the session. | Interactive-only snapshots, "unchanged" replies, diffs, large output written to a file. Screenshots only on request. |
+| Running out of steps | Stagehand's benchmark: Playwright MCP tasks failed on step limits, not context ([source](https://www.stagehand.dev/blog/playwright-mcp-token-usage)). One "did my change work?" takes navigate + wait + snapshot + console + network. | `check`: one call does reload → settle → new errors → failed requests → page diff. Every action returns its own consequences. |
+| Evidence the agent missed | Other tools only record from the moment they attach. | Console capture is already always on per tab, so errors from before the agent connected (or from the human clicking around) are there. |
+| Login walls | Headless browsers start logged out; workarounds are saved-state files and login scripts. | The agent works in the developer's real, already-signed-in dev tab. |
+| Guessed waits | Fixed sleeps, "is the dev server up?", HMR still applying. | A settle rule that knows about network, DOM and the dev server, with a hard timeout that says *why* it didn't settle. |
+| Human and agent see different browsers | Headless; the developer can't point at the bug. | Same window. Agent-active indicator, stop button, and "flag for agent". |
+| Setup | Chromium downloads, flags, MCP vs CLI choice. | WebView2 ships with Windows 11 and is on nearly all Windows 10 machines, and ZYNLEX already requires it. One small MCP binary. |
+| Tool-schema overhead | Playwright MCP's 22 tools ≈ 15k tokens; chrome-devtools-mcp ≈ 4.5k. | Target: under 2k tokens of tool definitions. |
+
+## What exists today (and what doesn't)
+
+Built on, unchanged:
+
+- **CDP from Rust:** `cdp()` and `cdp_result()` in
+  [browser/mod.rs](../src-tauri/src/commands/browser/mod.rs) wrap
+  `CallDevToolsProtocolMethod`. Snapshot, click and type all go through this.
+- **Console capture** ([console.rs](../src-tauri/src/commands/browser/console.rs)):
+  always on per tab. Exceptions, `console.error`/`warn`, and Chromium's own log,
+  which includes failed requests. Entries are emitted to the frontend and live
+  in `useConsoleStore`.
+- **Screenshots:** `browser_capture_screenshot` already writes a PNG to disk and
+  returns the path, which is the shape agents want.
+- **Script execution:** `browser_run_script`, `eval_json`.
+- **Mocks and header rules** ([net.rs](../src-tauri/src/commands/browser/net.rs)):
+  per-tab maps in Rust, pushed wholesale from the frontend stores.
+- **Port scanner** (`scan_ports`), **bug report** ([bugReport.ts](../src/lib/bugReport.ts)),
+  **network throttling** (`browser_set_network_conditions`).
+
+Correction to an easy assumption: **full network capture is not always on.**
+Request/response capture (headers, bodies, timing) is gated by
+`NETWORK_CAPTURE_ACTIVE` and only runs while the Network panel is open. Failed
+requests *are* always captured, through the console's `Log.entryAdded`. So
+before an agent connects, it gets errors and failed-request URLs; bodies and
+timing only from when it (or the panel) is attached. An agent session holds a
+reference on the same counter while connected — the ref-count was built for
+exactly this kind of independent client.
+
+## Architecture
+
+```
+agent ──stdio MCP──▶ zynlex-mcp ──named pipe──▶ ZYNLEX (Rust) ──event──▶ frontend dispatcher
+                                \\.\pipe\zynlex-agent     ◀──invoke── (stores, existing commands)
+```
+
+**`zynlex-mcp.exe`** ([src/bin/zynlex-mcp.rs](../src-tauri/src/bin/zynlex-mcp.rs)) —
+a second binary in the `src-tauri` crate. It has to be separate: the app binary
+is `windows_subsystem = "windows"` in release, so it has no stdio. It speaks MCP
+over stdio (hand-rolled: `initialize`, `tools/list`, `tools/call`, `ping`) and
+relays each tool call over the pipe. It connects lazily, so the agent can start
+before ZYNLEX, and reconnects once if the app restarted. No browser logic lives
+here. MCP is the only front end, since every coding agent speaks it; a plain CLI
+can sit on the same pipe later if the benchmark calls for one.
+
+**Named pipe server in the app** ([src/agent.rs](../src-tauri/src/agent.rs),
+`tokio::net::windows::named_pipe`). One request per message, JSON in, text out. If the app
+isn't running, the tool call returns an error saying so; it does not launch it.
+
+**The frontend is the dispatcher.** Rust forwards each pipe request to the main
+window as an event; a TypeScript dispatcher handles it and replies via an
+`agent_reply` command. This is main-window IPC, the same trust level as every
+other command — no page-originated IPC, no `remote.urls`. Reasons:
+
+- Tabs, workspaces, console entries, network entries, mocks and header rules
+  already live in the frontend stores. Going through them keeps one source of
+  truth. A mock added by Rust directly would be wiped on the next
+  `browser_set_mock_rules` push from the store.
+- The dispatcher is plain TypeScript over stores, so it's unit-testable with
+  Vitest. Rust-only work (snapshot, input, settle) is exposed as normal
+  `#[tauri::command]`s the dispatcher calls.
+
+**No `--remote-debugging-port`.** It would let any local process drive every
+tab, including signed-in non-dev ones, and adding it would change the shared
+`additionalBrowserArgs`, which architecture.md notes takes a restart and must
+match across all webviews.
+
+## Tools
+
+Output is terse plain text (cheaper than JSON for a model to read). Every tool
+that acts on a page ends with what the action caused — settle note, URL change,
+page diff, new errors and failed requests — so the agent never needs a second
+call to find out.
+
+| Tool | Does | Status |
+|---|---|---|
+| `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab | Built |
+| `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors | Built |
+| `check` | Settles, then new errors + failed requests since the last report; `reload` reloads first | Built |
+| `errors` | Every recorded error and failed request; `warnings` adds warnings | Built |
+| `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
+| `act` | `click` / `type` / `select` / `press` on a ref with real input, then the consequences | Built |
+| `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
+| `screenshot` | Visible area to `%TEMP%\zynlex-agent`, returns the path | Built (no element crop yet) |
+| `mock` | Add/list/clear mocks through the mocks store, so they show in the UI | Phase 4 |
+| `eval` | Escape hatch, in-scope tabs only | Phase 4 |
+
+`check`, `act` and `open` share one report cursor per tab: whatever one of them
+reported, the next one doesn't repeat. Bodies over 8 KB are cut inline (writing
+them to a file is not done yet).
+
+### Snapshot and refs
+
+Built from CDP `Accessibility.getFullAXTree`
+([agentSnapshot.ts](../src/lib/agentSnapshot.ts)), not an injected DOM walker:
+the AX tree already resolves roles, names and states. Default output keeps
+interactive nodes, plus headings, landmarks that contain something actionable,
+and `alert`/`status` text (validation and toast messages):
+
+```
+main
+  h1 "Checkout"
+  form
+    textbox "Coupon" [e3] value=""
+    combobox "Plan" [e4] value="Basic" collapsed
+      option "Basic" [e25] selected
+      option "Pro" [e28]
+    button "Apply" [e8]
+  link "Back home" [e33]
+```
+
+Refs are `e` + `backendDOMNodeId`, so they survive re-renders that keep the same
+DOM node. A reload or navigation makes a new document and new refs. `focused`
+is left out: it moves on every click and would put two noise lines in every
+diff. After an action the agent gets a multiset line diff (`-`/`+`), or the
+whole page when the diff would be longer than it.
+
+A stale ref fails with `Stale ref e8: that element is gone` plus the current
+page. WebView2 reports every CDP error as `E_INVALIDARG` and drops CDP's own
+message, so for an element-scoped call that HRESULT is read as "node gone".
+
+Acting is real input, not `element.click()`: `DOM.scrollIntoViewIfNeeded` +
+`DOM.getContentQuads` + `Input.dispatchMouseEvent` at the centre for clicks;
+`DOM.focus`, select-all and `Input.insertText` for typing (replaces the value);
+a `change` + `input` event pair for `<select>`; `Input.dispatchKeyEvent` for
+keys. An action brings its tab to the front so the developer sees it happen.
+
+Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`); iframes
+aren't walked; the snapshot is cut at 300 lines (use `within`).
+
+### Settle rule
+
+Settled means all of: the tab isn't loading, `document.readyState` is
+`complete`, no request is pending, and the DOM has been still for 500 ms — with
+a 300 ms floor so an action's own requests have time to start. Pending requests
+come from the network-capture map in Rust (`browser_pending_requests`), skipping
+WebSocket, EventSource, media and ping, and anything pending over 8 s (more
+likely aborted than slow). DOM stillness comes from a `MutationObserver` the
+probe installs once per document (in the page's world, so the page can see
+`__zynlexQuiet`).
+
+Hard timeout 10 s, and the reply says why:
+`Not settled after 10s: 2 requests pending (…)`, `still loading`, or `the DOM
+keeps changing (animation or polling?)`. HMR needs no special case: `check`
+without `reload` waits for the update to finish applying.
+
+## Permissions and safety
+
+The agent is untrusted by default, and page content is untrusted always.
+
+- **Scope.** By default only tabs on loopback hosts (`localhost`, `127.0.0.1`,
+  `[::1]`, `*.localhost`) plus hosts the active workspace lists as its own
+  (staging etc.). Other tabs don't appear in `tabs` and every command refuses
+  them.
+- **Widening scope** is a per-host grant the developer approves in the ZYNLEX UI
+  — an in-app bar, never `window.confirm()` (it renders behind the child
+  webview). Grants last for the agent session.
+- **Pipe access.** Remote clients are rejected (`reject_remote_clients`). The
+  default named-pipe DACL gives write access only to the creating user, SYSTEM
+  and Administrators (everyone else gets read, which can't send a request).
+  `first_pipe_instance` stops a second ZYNLEX from joining the pipe.
+  Known ceiling: another local user who starts first could squat the name.
+- **Visible.** While an agent is connected, the status bar names the client
+  (`● Agent: claude-code`) with a **Stop** button. Stop disconnects every agent
+  and refuses further calls ("the user turned off agent access") until the user
+  clicks **Turn on**; it lasts until restart. Later: a per-tab marker and an
+  activity list (nothing may float over the tab, so not a popover).
+- **Page text is data.** Snapshot names, console messages and response bodies
+  come from the page and may carry prompt-injection attempts. The MCP server's
+  instructions tell the agent to treat them as data; fencing them in the
+  output is not done yet.
+- **Tab suspension.** Every in-scope tab is localhost, and localhost tabs are
+  never suspended.
+
+## Human → agent handoff
+
+MCP is pull-based; ZYNLEX can't push into the agent's conversation. So:
+
+- **Flag for agent** (context menu on an element, or a toolbar action on the
+  page): the developer types a short note. It's queued and appears at the top of
+  the agent's next `check` reply, with the element's ref:
+  `user flagged e15 (button "Apply"): "does nothing on mobile"`.
+- **Copy for agent**: the existing bug report plus the flagged ref, on the
+  clipboard, for pasting into a chat that isn't connected.
+
+## Setup
+
+```
+claude mcp add zynlex -- "C:\path\to\zynlex-mcp.exe"
+```
+
+Any MCP client takes the same command (no arguments, stdio transport). The NSIS
+installer ships `zynlex-mcp.exe` next to `zynlex.exe` (Cargo builds every bin
+target and the bundler packs them all); it isn't put on `PATH`. The MCP
+server's `instructions` give the short version of when to use which tool.
+
+The longer version is an agent skill,
+[agent/skills/zynlex/SKILL.md](../agent/skills/zynlex/SKILL.md): the
+open → act → fix → check loop, which replies need a different next step (an
+open dialog, a covered element, a stale ref, a page that won't settle), and
+iframes. It's built from what the benchmark transcripts show agents wasting
+calls on. For Claude Code, copy the `zynlex` folder to `~/.claude/skills/` (all
+projects) or a project's `.claude/skills/`. Other agents: paste its body into
+their instructions file (`AGENTS.md` and the like).
+
+Measured, it adds nothing the MCP `instructions` don't already give (see "Agent
+skill" under Benchmark), so it's optional: worth installing only in a client
+that ignores a server's `instructions`.
+
+## Benchmark
+
+Built before launch, not after — it decides whether this ships.
+
+- A fixture app with seeded bugs (in `D:\PROJECT-TESTINGS`): a 500 on coupon
+  apply, a broken mobile nav, a console exception on item remove, a form that
+  silently fails validation, a slow endpoint that breaks fixed-sleep tools, a
+  login-gated page.
+- About 10 tasks phrased the way a vibe coder would ("the coupon doesn't work,
+  fix it").
+- Same agent and model, run against: ZYNLEX, Playwright MCP, playwright-cli,
+  chrome-devtools-mcp, agent-browser.
+- Measured: success rate, total tokens, tool calls, wall time. Five runs each.
+
+Bar to ship: clearly better on tokens and tool calls, and no worse on success.
+
+### Pilot (2026-10-30)
+
+Harness, fixture and graders live in `D:\PROJECT-TESTINGS\agent-bench`
+(`run.py`, `grade.mjs`). Each run: headless Claude Code (Sonnet), a fresh copy
+of the fixture, the same prompt, file tools plus exactly one browser MCP server,
+no shell, no plugins. A headless-Edge grader checks the fix. Three tasks (500 on
+coupon apply, exception on item remove, search URL typo) × three tools × one
+run:
+
+| Tool | Pass | Browser calls | Input tokens | Wall time | Cost |
+|---|---|---|---|---|---|
+| ZYNLEX | 3/3 | 8.3 | 224k | 53 s | $0.16 |
+| Playwright MCP 0.0.83 (Edge) | 3/3 | 12.0 | 351k | 59 s | $0.24 |
+| chrome-devtools-mcp 1.12.0 (Edge) | 3/3 | 13.0 | 475k | 62 s | $0.27 |
+
+What the pilot found and fixed in ZYNLEX: a tab activated while the window was
+minimized never got its webview (the switch gave up after ~400 ms); an agent
+action now restores the window without taking focus. `check reload` repeated a
+failure from before the reload. Action diffs only covered interactive
+elements, so a changed total was invisible and the agent fell back to
+`snapshot full`; diffs now cover all text, and `check reload` returns the new
+page.
+
+Not yet evidence: one run per cell, three tasks, and ZYNLEX was tuned against
+these same tasks (its coupon and search runs predate the last two fixes). All
+three bugs can also be found by reading the code. The full run needs new
+tasks that only the running app reveals (layout, timing, data from the API),
+five repeats, and playwright-cli and agent-browser added.
+
+### Full run (2026-10-31 to 11-01)
+
+Six new tasks in `fixture2`, each a bug the running page shows: deal prices
+in cents, a discount reset on add, a 1 s timeout on a 1.5 s endpoint, an email
+pattern that rejects `.com`, a session cookie scoped to `Path=/api/login`, and
+a closed promo that still covers Checkout. Five tools (adding playwright-cli
+0.1.22 and agent-browser 0.41.0, both CLIs the agent runs through Bash limited
+to that one command), five repeats each: 150 runs, then 30 more for ZYNLEX v2.
+External tools drive installed Chrome, headless, with a fresh profile per run.
+Harness, fixtures, raw results and transcripts: `D:\PROJECT-TESTINGS\agent-bench`
+(`run.py`, `grade.mjs`, `analyze.py`, `results-*.jsonl`, `runs-*`).
+
+**Baseline** (ZYNLEX at 1dfa3d1) and **ZYNLEX v2** (022991d, the click fix
+below). All 180 runs passed the grader.
+
+| Tool | Pass | Browser calls (avg) | Input tokens (median) | Input tokens (avg) | Wall (median) | Cost (avg) |
+|---|---|---|---|---|---|---|
+| **ZYNLEX v2** | 30/30 | 7.5 | **213k** | **223k** | **43 s** | **$0.16** |
+| ZYNLEX baseline | 30/30 | 13.6 | 258k | 429k | 48 s | $0.28 |
+| Playwright MCP | 30/30 | 10.8 | 370k | 355k | 52 s | $0.26 |
+| chrome-devtools-mcp | 30/30 | 11.1 | 404k | 424k | 46 s | $0.28 |
+| playwright-cli | 30/30 | 10.6 | 387k | 388k | 116 s | $0.25 |
+| agent-browser | 30/30 | 7.6 | 385k | 391k | 88 s | $0.28 |
+
+Median input tokens per task:
+
+| Task | ZYNLEX v2 | ZYNLEX baseline | Playwright MCP | DevTools MCP | playwright-cli | agent-browser |
+|---|---|---|---|---|---|---|
+| deals | **196k** | 180k | 229k | 298k | 280k | 272k |
+| discount | **261k** | 261k | 472k | 531k | 473k | 553k |
+| stock | **158k** | 217k | 329k | 362k | 319k | 409k |
+| checkout | **226k** | 229k | 339k | 403k | 444k | 301k |
+| login | **215k** | 943k | 369k | 501k | 370k | 393k |
+| signup | **202k** | 851k | 393k | 406k | 409k | 363k |
+
+ZYNLEX v2 is cheapest on every task: 42% fewer input tokens than the next tool
+at the median, about 40% lower cost, and the fastest. Browser calls tie with
+agent-browser; ZYNLEX's calls each return more of what the agent needs, so
+fewer turns re-read context.
+
+What the baseline exposed and v2 fixed: on login and signup the submit button
+sat under a fixed promo bar after `DOM.scrollIntoViewIfNeeded`, the click
+landed on the bar, and `act` said "Page unchanged"; agents retried for 20+
+calls. `click` now hit-tests the element's centre (`elementFromPoint`),
+re-scrolls it to the middle when covered, and otherwise fails with what covers
+it (`e18 is covered by div#promo "Promo" … Nothing was clicked`). Verified live
+on both tasks.
+
+Caveats, in order of weight:
+
+- ZYNLEX was improved against these same tasks. The fix is generic (Playwright
+  does the same check), but a held-out set of new tasks is the honest next test.
+- Login for v2 ran with a host per run (`run<port>.localhost`). On
+  `127.0.0.1`, ZYNLEX's persistent profile kept the session cookie a previous
+  run had set after fixing the bug (cookies ignore ports), so the bug didn't
+  reproduce and agents lost calls on it. The other tools start a fresh profile
+  per run and weren't affected. Real use has the same trait: the profile that
+  keeps you signed in can also hide a cookie bug.
+- The CLI tools ran without the agent skill files they ship (the agent got
+  `--help`); with them they may need fewer calls.
+- One model (Sonnet), one small app, one grader check per task, Windows only.
+
+### Held-out run (2026-11-01, 125 runs)
+
+Answers the first caveat above. Five tasks written *after* ZYNLEX v2, in a new
+app (`fixture3`, a task board), including areas ZYNLEX was never built or tuned
+for. Rule: no ZYNLEX changes until the run is finished, whatever it shows.
+
+| Task | Symptom | Tests |
+|---|---|---|
+| iframe | "Send feedback" (in an iframe) does nothing | ZYNLEX snapshots don't walk iframes |
+| confirm | Confirming "Delete …?" doesn't delete | Native `confirm()`; ZYNLEX has no dialog tool |
+| storage | Dark mode doesn't survive a reload | Reload + localStorage |
+| enter | Enter in "New task" doesn't add it | Keyboard input |
+| loadmore | "Load more" repeats the first page | Only visible in network requests |
+
+Same harness, ZYNLEX v2 build, every tool on its own host per run
+(`--host-per-run`), five repeats.
+
+All 125 runs passed the grader. ZYNLEX was killed at the 900 s cap on 3 of its
+5 confirm runs (fix already written each time, so they still graded as passes).
+
+| Tool | Browser calls (median) | Input tokens (median) | Wall (median) | Timeouts |
+|---|---|---|---|---|
+| **ZYNLEX v2** | 6 | **179k** | **34 s** | 3 |
+| Playwright MCP | 9 | 278k | 42 s | 0 |
+| chrome-devtools-mcp | 11 | 396k | 44 s | 0 |
+| playwright-cli | 11 | 365k | 88 s | 0 |
+| agent-browser | 6 | 323k | 64 s | 0 |
+
+Median input tokens per task:
+
+| Task | ZYNLEX v2 | Playwright MCP | DevTools MCP | playwright-cli | agent-browser |
+|---|---|---|---|---|---|
+| iframe | **206k** | 278k | 355k | 372k | 384k |
+| enter | **162k** | 220k | 391k | 324k | 228k |
+| loadmore | **167k** | 305k | 403k | 330k | 299k |
+| storage | **164k** | 260k | 341k | 248k | 292k |
+| confirm | 1,038k | **296k** | 396k | 422k | 358k |
+
+On tasks it was never tuned for, ZYNLEX is still cheapest on four of five, by
+26–45% against the next tool, including iframe, which its page outline
+doesn't even reach (the network log carried it). The fifth is the one gap the
+held-out set was built to find:
+
+**ZYNLEX can't handle a native dialog.** Once `confirm()` is
+open, the page's script is paused, so every call that touches the page waits
+until the 30 s bridge timeout and returns "ZYNLEX didn't answer"; ZYNLEX
+neither reports the dialog nor can accept or dismiss it. Agents fix it from
+the code alone after 11+ timeouts (smoke run: 1.13M tokens, 896 s; held-out
+run: killed at the 900 s cap, fix already written, so the grader passed it).
+The other four tools report the dialog and let the agent answer it. Costs of
+killed runs aren't reported, so the tables use tokens.
+
+Dialog support followed in 116188d (v3, below).
+
+### Dialog support, v3 (2026-11-01, 25 runs)
+
+ZYNLEX now subscribes to `Page.javascriptDialogOpening/Closed` per tab. While
+a dialog is open, page tools reply at once with its type and message instead
+of waiting on the paused page; a click or key press that opens one returns as
+soon as it opens; `act` gains `accept`/`dismiss` (with `text` for `prompt()`)
+through `Page.handleJavaScriptDialog`. Checked live: the click returns in
+0.1–0.2 s with "A confirm dialog is open: …", `accept` and `dismiss` close it,
+and a person still sees the same native dialog: `Page.enable` doesn't hide it
+(window captures of v2 and v3 match).
+
+ZYNLEX v3 on the same five held-out tasks, five repeats:
+
+| | Pass | Timeouts | Browser calls (median) | Input tokens (median) | Input tokens (avg) | Wall (median) |
+|---|---|---|---|---|---|---|
+| **ZYNLEX v3** | 25/25 | 0 | 7 | **186k** | **191k** | 39 s |
+| ZYNLEX v2 | 25/25 | 3 | 6 | 179k | 345k | 34 s |
+| Playwright MCP | 25/25 | 0 | 9 | 278k | 275k | 42 s |
+
+| Task | ZYNLEX v3 | ZYNLEX v2 | Best other tool |
+|---|---|---|---|
+| confirm | **179k** | 1,038k | 296k (Playwright MCP) |
+| storage | **128k** | 164k | 248k (playwright-cli) |
+| loadmore | **169k** | 167k | 299k (agent-browser) |
+| iframe | **223k** | 206k | 278k (Playwright MCP) |
+| enter | **198k** | 162k | 220k (Playwright MCP) |
+
+ZYNLEX v3 is cheapest on all five, a third fewer input tokens than the next
+tool on average, with no timeouts. Caveats: `confirm` is no longer held out
+for v3 (the fix came after seeing it fail); `enter` and `iframe` moved by
+about 20k between v2 and v3 with no related code change, which is
+run-to-run noise at five repeats. One v3 run (`iframe-0`) was re-graded:
+its first grader run printed nothing (Edge didn't start, right after a
+reboot) and passed when re-run on the run's own files (`regrade.py`); the
+harness now retries the grader and keeps its errors.
+
+### Agent skill (2026-11-02, 50 runs)
+
+Does `agent/skills/zynlex/SKILL.md` make agents cheaper? ZYNLEX v3 on the five
+held-out tasks, five repeats per arm. Turning skills on also loads Claude
+Code's own built-in skills, so the comparison needs a control arm with skills
+on but without this one.
+
+| Arm | Pass | Input tokens (median) | Input tokens (avg) | Browser calls (avg) |
+|---|---|---|---|---|
+| Skills off (v3, above) | 25/25 | 186k | 191k | 6.8 |
+| Skills on, without ZYNLEX's (control) | 25/25 | 194k | 201k | 6.0 |
+| Skills on, with ZYNLEX's | 25/25 | 224k | 221k | 6.4 |
+
+No benefit. Agents loaded the skill in only 8 of 25 runs. Those 8 cost no
+more than the 17 that didn't load it (222k vs 231k median; 5.9 vs 6.7 browser
+calls), yet both sit above the control, so the arm-to-arm gap is run-to-run
+noise, not the skill's text, and five repeats can't resolve an effect this
+small. The tool descriptions and the server's `instructions` already teach the
+loop; the skill stays as an optional extra (see Setup). 21 control runs were
+re-run after the account's usage limit cut them off mid-run.
+
+### Other agents (2026-11-02)
+
+Every run above used Claude Code. Single manual runs with other MCP clients,
+same app, prompt and grader (kit: `D:\PROJECT-TESTINGS\agent-try`), ZYNLEX v3:
+
+| Agent | Task | Connected | Grader | Notes |
+|---|---|---|---|---|
+| Antigravity | confirm | yes (asked to allow each tool) | **PASS** | Used ZYNLEX, not its own browser. One-line fix (`=== "true"` removed). Root cause in its words: "strictly compared the boolean return value of confirm() against the string 'true', which always evaluated to false." |
+| OpenCode | confirm | yes (`opencode mcp list`) | not run | CLI: every free model answered "Free usage limit reached". To run from the desktop app. |
+| Codex (app) | confirm | yes (asked to approve each tool) | **PASS** | About 1 minute. Same one-line fix. Has its own browser plugin, but ZYNLEX held the active tab on its test app afterwards, so the browser work went through ZYNLEX. |
+
+With Claude Code, that's three agents from three vendors working through the
+same MCP server unchanged. No token counts here: these are "does it work with
+another client" checks, not benchmark runs.
+
+## Phases
+
+1. **Read-only. Built.** Pipe, MCP server, frontend dispatcher
+   ([src/lib/agent.ts](../src/lib/agent.ts)), localhost-only scope, status-bar
+   indicator + Stop. Tools: `tabs`, `check` (no reload), `errors`, `network`,
+   `screenshot`. Useful on its own and can't change anything.
+2. **Driving. Built.** `snapshot`, `act`, `open`, `check` with `reload`, settle
+   rule ([agentSnapshot.ts](../src/lib/agentSnapshot.ts)).
+3. **MCP + skill + benchmark. Done.** MCP server, tuned and held-out
+   benchmarks, dialog support (v3), and the agent skill (measured: no
+   benefit over the MCP instructions; kept as optional).
+4. **Developer features.** `mock`, `eval`, flag-for-agent, scope grants UI.
+
+## Not doing
+
+- An AI chat panel or bundled model.
+- Headless mode or parallel browsers — that's Playwright's and Cloudflare's job.
+- Visual regression or recorded test suites — Playwright Test covers it.
+- WebMCP — still an origin trial in Chrome and behind a flag in Edge, so not in
+  WebView2.
+- macOS/Linux — see ROADMAP.
+
+## Open questions
+
+- Keep full network capture on for the whole agent session, or only during
+  `check`/`act`? Bodies up to 64 KB each add memory on busy pages.
+- Should `errors` dedupe the way the console store does (`count`), or report
+  every occurrence? Dedupe saves tokens but hides "it fired 40 times".
+- Put `zynlex-mcp.exe` on `PATH` from the installer, or have a "Copy MCP
+  setup command" button in ZYNLEX that fills in the real path?

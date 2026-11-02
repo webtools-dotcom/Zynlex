@@ -1,6 +1,8 @@
 import { originOf } from "@/lib/url";
 import { useConsoleStore } from "@/stores/console";
 import { useUIStore } from "@/stores/ui";
+import { useAgentStore } from "@/stores/agent";
+import { setAgentEnabled } from "@/services/browser";
 import { Toast } from "@/components/Toast";
 
 /** The active page's console counts; clicking opens the Console panel. */
@@ -30,6 +32,36 @@ function ConsoleCounts({ tabId }: { tabId: string | null }) {
           </span>
         ))}
     </button>
+  );
+}
+
+/**
+ * Shown while an AI agent is connected over MCP, with Stop; or, after Stop,
+ * a way to turn agent access back on. Hidden otherwise.
+ */
+function AgentIndicator() {
+  const { enabled, clients } = useAgentStore();
+  if (enabled && !clients.length) return null;
+  const toggle = () => setAgentEnabled(!enabled).catch(() => {});
+  return (
+    <span className="flex items-center gap-2">
+      {enabled ? (
+        <span style={{ color: "var(--color-accent)" }} title="An AI agent can read your localhost tabs">
+          ● Agent: {clients.join(", ")}
+        </span>
+      ) : (
+        <span style={{ color: "var(--color-text-muted)" }}>Agent access off</span>
+      )}
+      <button
+        type="button"
+        onClick={toggle}
+        className="hover:underline"
+        style={{ color: "var(--color-text-muted)" }}
+        title={enabled ? "Disconnect agents and refuse new calls" : "Let agents connect again"}
+      >
+        {enabled ? "Stop" : "Turn on"}
+      </button>
+    </span>
   );
 }
 
@@ -78,6 +110,7 @@ export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom, tabId }:
     >
       {leftContent}
       <ConsoleCounts tabId={tabId} />
+      <AgentIndicator />
       <div className="flex-1" />
       <Toast />
       {zoom !== 1 && (
