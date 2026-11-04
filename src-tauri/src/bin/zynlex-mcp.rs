@@ -30,8 +30,10 @@ fn tools() -> Value {
     json!([
         {
             "name": "tabs",
-            "description": "List the developer's open localhost tabs (id, URL, title, error counts) and running dev servers that have no tab. Start here.",
-            "inputSchema": { "type": "object", "properties": {} }
+            "description": "List the developer's open localhost tabs (id, URL, title, error counts) and running dev servers that have no tab. Start here. `close` closes a tab you opened (with `open`, or a popup your action caused); never the developer's.",
+            "inputSchema": { "type": "object", "properties": {
+                "close": { "type": "string", "description": "Id of a tab you opened, to close it." }
+            } }
         },
         {
             "name": "check",
@@ -59,7 +61,7 @@ fn tools() -> Value {
         },
         {
             "name": "act",
-            "description": "Click, type into, choose an option in, or press a key on an element, with real input; or accept/dismiss an open alert, confirm or prompt dialog (no ref). Returns what changed on the page and any new errors.",
+            "description": "Click, type into, choose an option in, or press a key on an element, with real input; or accept/dismiss an open alert, confirm or prompt dialog (no ref). Returns what changed on the page, any tab it opened, and any new errors.",
             "inputSchema": { "type": "object", "properties": {
                 "tab": tab,
                 "ref": { "type": "string", "description": "From snapshot, e.g. e12. Optional for press." },
@@ -260,7 +262,12 @@ mod tests {
             &mut client,
         )
         .unwrap();
-        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 9);
+        let tools = list["result"]["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 9);
+        assert_eq!(
+            tools[0]["inputSchema"]["properties"]["close"]["type"],
+            "string"
+        );
 
         let unknown = handle(
             &json!({"jsonrpc": "2.0", "id": 3, "method": "resources/list"}),

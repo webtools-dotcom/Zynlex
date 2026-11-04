@@ -61,6 +61,7 @@ import { useMocksStore } from "@/stores/mocks";
 import { isLoopbackUrl, titleFromUrl } from "@/lib/url";
 import { openTab } from "@/lib/tabActions";
 import { listenForAgents } from "@/lib/agent";
+import { notePopup } from "@/lib/agentTabs";
 
 let _netEntryId = 0;
 
@@ -378,7 +379,13 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     if (!IS_TAURI) return;
     const { track, dispose } = tracker();
 
-    track(onNewTabRequested((url) => openTab({ url })));
+    track(
+      onNewTabRequested((url, openerTabId) => {
+        const id = openTab({ url });
+        // Lets an agent's action report the tab it opened (src/lib/agentTabs.ts).
+        if (openerTabId) notePopup(openerTabId, id, url);
+      }),
+    );
 
     track(
       onUrlChanged((tabId, url) => {
