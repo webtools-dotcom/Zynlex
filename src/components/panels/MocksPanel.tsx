@@ -128,6 +128,14 @@ function MockRow({
           <span className="shrink-0 w-[42px] text-[var(--color-text-muted)]">
             {rule.method || "ANY"}
           </span>
+          {rule.agent && (
+            <span
+              className="shrink-0 text-[var(--color-accent)]"
+              title="Added by an AI agent. Removed when the agent disconnects; not saved."
+            >
+              agent
+            </span>
+          )}
           <span className={`shrink-0 tabular-nums ${statusColor(rule.status)}`}>{rule.status}</span>
           {rule.delayMs > 0 && <span className="shrink-0 text-amber-400">+{rule.delayMs}ms</span>}
           <span className="truncate text-[var(--color-text-secondary)]" title={rule.pattern}>

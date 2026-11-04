@@ -38,7 +38,11 @@ Built on, unchanged:
 - **Console capture** ([console.rs](../src-tauri/src/commands/browser/console.rs)):
   always on per tab. Exceptions, `console.error`/`warn`, and Chromium's own log,
   which includes failed requests. Entries are emitted to the frontend and live
-  in `useConsoleStore`.
+  in `useConsoleStore`. While an agent is connected (`CONSOLE_VERBOSE`, a
+  ref-count like network capture) `console.log`/`info`/`debug` and Chromium's
+  info log are forwarded too; the store keeps them in `logsByTab`, apart from
+  errors and warnings, capped at 200 per tab and never counted in the tab badge,
+  status bar or Console panel.
 - **Screenshots:** `browser_capture_screenshot` already writes a PNG to disk and
   returns the path, which is the shape agents want.
 - **Script execution:** `browser_run_script`, `eval_json`.
@@ -106,13 +110,32 @@ call to find out.
 | `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab | Built |
 | `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors | Built |
 | `check` | Settles, then new errors + failed requests since the last report; `reload` reloads first | Built |
-| `errors` | Every recorded error and failed request; `warnings` adds warnings | Built |
+| `errors` | Every recorded error and failed request; `level` adds `warning`, `info` or `log` (each includes the levels above it; newest 50 log/info lines) | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
 | `act` | `click` / `type` / `select` / `press` on a ref with real input, then the consequences | Built |
 | `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
 | `screenshot` | Visible area to `%TEMP%\zynlex-agent`, returns the path | Built (no element crop yet) |
-| `mock` | Add/list/clear mocks through the mocks store, so they show in the UI | Phase 4 |
+| `mock` | `add` a canned response (or, with `header`+`value`, a request-header rule), `list`, `remove` by id, `clear`, through the panels' stores | Built |
 | `eval` | Escape hatch, in-scope tabs only | Phase 4 |
+
+### Mocks and header rules
+
+`mock` writes to the same per-workspace stores as the Mocks and Headers panels
+([agentRules.ts](../src/lib/agentRules.ts)), so the developer sees every rule
+and the bridge pushes them to Rust the normal way; nothing writes the Rust rule
+maps directly. Scope matches the panels: the target tab's workspace, applying
+to every tab in it. Agent rules carry `agent: true` (an "agent" tag in the
+panels; Rust ignores the field):
+
+- the agent can `remove` and `clear` only its own; the developer's are listed
+  as "developer's" and refused;
+- an agent mock goes first in the list (first enabled match wins), so it's the
+  one served;
+- they are never persisted, and are dropped when the last agent disconnects,
+  so a forgotten canned 500 can't outlive the session.
+
+Blank and bare-`*` patterns are refused for both kinds (a catch-all mock
+replaces the page itself; a catch-all header goes to every third party).
 
 `check`, `act` and `open` share one report cursor per tab: whatever one of them
 reported, the next one doesn't repeat. Bodies over 8 KB are cut inline (writing
@@ -480,7 +503,8 @@ another client" checks, not benchmark runs.
 3. **MCP + skill + benchmark. Done.** MCP server, tuned and held-out
    benchmarks, dialog support (v3), and the agent skill (measured: no
    benefit over the MCP instructions; kept as optional).
-4. **Developer features.** `mock`, `eval`, flag-for-agent, scope grants UI.
+4. **Developer features.** `mock` and console levels done (untested on
+   Windows); `eval`, flag-for-agent, scope grants UI to do.
 
 ## Not doing
 
