@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { recordEntry } from "@/lib/errorGroups";
 
 /** One console message, as console.rs forwards it. */
 export interface ConsoleEntry {
@@ -69,7 +70,9 @@ export const useConsoleStore = create<ConsoleStore>()((set) => ({
   entriesByTab: {},
   logsByTab: {},
   countsByTab: {},
-  add: (entry) =>
+  add: (entry) => {
+    // The agent's grouped log, which outlives page loads (lib/errorGroups.ts).
+    recordEntry(entry);
     set((s) => {
       if (entry.level === "info" || entry.level === "log") {
         const logs = append(s.logsByTab[entry.tabId] ?? [], entry, MAX_LOGS_PER_TAB);
@@ -85,7 +88,8 @@ export const useConsoleStore = create<ConsoleStore>()((set) => ({
         entriesByTab: { ...s.entriesByTab, [entry.tabId]: next },
         countsByTab: { ...s.countsByTab, [entry.tabId]: counts },
       };
-    }),
+    });
+  },
   clearTab: (tabId) =>
     set((s) => {
       if (!s.entriesByTab[tabId] && !s.countsByTab[tabId] && !s.logsByTab[tabId]) return s;

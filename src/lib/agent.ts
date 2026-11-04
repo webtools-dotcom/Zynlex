@@ -28,6 +28,7 @@ import {
   popupMark,
   takePopups,
 } from "@/lib/agentTabs";
+import { forgetReported, isFailedRow, report, tabProblems } from "@/lib/errorGroups";
 import { closeTab, openTab } from "@/lib/tabActions";
 import { isLoopbackUrl } from "@/lib/url";
 import {
@@ -45,7 +46,7 @@ import {
   webviewReload,
 } from "@/services/browser";
 import { useAgentStore } from "@/stores/agent";
-import { type ConsoleEntry, isFailedRequest, useConsoleStore } from "@/stores/console";
+import { type ConsoleEntry, useConsoleStore } from "@/stores/console";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useServersStore } from "@/stores/servers";
 import { useTabsStore } from "@/stores/tabs";
@@ -112,39 +113,15 @@ export function findDevice(name: string): DevicePreset | undefined {
 
 /** Continuation lines of a multi-line message (stack traces) indented under it. */
 function consoleLine(e: ConsoleEntry): string {
-  // A failed request's text doesn't name the URL, so it's the part that matters;
-  // an exception's stack usually already carries its location.
-  const where = !e.url
-    ? ""
-    : isFailedRequest(e)
-      ? ` ${e.url}`
-      : e.text.includes(e.url)
-        ? ""
-        : ` (${e.url}${e.line != null ? `:${e.line}` : ""})`;
+  // A stack usually already carries its location.
+  const where =
+    !e.url || e.text.includes(e.url) ? "" : ` (${e.url}${e.line != null ? `:${e.line}` : ""})`;
   const times = e.count > 1 ? ` ×${e.count}` : "";
   return `  ${e.text.replace(/\n/g, "\n    ")}${where}${times}`;
 }
 
-const netNum = (n: NetworkLogEntry) => Number(n.id.replace(/\D/g, "")) || 0;
-/** The browser's own favicon probe isn't the app's failure (console.rs drops it too). */
-const isFailedRow = (n: NetworkLogEntry) =>
-  n.statusCode >= 400 && !/\/favicon\.ico$/.test(n.url.split(/[?#]/)[0]);
 const netLine = (n: NetworkLogEntry) =>
   `  ${n.id} ${n.method} ${n.statusCode} ${n.durationMs}ms ${n.resourceType} ${n.url}${n.mocked ? " (mocked)" : ""}`;
-
-/**
- * Failed requests as two lists that don't repeat each other: network rows have
- * method and status but exist only while capture is on; the console's network
- * errors are always recorded, and cover requests that got no response at all.
- */
-function failures(rows: NetworkLogEntry[], consoleFailed: ConsoleEntry[]): string[] {
-  const failedRows = rows.filter(isFailedRow);
-  const urls = new Set(failedRows.map((n) => n.url));
-  return [
-    ...failedRows.map(netLine),
-    ...consoleFailed.filter((e) => !urls.has(e.url)).map(consoleLine),
-  ];
-}
 
 function section(title: string, lines: string[]): string[] {
   return lines.length ? [`${lines.length} ${title}:`, ...lines] : [];
@@ -229,29 +206,37 @@ function closeAgentTab(arg: string): string {
   return `Closed [${shortId(t)}] ${t.url}\n${tabsTool()}`;
 }
 
-/**
- * Per tab, what's already been reported: each console entry's repeat count
- * (an entry seen again with a higher count is news) and the newest network
- * row number. Ids, not timestamps: two messages in one millisecond are common.
- */
-const cursors = new Map<string, { seen: Map<string, number>; net: number; at: number }>();
+/** Per tab, when its problems were last reported (for "Since last check Ns ago"). */
+const cursors = new Map<string, { at: number }>();
 
-/** Errors and failed requests since the last report, as lines (none: empty). Advances the cursor. */
-function newProblems(tab: Tab): string[] {
-  const since = cursors.get(tab.id);
-  const entries = useConsoleStore.getState().entriesByTab[tab.id] ?? [];
-  const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
-  const fresh = entries.filter((e) => since?.seen.get(e.id) !== e.count);
-  const freshRows = rows.filter((n) => netNum(n) > (since?.net ?? 0));
-  cursors.set(tab.id, {
-    seen: new Map(entries.map((e) => [e.id, e.count])),
-    net: Math.max(since?.net ?? 0, ...rows.map(netNum)),
-    at: Date.now(),
-  });
-  const errors = fresh.filter((e) => e.level === "error" && !isFailedRequest(e)).map(consoleLine);
-  const failed = failures(freshRows, fresh.filter(isFailedRequest));
-  return [...section("errors", errors), ...section("failed requests", failed)];
+/**
+ * When the current agent session began: problems first seen before it are
+ * evidence from before the agent arrived (roadmap M3). Set when the first
+ * agent connects, or on the first call if that status event hasn't landed yet.
+ */
+let connectedAt: number | null = null;
+
+function origin(tab: Tab): string {
+  try {
+    return new URL(tab.url).origin;
+  } catch {
+    return "";
+  }
 }
+
+/**
+ * The tab's errors and failed requests, grouped (lib/errorGroups.ts), as
+ * lines, and marked as shown. `delta`: only what's new or grew since the last
+ * report; otherwise everything on the current page too.
+ */
+function problemReport(tab: Tab, delta: boolean): string[] {
+  const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
+  if (delta) cursors.set(tab.id, { at: Date.now() });
+  return report(tabProblems(tab.id, rows, origin(tab)), delta, connectedAt);
+}
+
+/** Errors and failed requests since the last report, as lines (none: empty). */
+const newProblems = (tab: Tab) => problemReport(tab, true);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -987,8 +972,6 @@ function errorsTool(args: Args): string {
   if (rank < 0) throw new Error(`level must be one of ${LEVELS.join(", ")}.`);
   const { entriesByTab, logsByTab } = useConsoleStore.getState();
   const entries = entriesByTab[tab.id] ?? [];
-  const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
-  const errors = entries.filter((e) => e.level === "error" && !isFailedRequest(e)).map(consoleLine);
   const warnings = entries.filter((e) => e.level === "warning");
   const logs = (logsByTab[tab.id] ?? []).filter((e) => rank >= LEVELS.indexOf(e.level));
   const older = logs.length - MAX_ROWS;
@@ -998,8 +981,7 @@ function errorsTool(args: Args): string {
       e.level === "info" ? consoleLine(e).replace(/^ {2}/, "  info: ") : consoleLine(e),
     );
   const body = [
-    ...section("errors", errors),
-    ...section("failed requests", failures(rows, entries.filter(isFailedRequest))),
+    ...problemReport(tab, false),
     ...(rank >= 1 ? section("warnings", warnings.map(consoleLine)) : []),
     ...(rank >= 2 ? section(rank === 3 ? "log/info messages" : "info messages", logLines) : []),
     older > 0 ? `(${older} older messages not shown)` : "",
@@ -1339,6 +1321,7 @@ const PAGE_TOOLS = new Set([
 ]);
 
 export async function runAgentTool(tool: string, args: Args): Promise<string> {
+  connectedAt ??= Date.now();
   const answering = tool === "act" && (args.action === "accept" || args.action === "dismiss");
   if (PAGE_TOOLS.has(tool) && !answering) {
     const tab = resolveTab(args.tab);
@@ -1385,7 +1368,14 @@ ${note}`;
 function setStatus(s: AgentStatus): void {
   const wasConnected = useAgentStore.getState().clients.length > 0;
   useAgentStore.setState(s);
-  if (wasConnected && !s.clients.length) dropAgentRules();
+  if (!wasConnected && s.clients.length) connectedAt = Date.now();
+  if (wasConnected && !s.clients.length) {
+    dropAgentRules();
+    // The next agent gets the whole story, "before you connected" included.
+    connectedAt = null;
+    cursors.clear();
+    forgetReported();
+  }
 }
 
 /** Subscribes the dispatcher and the status mirror. */

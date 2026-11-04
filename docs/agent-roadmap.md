@@ -54,10 +54,10 @@ Each item below leans on that.
 |---|---|---|---|
 | M1 | **Flag for agent**: right-click an element (or press a key), type a note; the agent's next reply starts with it and the element's ref ("user flagged e15, button 'Apply': does nothing on mobile") | The agent sees what the person points at, in the page they're looking at. | todo |
 | M2 | **Show the agent what I did**: record the developer's own clicks and typing in a tab as `act` steps plus the errors and requests each caused; the agent replays or reads them | Bug reproduction straight from a human session, no "steps to reproduce" typed out. | todo |
-| M3 | **Evidence from before the agent arrived**: errors and failed requests the page logged while the developer was using it, kept per tab and offered in the first `check` | A browser the agent launches only sees from launch onward. | partly done (console) |
+| M3 | **Evidence from before the agent arrived**: errors and failed requests the page logged while the developer was using it, kept per tab across page loads and offered, grouped, under `Before you connected:` in the first `check`/`open`/`errors` | A browser the agent launches only sees from launch onward. | done, untested on Windows |
 | M4 | **Dev state the agent can use**: workspaces, environments (local/staging), mocks, header rules, saved API requests, all one tool call away | Lives in the developer's ZYNLEX, not in a fresh profile. | partly done (P10 mocks and header rules) |
 | M5 | **Shared control**: the developer sees every agent action live, can take over mid-flow (agent pauses, resumes after) and stop it | Headless runs are invisible. | partly done (Stop) |
-| M6 | **Agent-aware error grouping**: identical errors collapsed across reloads with counts and first-seen time, so every reply stays short as a session gets long | Built on ZYNLEX's always-on capture. | todo |
+| M6 | **Agent-aware error grouping**: identical errors collapsed across reloads with counts and first-seen time, so every reply stays short as a session gets long; one already shown repeats only as `(+N)` | Built on ZYNLEX's always-on capture. | done, untested on Windows |
 
 The benchmark is the proof, and publishing it (S4) is the marketing: the
 claim is checkable.

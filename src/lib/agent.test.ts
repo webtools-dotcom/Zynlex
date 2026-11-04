@@ -56,6 +56,7 @@ import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useTabsStore } from "@/stores/tabs";
 import type { Tab } from "@/types";
 import { notePopup, popupMark, takePopups } from "./agentTabs";
+import { forgetTab, notePageLoad } from "./errorGroups";
 
 const tab = (id: string, url: string, lastActiveAt = 0): Tab => ({
   id,
@@ -113,6 +114,7 @@ describe("agent tools", () => {
     });
     useConsoleStore.setState({ entriesByTab: {}, logsByTab: {}, countsByTab: {} });
     useNetworkStore.setState({ entriesByTab: {} });
+    forgetTab("aaaaaaaa-1");
   });
 
   it("only ever resolves localhost tabs", () => {
@@ -142,6 +144,51 @@ describe("agent tools", () => {
     const third = await runAgentTool("check", {});
     expect(third).toContain("TypeError: second");
     expect(third).not.toContain("TypeError: first");
+  });
+
+  it("check groups repeats, and shows one already reported only as +N", async () => {
+    error("TypeError: x is undefined");
+    await runAgentTool("check", {});
+    for (let i = 0; i < 3; i++) error("TypeError: x is undefined");
+    expect(await runAgentTool("check", {})).toContain(
+      "1 errors:\n  TypeError: x is undefined at /app.js:3 (+3)",
+    );
+    // A reload clears the store, not the agent's log.
+    useConsoleStore.getState().clearTab("aaaaaaaa-1");
+    notePageLoad("aaaaaaaa-1");
+    error("TypeError: x is undefined");
+    expect(await runAgentTool("errors", {})).toMatch(
+      /TypeError: x is undefined at \/app\.js:3 \(×5 since \d\d:\d\d, across 2 page loads\)/,
+    );
+  });
+
+  it("gives an agent what the page logged before it connected, once", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      listenForAgents();
+      // Its initial status read (no agents) lands first, as in the app.
+      await Promise.resolve();
+      vi.setSystemTime(1_000_000);
+      hooks.status?.({ enabled: true, clients: [] });
+      error("TypeError: from before");
+      notePageLoad("aaaaaaaa-1");
+      error("http://localhost:5173/api/me", "network");
+      vi.setSystemTime(2_000_000);
+      hooks.status?.({ enabled: true, clients: ["claude-code"] });
+      vi.setSystemTime(3_000_000);
+      error("TypeError: after");
+      const first = await runAgentTool("errors", {});
+      expect(first).toContain(
+        "Before you connected:\n1 errors:\n  TypeError: from before at /app.js:3\n1 failed requests:\n",
+      );
+      expect(first).toContain("Since you connected:\n1 errors:\n  TypeError: after");
+      const second = await runAgentTool("check", {});
+      expect(second).not.toContain("Before you connected");
+      expect(second).toContain("No new errors");
+    } finally {
+      hooks.status?.({ enabled: true, clients: [] });
+      vi.useRealTimers();
+    }
   });
 
   it("doesn't list a failed request twice when both logs have it", async () => {
@@ -273,6 +320,7 @@ describe("console levels", () => {
     useTabsStore.setState({ tabs: { "aaaaaaaa-1": tab("aaaaaaaa-1", "http://localhost:5173/") } });
     useConsoleStore.setState({ entriesByTab: {}, logsByTab: {}, countsByTab: {} });
     useNetworkStore.setState({ entriesByTab: {} });
+    forgetTab("aaaaaaaa-1");
   });
 
   const log = (level: "info" | "log" | "warning", text: string) =>

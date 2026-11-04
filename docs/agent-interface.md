@@ -55,8 +55,10 @@ Correction to an easy assumption: **full network capture is not always on.**
 Request/response capture (headers, bodies, timing) is gated by
 `NETWORK_CAPTURE_ACTIVE` and only runs while the Network panel is open. Failed
 requests *are* always captured, through the console's `Log.entryAdded`. So
-before an agent connects, it gets errors and failed-request URLs; bodies and
-timing only from when it (or the panel) is attached. An agent session holds a
+before an agent connects, it gets errors and failed-request URLs (kept across
+page loads and offered under `Before you connected:`, see
+[Error grouping](#error-grouping)); bodies and timing only from when it (or the
+panel) is attached. An agent session holds a
 reference on the same counter while connected — the ref-count was built for
 exactly this kind of independent client.
 
@@ -109,8 +111,8 @@ call to find out.
 |---|---|---|
 | `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab; `close` closes a tab the agent opened | Built |
 | `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors | Built |
-| `check` | Settles, then new errors + failed requests since the last report; `reload` reloads first | Built |
-| `errors` | Every recorded error and failed request; `level` adds `warning`, `info` or `log` (each includes the levels above it; newest 50 log/info lines) | Built |
+| `check` | Settles, then new errors + failed requests since the last report, grouped (see [Error grouping](#error-grouping)); `reload` reloads first | Built |
+| `errors` | Every error and failed request on the current page, plus any from earlier page loads not yet shown, grouped; `level` adds `warning`, `info` or `log` (each includes the levels above it; newest 50 log/info lines) | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
 | `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` / `upload` on a ref with real input, `back` / `forward` in history (localhost entries only), then the consequences (including any tab it opened) | Built (hover, drag, back/forward, upload untested on Windows) |
 | `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
@@ -139,8 +141,48 @@ panels; Rust ignores the field):
 Blank and bare-`*` patterns are refused for both kinds (a catch-all mock
 replaces the page itself; a catch-all header goes to every third party).
 
-`check`, `act` and `open` share one report cursor per tab: whatever one of them
-reported, the next one doesn't repeat.
+`check`, `act`, `open` and `errors` share what was reported per tab: whatever
+one of them showed, the next `check`, `act` or `open` doesn't repeat (see
+below).
+
+### Error grouping
+
+Roadmap M6 and M3, in [errorGroups.ts](../src/lib/errorGroups.ts). The
+console store keeps only the current page's entries, because a page load
+clears them for the badge. The console store's `add` also feeds a grouped log
+for each tab. Page loads don't clear it; only closing the tab does. It holds
+up to 300 groups per tab and drops the least recently seen first.
+
+- **Errors** group by message plus source location (URL path and line).
+  Before comparing, the message is normalised: URLs lose their query string
+  and fragment (a stack frame's `:42:7` stays), uuids and hex ids of 8+
+  characters become `<id>`, and standalone numbers become `<n>`.
+- **Failed requests** group by method + URL path + status. The console's
+  failed-request lines are always recorded, so they also cover the time
+  before an agent connected, but they carry no method. Their status is read
+  from Chromium's text (`status of 500`, `net::ERR_…`). Network rows (only
+  while capture is on) add the method and an id for `network id=…`. A row
+  group takes over the console group with the same path and status. Its count
+  is the larger of the two, not the sum, because both usually saw the same
+  requests.
+- **One line per group**, with the count, first-seen time and number of page
+  loads when they say something:
+  `TypeError: x is undefined at /src/app.js:42 (×7 since 14:02, across 3 page loads)`.
+  URLs on the tab's own origin are shown as paths. A stack is shown under the
+  first line only the first time.
+- **Repeats cost one short line.** Each group remembers how many of its
+  occurrences the agent has seen. `check` and the reports after `act`/`open`
+  show a group again only when it grew, as `TypeError: x is undefined at
+  /src/app.js:42 (+3)`. `errors` lists the whole current page with full
+  counts, plus anything from earlier loads not shown yet. It also marks all
+  of them as shown.
+- **Before you connected.** Groups first seen before the agent session began
+  and not yet shown go under a `Before you connected:` header, and what's
+  left goes under `Since you connected:`. This only happens on the agent's
+  first `check`, `open`, `errors` or action on that tab, since afterwards
+  they've been shown. The session starts when the first agent connects; when
+  the last one leaves, the reported state is reset, so the next agent gets
+  the whole story.
 
 ### Large output
 

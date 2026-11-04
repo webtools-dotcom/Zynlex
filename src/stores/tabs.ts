@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import type { Tab, NewTabOptions } from "@/types";
 import { useNetworkStore } from "@/stores/network";
 import { useConsoleStore } from "@/stores/console";
+import { forgetTab } from "@/lib/errorGroups";
 
 function buildTab(workspaceId: string, opts: NewTabOptions = {}): Tab {
   return {
@@ -74,6 +75,7 @@ export const useTabsStore = create<TabsStore>()(
         // Tab is genuinely gone (not discarded) — its network log has no more use.
         useNetworkStore.getState().clearTab(tabId);
         useConsoleStore.getState().clearTab(tabId);
+        forgetTab(tabId);
       },
 
       updateTab: (tabId, updates) => {
