@@ -25,7 +25,7 @@ vi.mock("@/services/browser", async (importOriginal) => ({
   },
 }));
 
-import { listenForAgents, resolveTab, runAgentTool } from "./agent";
+import { findDevice, listenForAgents, resolveTab, runAgentTool } from "./agent";
 import { useConsoleStore } from "@/stores/console";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useTabsStore } from "@/stores/tabs";
@@ -174,5 +174,23 @@ describe("agent tools", () => {
 
     hooks.dialog?.({ tabId: "aaaaaaaa-1", open: false });
     await expect(runAgentTool("act", { action: "dismiss" })).rejects.toThrow("No dialog is open");
+  });
+});
+
+describe("findDevice", () => {
+  it("matches device names loosely, preferring an exact name", () => {
+    expect(findDevice("iPhone 16")?.label).toBe("iPhone 16");
+    expect(findDevice("iphone16")?.label).toBe("iPhone 16");
+    expect(findDevice("iPhone 16 Pro")?.label).toBe("iPhone 16 Pro");
+    expect(findDevice("ipad")?.label).toBe("iPad");
+    expect(findDevice("pixel")?.label).toBe("Pixel 9");
+    expect(findDevice("nokia 3310")).toBeUndefined();
+  });
+
+  it("gives phones their touch and mobile flags", () => {
+    const d = findDevice("Pixel 9");
+    expect(d?.mobile).toBe(true);
+    expect(d?.touch).toBe(true);
+    expect(d?.width).toBeLessThan(500);
   });
 });

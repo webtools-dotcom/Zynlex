@@ -9,6 +9,7 @@
  * second call to find out.
  */
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportPresets";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 import { type AXNode, diffSnapshot, formatSnapshot } from "@/lib/agentSnapshot";
 import { openTab } from "@/lib/tabActions";
@@ -69,7 +70,28 @@ export function resolveTab(arg: unknown): Tab {
 }
 
 function header(t: Tab): string {
-  return `${t.url} "${t.title}" [${shortId(t)}]${t.isLoading ? " (loading)" : ""}`;
+  const vp = emulated.get(t.id);
+  const as = vp ? ` (as ${vp.label}, ${vp.width}×${vp.height})` : "";
+  return `${t.url} "${t.title}" [${shortId(t)}]${as}${t.isLoading ? " (loading)" : ""}`;
+}
+
+/**
+ * Per tab, the device an agent is emulating, plus the user agent the tab had
+ * before (navigator.userAgent, which includes a ZYNLEX user-agent setting),
+ * so `reset` puts back exactly what was there.
+ */
+const emulated = new Map<string, DevicePreset & { originalUa: string }>();
+
+const ALL_DEVICES = Object.values(DEVICE_PRESETS).flat();
+
+/** A preset by name, forgiving about case and spacing ("iphone16" finds "iPhone 16"); exact matches win. */
+export function findDevice(name: string): DevicePreset | undefined {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const want = norm(name);
+  return (
+    ALL_DEVICES.find((d) => norm(d.label) === want) ??
+    ALL_DEVICES.find((d) => norm(d.label).startsWith(want))
+  );
 }
 
 /** Continuation lines of a multi-line message (stack traces) indented under it. */
@@ -690,6 +712,89 @@ function networkTool(args: Args): string {
     .join("\n");
 }
 
+/**
+ * Emulates a device (or a plain width×height) in a tab through CDP, the same
+ * overrides the Viewport panel uses: size and pixel ratio, mobile, touch, and
+ * the device's user agent. The page lays out at that size inside the tab, so
+ * the developer sees it too. `reset` clears all of it.
+ */
+async function viewportTool(args: Args): Promise<string> {
+  const tab = resolveTab(args.tab);
+  await showTab(tab);
+  const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+  const device = typeof args.device === "string" ? args.device.trim() : "";
+  const current = emulated.get(tab.id);
+
+  if (device.toLowerCase() === "reset") {
+    if (!current) return `${header(tab)}\nNot emulating a device; nothing to reset.`;
+    // Same order as applying: the size change comes last.
+    await tabCdp(tab.id, "Emulation.setUserAgentOverride", { userAgent: current.originalUa });
+    await tabCdp(tab.id, "Emulation.setTouchEmulationEnabled", { enabled: false });
+    await tabCdp(tab.id, "Emulation.clearDeviceMetricsOverride");
+    emulated.delete(tab.id);
+    return [`Back to the normal window size.`, ...(await consequences(tab, urlBefore))].join("\n");
+  }
+
+  let preset: DevicePreset | undefined;
+  if (device) {
+    preset = findDevice(device);
+    if (!preset) {
+      const names = ALL_DEVICES.map((d) => d.label).join(", ");
+      throw new Error(`No device "${device}". Devices: ${names}. Or pass width and height.`);
+    }
+  } else if (typeof args.width === "number" && typeof args.height === "number") {
+    const narrow = args.width < 768;
+    preset = {
+      label: "custom",
+      width: Math.round(args.width),
+      height: Math.round(args.height),
+      deviceScaleFactor: 1,
+      category: narrow ? "mobile" : "laptop",
+      mobile: narrow,
+      touch: narrow,
+    };
+  } else {
+    throw new Error('Pass a device (e.g. "iPhone 16"), or width and height, or device "reset".');
+  }
+
+  const originalUa =
+    current?.originalUa ??
+    String(
+      (
+        await tabCdp<{ result: { value?: unknown } }>(tab.id, "Runtime.evaluate", {
+          expression: "navigator.userAgent",
+          returnByValue: true,
+        })
+      ).result.value ?? "",
+    );
+  // User agent and touch before the size: the size change fires the page's
+  // resize handlers, and they should already see the device they're on.
+  await tabCdp(tab.id, "Emulation.setUserAgentOverride", {
+    userAgent: preset.userAgent ?? originalUa,
+  });
+  await tabCdp(tab.id, "Emulation.setTouchEmulationEnabled", {
+    enabled: preset.touch,
+    ...(preset.touch ? { maxTouchPoints: 5 } : {}),
+  });
+  await tabCdp(tab.id, "Emulation.setDeviceMetricsOverride", {
+    width: preset.width,
+    height: preset.height,
+    deviceScaleFactor: preset.deviceScaleFactor,
+    mobile: preset.mobile,
+  });
+  // Without this, Chromium's mobile shrink-to-fit zooms out a page that
+  // overflows (see docs/architecture.md, Viewport emulation).
+  await tabCdp(tab.id, "Emulation.setPageScaleFactor", { pageScaleFactor: 1 });
+  emulated.set(tab.id, { ...preset, originalUa });
+  const ua = preset.userAgent
+    ? " Its user agent applies to requests from now on; reload (check reload=true) if the server sniffs it."
+    : "";
+  return [
+    `Emulating ${preset.label}: ${preset.width}×${preset.height}${preset.mobile ? ", mobile" : ""}${preset.touch ? ", touch" : ""}.${ua}`,
+    ...(await consequences(tab, urlBefore)),
+  ].join("\n");
+}
+
 async function screenshotTool(args: Args): Promise<string> {
   const tab = resolveTab(args.tab);
   const path = await captureScreenshot(tab.id, "agent");
@@ -697,7 +802,7 @@ async function screenshotTool(args: Args): Promise<string> {
 }
 
 /** Tools that need the page itself to answer; a dialog pauses it. */
-const PAGE_TOOLS = new Set(["check", "snapshot", "act", "screenshot"]);
+const PAGE_TOOLS = new Set(["check", "snapshot", "act", "screenshot", "viewport"]);
 
 export async function runAgentTool(tool: string, args: Args): Promise<string> {
   const answering = tool === "act" && (args.action === "accept" || args.action === "dismiss");
@@ -725,6 +830,8 @@ ${note}`;
       return networkTool(args);
     case "screenshot":
       return screenshotTool(args);
+    case "viewport":
+      return viewportTool(args);
     default:
       throw new Error(`Unknown tool "${tool}".`);
   }

@@ -14,7 +14,7 @@ Status: **todo** · **doing** · **done**.
 
 | # | Feature | Why it matters | Status |
 |---|---|---|---|
-| P1 | **Viewport / mobile emulation** (`viewport` tool: device presets, width×height, touch, back to normal) | "Does it break on mobile?" is one of the most common checks. ZYNLEX has a viewport panel for people, not for agents. | todo |
+| P1 | **Viewport / mobile emulation** (`viewport` tool: device presets, width×height, touch, back to normal) | "Does it break on mobile?" is one of the most common checks. ZYNLEX has a viewport panel for people, not for agents. | done |
 | P2 | **`eval`** (run JS in the page, return a value; localhost tabs only) | Escape hatch for anything the other tools don't cover. | todo |
 | P3 | **`hover`, `back`/`forward`, drag** | Hover menus, history navigation. | todo |
 | P4 | **`wait_for`** (text appears/disappears, URL changes, timeout) | Long async flows beyond the settle rule. | todo |

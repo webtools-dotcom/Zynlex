@@ -90,6 +90,16 @@ fn tools() -> Value {
             "name": "screenshot",
             "description": "Saves a PNG of a tab's visible area and returns its file path. For layout only; `check` is cheaper for errors.",
             "inputSchema": { "type": "object", "properties": { "tab": tab } }
+        },
+        {
+            "name": "viewport",
+            "description": "Emulate a phone, tablet or window size in a tab (size, pixel ratio, touch, mobile user agent) to check responsive layouts; device \"reset\" goes back to normal. Returns the page as it lays out at that size.",
+            "inputSchema": { "type": "object", "properties": {
+                "tab": tab,
+                "device": { "type": "string", "description": "A device name such as \"iPhone 16\", \"Pixel 9\", \"iPad\", or \"reset\"." },
+                "width": { "type": "number", "description": "With height, a custom size instead of a device." },
+                "height": { "type": "number" }
+            } }
         }
     ])
 }
@@ -250,7 +260,7 @@ mod tests {
             &mut client,
         )
         .unwrap();
-        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 8);
+        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 9);
 
         let unknown = handle(
             &json!({"jsonrpc": "2.0", "id": 3, "method": "resources/list"}),
