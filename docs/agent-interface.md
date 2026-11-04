@@ -108,15 +108,28 @@ call to find out.
 | `check` | Settles, then new errors + failed requests since the last report; `reload` reloads first | Built |
 | `errors` | Every recorded error and failed request; `warnings` adds warnings | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
-| `act` | `click` / `type` / `select` / `press` on a ref with real input, then the consequences | Built |
+| `act` | `click` / `type` / `select` / `press` / `upload` on a ref with real input, then the consequences | Built (`upload` untested on Windows) |
 | `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
-| `screenshot` | Visible area to `%TEMP%\zynlex-agent`, returns the path | Built (no element crop yet) |
+| `screenshot` | Visible area, one element (`ref`) or the whole page (`full`) to `%TEMP%\zynlex-agent`, returns the path | Built (`ref`, `full` untested on Windows) |
 | `mock` | Add/list/clear mocks through the mocks store, so they show in the UI | Phase 4 |
 | `eval` | Escape hatch, in-scope tabs only | Phase 4 |
 
 `check`, `act` and `open` share one report cursor per tab: whatever one of them
-reported, the next one doesn't repeat. Bodies over 8 KB are cut inline (writing
-them to a file is not done yet).
+reported, the next one doesn't repeat.
+
+### Large output
+
+A snapshot (or action diff) over 300 lines returns its first 300, then
+`… 412 more lines; all of it is in C:\…\zynlex-agent\zynlex-snapshot-<tab>-<ms>.txt.`
+A response body over 8 KB returns its first 8,000 characters and the path of
+`zynlex-body-<tab>-<request>-<ms>.txt` the same way. The head stays inline so
+the refs and the start of the payload are usable without a second call; the
+agent reads the file only when it needs the rest. The files are written by
+`agent_write_temp` ([agent.rs](../src-tauri/src/agent.rs)), which keeps the
+name to letters, digits, `-` and `_` under a `zynlex-` prefix, so it can only
+write `.txt` files directly in `%TEMP%\zynlex-agent`, next to the agent's
+screenshots. Nothing cleans that folder up yet. Diffs are now taken over the
+whole page, so a change past line 300 still shows.
 
 ### Snapshot and refs
 
@@ -152,10 +165,21 @@ Acting is real input, not `element.click()`: `DOM.scrollIntoViewIfNeeded` +
 `DOM.getContentQuads` + `Input.dispatchMouseEvent` at the centre for clicks;
 `DOM.focus`, select-all and `Input.insertText` for typing (replaces the value);
 a `change` + `input` event pair for `<select>`; `Input.dispatchKeyEvent` for
-keys. An action brings its tab to the front so the developer sees it happen.
+keys; `DOM.setFileInputFiles` for `upload`, which takes absolute paths on the
+developer's machine (not checked for existence) and fires the page's `input`
+and `change` events. Its ref can be the `<input type=file>` itself, a `<label>`
+for one, or an element holding one (styled inputs are often hidden, so they
+have no ref of their own); anything else is refused, as are several files for
+an input without `multiple`. An action brings its tab to the front so the
+developer sees it happen.
 
 Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`); iframes
-aren't walked; the snapshot is cut at 300 lines (use `within`).
+aren't walked; a snapshot over 300 lines spills to a file (see Large output).
+
+`screenshot ref=e12` scrolls the element into view, takes the box around its
+`DOM.getContentQuads` plus the scroll offset (`Page.getLayoutMetrics`), and
+captures just that area with `captureBeyondViewport`; `full` captures the whole
+page (up to Chromium's 16,384 px), as the Screenshot command does for people.
 
 ### Settle rule
 

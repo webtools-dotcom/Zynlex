@@ -96,9 +96,18 @@ export async function clearSiteData(tabId: string, origin: string): Promise<void
 /** PNG of the tab saved to Downloads: the visible area ("bug", "visible") or the whole page ("full"). "agent" is the visible area saved to %TEMP%\zynlex-agent. Resolves to its path. */
 export async function captureScreenshot(
   tabId: string,
-  kind: "bug" | "visible" | "full" | "agent",
+  kind: "bug" | "visible" | "full" | "agent" | "agent-full",
+  clip?: ClipRect,
 ): Promise<string> {
-  return invoke<string>("browser_capture_screenshot", { tabId, kind });
+  return invoke<string>("browser_capture_screenshot", { tabId, kind, clip: clip ?? null });
+}
+
+/** A screenshot area in page (document) CSS pixels. */
+export interface ClipRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /** Works when the app's document isn't focused, unlike navigator.clipboard. */
@@ -577,6 +586,11 @@ export async function pendingRequests(tabId: string): Promise<string[]> {
 /** Un-minimizes the app window without taking focus (see `agent_reveal_window`). */
 export async function revealWindow(): Promise<void> {
   await invoke<void>("agent_reveal_window");
+}
+
+/** Writes text too long for an agent reply to %TEMP%\zynlex-agent and returns the file's path. */
+export async function agentWriteTemp(name: string, text: string): Promise<string> {
+  return invoke<string>("agent_write_temp", { name, text });
 }
 
 /** Path of zynlex-mcp.exe next to the app, or null if it isn't there (see `agent_mcp_path`). */

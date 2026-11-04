@@ -55,8 +55,6 @@ const HAS_VALUE = new Set(["textbox", "searchbox", "combobox", "spinbutton", "sl
 /** Not `focused`: it moves on every click and turns each diff into noise. */
 const STATES = ["disabled", "checked", "selected", "required", "invalid", "pressed"];
 
-/** Lines past this are cut, with a pointer to `within`. */
-const MAX_LINES = 300;
 const MAX_NAME = 80;
 
 const str = (v: unknown) =>
@@ -139,12 +137,8 @@ export function formatSnapshot(
   };
 
   const lines = walk(root, 0);
-  if (!lines.length) return "(nothing actionable on the page)";
-  if (lines.length <= MAX_LINES) return lines.join("\n");
-  return [
-    ...lines.slice(0, MAX_LINES),
-    `… ${lines.length - MAX_LINES} more lines. Pass within=<ref of a landmark> to see one part.`,
-  ].join("\n");
+  // Not cut here: diffs need the whole page. The agent tools cut what they show.
+  return lines.length ? lines.join("\n") : "(nothing actionable on the page)";
 }
 
 /**

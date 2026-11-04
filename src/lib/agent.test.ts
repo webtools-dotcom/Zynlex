@@ -9,6 +9,7 @@ const hooks = vi.hoisted(() => ({
     | null
     | ((e: { tabId: string; open: boolean; type?: string; message?: string }) => void),
   cdp: [] as string[],
+  writes: [] as { name: string; text: string }[],
 }));
 vi.mock("@/services/browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -18,6 +19,10 @@ vi.mock("@/services/browser", async (importOriginal) => ({
   onDialog: (cb: typeof hooks.dialog) => {
     hooks.dialog = cb;
     return Promise.resolve(() => {});
+  },
+  agentWriteTemp: (name: string, text: string) => {
+    hooks.writes.push({ name, text });
+    return Promise.resolve(`C:\\Temp\\zynlex-agent\\zynlex-${name}.txt`);
   },
   tabCdp: (_tab: string, method: string) => {
     hooks.cdp.push(method);
@@ -151,6 +156,41 @@ describe("agent tools", () => {
     expect(list).not.toContain("main.js");
     expect(await runAgentTool("network", { all: true })).toContain("main.js");
     expect(await runAgentTool("network", { id: "net-2" })).toContain('{"items":[]}');
+  });
+
+  it("writes a body over 8 KB to a file and returns its head and the path", async () => {
+    const big = `{"rows":[${"1,".repeat(6000)}1]}`;
+    useNetworkStore.setState({
+      entriesByTab: {
+        "aaaaaaaa-1": [{ ...row("net-3", 200, "http://localhost:5173/api/rows"), body: big }],
+      },
+    });
+    hooks.writes.length = 0;
+    const out = await runAgentTool("network", { id: "net-3" });
+    expect(hooks.writes).toHaveLength(1);
+    expect(hooks.writes[0].text).toBe(big);
+    expect(hooks.writes[0].name).toMatch(/^body-aaaaaaaa-net-3-\d+$/);
+    expect(out).toContain(
+      `… ${big.length - 8000} more chars; all of it is in C:\\Temp\\zynlex-agent\\`,
+    );
+    expect(out.length).toBeLessThan(8500);
+  });
+
+  it("rejects upload paths that aren't absolute before touching the page", async () => {
+    hooks.cdp.length = 0;
+    await expect(
+      runAgentTool("act", { ref: "e4", action: "upload", files: ["photo.png"] }),
+    ).rejects.toThrow("isn't an absolute path");
+    await expect(runAgentTool("act", { ref: "e4", action: "upload" })).rejects.toThrow(
+      "upload needs files",
+    );
+    expect(hooks.cdp).toEqual([]);
+  });
+
+  it("takes either an element or the whole page in a screenshot, not both", async () => {
+    await expect(runAgentTool("screenshot", { ref: "e4", full: true })).rejects.toThrow(
+      "Pass ref or full, not both.",
+    );
   });
 
   it("reports an open dialog instead of calling into the paused page", async () => {
