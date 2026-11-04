@@ -59,11 +59,12 @@ fn tools() -> Value {
         },
         {
             "name": "act",
-            "description": "Click, type into, choose an option in, or press a key on an element, with real input; or accept/dismiss an open alert, confirm or prompt dialog (no ref). Returns what changed on the page and any new errors.",
+            "description": "Click, hover, drag, type into, choose an option in, or press a key on an element, with real input; go back/forward in history (no ref); or accept/dismiss an open alert, confirm or prompt dialog (no ref). Returns what changed on the page and any new errors.",
             "inputSchema": { "type": "object", "properties": {
                 "tab": tab,
                 "ref": { "type": "string", "description": "From snapshot, e.g. e12. Optional for press." },
-                "action": { "type": "string", "enum": ["click", "type", "select", "press", "accept", "dismiss"] },
+                "action": { "type": "string", "enum": ["click", "hover", "drag", "type", "select", "press", "back", "forward", "accept", "dismiss"] },
+                "to": { "type": "string", "description": "drag: ref to drop onto." },
                 "text": { "type": "string", "description": "type: text to replace the value with. select: option value or label. press: Enter, Tab, Escape, Backspace, Delete, Space, Arrow keys, Home, End, PageUp, PageDown. accept: the reply to a prompt() dialog." }
             }, "required": ["action"] }
         },
@@ -99,6 +100,25 @@ fn tools() -> Value {
                 "device": { "type": "string", "description": "A device name such as \"iPhone 16\", \"Pixel 9\", \"iPad\", or \"reset\"." },
                 "width": { "type": "number", "description": "With height, a custom size instead of a device." },
                 "height": { "type": "number" }
+            } }
+        },
+        {
+            "name": "eval",
+            "description": "Run JavaScript in the page and return the value as JSON (cut at 4 KB). An expression, or a function body with `return`; `await` works. For what the other tools don't cover.",
+            "inputSchema": { "type": "object", "properties": {
+                "tab": tab,
+                "code": { "type": "string" }
+            }, "required": ["code"] }
+        },
+        {
+            "name": "wait_for",
+            "description": "Wait until text appears, text disappears and/or the URL contains a string (all given must hold), then return what changed. For slow flows the automatic settle doesn't cover.",
+            "inputSchema": { "type": "object", "properties": {
+                "tab": tab,
+                "text": { "type": "string", "description": "Text to appear." },
+                "gone": { "type": "string", "description": "Text to disappear." },
+                "url": { "type": "string", "description": "Text the URL must contain." },
+                "timeout": { "type": "number", "description": "Seconds, default 10, max 30." }
             } }
         }
     ])
@@ -260,7 +280,7 @@ mod tests {
             &mut client,
         )
         .unwrap();
-        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 9);
+        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 11);
 
         let unknown = handle(
             &json!({"jsonrpc": "2.0", "id": 3, "method": "resources/list"}),

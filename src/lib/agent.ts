@@ -495,11 +495,16 @@ const HIT_TEST = `function (p) {
 }`;
 
 /**
- * A real mouse click at the element's centre. Checks first that the element
- * is what's actually there: scrolled only just into view, it can sit under a
- * fixed header or footer, and a click would silently land on that instead.
+ * The point to send mouse input to: the element's centre, once the element is
+ * what's actually there. Scrolled only just into view, it can sit under a
+ * fixed header or footer, and input would silently land on that instead.
+ * `verb` names the action for the error ("a click would land…").
  */
-async function click(tabId: string, backendNodeId: number): Promise<void> {
+async function aim(
+  tabId: string,
+  backendNodeId: number,
+  verb: string,
+): Promise<{ x: number; y: number }> {
   await tabCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId });
   let p = await centre(tabId, backendNodeId);
   let cover = await callOn(tabId, backendNodeId, HIT_TEST, p);
@@ -514,16 +519,90 @@ async function click(tabId: string, backendNodeId: number): Promise<void> {
   }
   if (cover) {
     throw new Error(
-      `e${backendNodeId} is covered by ${cover} at its centre, so a click would land on that instead. Nothing was clicked.`,
+      `e${backendNodeId} is covered by ${cover} at its centre, so a ${verb} would land on that instead. Nothing was done.`,
     );
   }
-  const { x, y } = p;
+  return p;
+}
+
+/** A real mouse click at the element's centre. */
+async function click(tabId: string, backendNodeId: number): Promise<void> {
+  const { x, y } = await aim(tabId, backendNodeId, "click");
   const at = { x, y, button: "left", clickCount: 1 };
   await sendInput(tabId, "Input.dispatchMouseEvent", [
     { type: "mouseMoved", x, y },
     { type: "mousePressed", ...at },
     { type: "mouseReleased", ...at },
   ]);
+}
+
+/** Moves the mouse onto the element's centre (hover menus, tooltips). */
+async function hover(tabId: string, backendNodeId: number): Promise<void> {
+  const { x, y } = await aim(tabId, backendNodeId, "hover");
+  await sendInput(tabId, "Input.dispatchMouseEvent", [{ type: "mouseMoved", x, y }]);
+}
+
+/** Mouse moves between two points, so drag libraries that wait for a movement threshold see one. */
+export function dragPath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  steps = 5,
+): { x: number; y: number }[] {
+  return Array.from({ length: steps }, (_, i) => ({
+    x: from.x + ((to.x - from.x) * (i + 1)) / steps,
+    y: from.y + ((to.y - from.y) * (i + 1)) / steps,
+  }));
+}
+
+/**
+ * Press on `from`, move in steps, release on `to`. The drop target is checked
+ * before anything is pressed (no scrolling once the button is down: that would
+ * move the source out from under the pointer).
+ */
+async function drag(tabId: string, from: number, to: number): Promise<void> {
+  await tabCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId: to });
+  const p = await aim(tabId, from, "drag");
+  const q = await centre(tabId, to);
+  const cover = await callOn(tabId, to, HIT_TEST, q);
+  if (cover) {
+    throw new Error(
+      `Drop target e${to} is covered by ${cover} at its centre (or off screen with the source in view). Nothing was dragged.`,
+    );
+  }
+  const held = { button: "left", buttons: 1 };
+  await sendInput(tabId, "Input.dispatchMouseEvent", [
+    { type: "mouseMoved", ...p },
+    { type: "mousePressed", ...p, ...held, clickCount: 1 },
+    ...dragPath(p, q).map((m) => ({ type: "mouseMoved", ...m, ...held })),
+    { type: "mouseReleased", ...q, ...held, clickCount: 1 },
+  ]);
+}
+
+interface NavigationHistory {
+  currentIndex: number;
+  entries: { id: number; url: string; title?: string }[];
+}
+
+/**
+ * The history entry back/forward goes to. Refuses one that isn't on
+ * localhost: the tab would leave the agent's scope.
+ */
+export function historyTarget(
+  h: NavigationHistory,
+  dir: "back" | "forward",
+): { id: number; url: string } {
+  const entry = h.entries[h.currentIndex + (dir === "back" ? -1 : 1)];
+  if (!entry) throw new Error(`Nothing to go ${dir} to in this tab's history.`);
+  if (!isLoopbackUrl(entry.url)) {
+    throw new Error(`Going ${dir} would leave localhost (${entry.url}). Nothing was done.`);
+  }
+  return entry;
+}
+
+async function goHistory(tabId: string, dir: "back" | "forward"): Promise<void> {
+  const h = await tabCdp<NavigationHistory>(tabId, "Page.getNavigationHistory");
+  const entry = historyTarget(h, dir);
+  await tabCdp(tabId, "Page.navigateToHistoryEntry", { entryId: entry.id });
 }
 
 const SELECT_ALL = `function () {
@@ -567,22 +646,31 @@ async function actTool(args: Args): Promise<string> {
   if (action === "accept" || action === "dismiss") {
     return answerDialog(tab, action === "accept", text);
   }
-  const ref = action === "press" && args.ref == null ? null : parseRef(args.ref);
+  const history = action === "back" || action === "forward";
+  const ref = history || (action === "press" && args.ref == null) ? null : parseRef(args.ref);
+  const to = action === "drag" ? parseRef(args.to) : null;
   await showTab(tab);
   if (!snapshots.has(tab.id)) snapshots.set(tab.id, await takePage(tab.id));
-  const label =
-    ref == null
+  const labelOf = (r: number | null) =>
+    r == null
       ? ""
       : (snapshots
           .get(tab.id)
           ?.compact.split("\n")
-          .find((l) => l.includes(`[e${ref}]`))
-          ?.trim() ?? `e${ref}`);
+          .find((l) => l.includes(`[e${r}]`))
+          ?.trim() ?? `e${r}`);
+  const label = labelOf(ref);
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
 
   try {
     if (action === "click") {
       await click(tab.id, ref as number);
+    } else if (action === "hover") {
+      await hover(tab.id, ref as number);
+    } else if (action === "drag") {
+      await drag(tab.id, ref as number, to as number);
+    } else if (history) {
+      await goHistory(tab.id, action as "back" | "forward");
     } else if (action === "type") {
       await tabCdp(tab.id, "DOM.focus", { backendNodeId: ref });
       await callOn(tab.id, ref as number, SELECT_ALL);
@@ -597,7 +685,7 @@ async function actTool(args: Args): Promise<string> {
       await pressKey(tab.id, text);
     } else {
       throw new Error(
-        `Unknown action "${action}". Use click, type, select, press, accept or dismiss.`,
+        `Unknown action "${action}". Use click, hover, drag, type, select, press, back, forward, accept or dismiss.`,
       );
     }
   } catch (err) {
@@ -608,7 +696,8 @@ async function actTool(args: Args): Promise<string> {
     if (ref != null && /0x80070057|no node|could not find node/i.test(msg)) {
       const fresh = await takePage(tab.id);
       snapshots.set(tab.id, fresh);
-      throw new Error(`Stale ref e${ref}: that element is gone. Current page:\n${fresh.compact}`);
+      const which = to == null ? `e${ref}` : `e${ref} or e${to}`;
+      throw new Error(`Stale ref ${which}: that element is gone. Current page:\n${fresh.compact}`);
     }
     throw err;
   }
@@ -620,7 +709,13 @@ async function actTool(args: Args): Promise<string> {
         ? `Selected ${JSON.stringify(text)} in ${label}`
         : action === "press"
           ? `Pressed ${text}${label ? ` in ${label}` : ""}`
-          : `Clicked ${label}`;
+          : action === "hover"
+            ? `Hovered ${label}`
+            : action === "drag"
+              ? `Dragged ${label} onto ${labelOf(to)}`
+              : history
+                ? `Went ${action}`
+                : `Clicked ${label}`;
   return [did, ...(await consequences(tab, urlBefore))].join("\n");
 }
 
@@ -801,8 +896,163 @@ async function screenshotTool(args: Args): Promise<string> {
   return `${header(tab)}\nSaved ${path}`;
 }
 
+/** Longest `eval` result returned. */
+const MAX_EVAL = 4000;
+/** How long `eval` waits for its value (a promise that never settles would hang the agent). */
+const EVAL_TIMEOUT = 10_000;
+
+/** `text` cut to `max` chars, saying how much was dropped. */
+export function cut(text: string, max: number): string {
+  return text.length > max
+    ? `${text.slice(0, max)}\n… (${text.length - max} more chars cut; return a smaller part)`
+    : text;
+}
+
+/**
+ * What `eval` hands Runtime.evaluate. Code with a `return` is an async
+ * function body; anything else is an expression (replMode allows top-level
+ * `await` in it).
+ */
+export function evalSource(code: string): string {
+  return /\breturn\b/.test(code) ? `(async () => {\n${code}\n})()` : code;
+}
+
+interface RemoteObject {
+  type: string;
+  subtype?: string;
+  value?: unknown;
+  unserializableValue?: string;
+  description?: string;
+}
+
+/** A returned value as compact JSON; values JSON can't carry by their description. */
+export function formatEvalValue(r: RemoteObject): string {
+  if (r.type === "undefined") return "undefined";
+  if (r.unserializableValue) return r.unserializableValue;
+  if ("value" in r) return JSON.stringify(r.value) ?? String(r.value);
+  return r.description ?? r.type;
+}
+
+async function evalTool(args: Args): Promise<string> {
+  const tab = resolveTab(args.tab);
+  const code = typeof args.code === "string" ? args.code.trim() : "";
+  if (!code)
+    throw new Error("Pass code: a JS expression, or a function body that returns a value.");
+  await showTab(tab);
+  const call = tabCdp<{
+    result: RemoteObject;
+    exceptionDetails?: { text: string; exception?: { description?: string } };
+  }>(tab.id, "Runtime.evaluate", {
+    expression: evalSource(code),
+    awaitPromise: true,
+    returnByValue: true,
+    replMode: true,
+    userGesture: true,
+  });
+  const r = await Promise.race([orDialog(tab.id, call), sleep(EVAL_TIMEOUT).then(() => null)]);
+  if (r === DIALOG) return `${header(tab)}\n${dialogNote(tab.id)}`;
+  if (r === null) {
+    throw new Error(`No value after ${EVAL_TIMEOUT / 1000}s (a promise that never settles?).`);
+  }
+  if (r.exceptionDetails) {
+    const ex = r.exceptionDetails;
+    throw new Error(`Threw: ${cut(ex.exception?.description ?? ex.text, MAX_EVAL)}`);
+  }
+  return cut(formatEvalValue(r.result), MAX_EVAL);
+}
+
+const WAIT_DEFAULT = 10;
+const WAIT_MAX = 30;
+
+interface WaitSpec {
+  text?: string;
+  gone?: string;
+  url?: string;
+  timeoutMs: number;
+}
+
+/** Validates wait_for's arguments: at least one condition; timeout in seconds, capped at 30. */
+export function parseWaitFor(args: Args): WaitSpec {
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  const spec = { text: str(args.text), gone: str(args.gone), url: str(args.url) };
+  if (!spec.text && !spec.gone && !spec.url) {
+    throw new Error("Pass text (to appear), gone (to disappear) or url (to contain), or several.");
+  }
+  const t = args.timeout == null ? WAIT_DEFAULT : Number(args.timeout);
+  if (!Number.isFinite(t) || t <= 0) throw new Error("timeout is in seconds, e.g. 10.");
+  return { ...spec, timeoutMs: Math.min(t, WAIT_MAX) * 1000 };
+}
+
+/** The conditions not met yet, as phrases; empty once all hold. */
+export function waitPending(spec: WaitSpec, pageText: string, url: string): string[] {
+  return [
+    spec.text != null && !pageText.includes(spec.text) ? `text "${spec.text}" to appear` : "",
+    spec.gone != null && pageText.includes(spec.gone) ? `text "${spec.gone}" to disappear` : "",
+    spec.url != null && !url.includes(spec.url) ? `URL to contain "${spec.url}"` : "",
+  ].filter(Boolean);
+}
+
+/**
+ * The text wait_for matches against: the full snapshot (accessible names,
+ * aria-labels) plus the body's rendered text, which the snapshot caps at 300
+ * lines and 80 chars a name.
+ */
+async function pageText(tabId: string): Promise<string> {
+  const nodes = await axTree(tabId);
+  const r = await tabCdp<{ result: { value?: unknown } }>(tabId, "Runtime.evaluate", {
+    expression: "document.body ? document.body.innerText : ''",
+    returnByValue: true,
+  });
+  return `${formatSnapshot(nodes, { full: true })}\n${String(r.result.value ?? "")}`;
+}
+
+/** Polls until every condition holds or the timeout, then reports what the wait led to. */
+async function waitForTool(args: Args): Promise<string> {
+  const tab = resolveTab(args.tab);
+  const spec = parseWaitFor(args);
+  await showTab(tab);
+  const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+  const start = Date.now();
+  let pending = waitPending(spec, "", urlBefore);
+  let checked = false;
+  while (Date.now() - start < spec.timeoutMs) {
+    if (dialogs.has(tab.id)) break;
+    const url = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+    try {
+      const text = spec.text || spec.gone ? await orDialog(tab.id, pageText(tab.id)) : "";
+      if (text === DIALOG) break;
+      pending = waitPending(spec, text, url);
+      checked = true;
+    } catch {
+      // Mid-navigation: the next poll reads the new document.
+    }
+    if (checked && !pending.length) break;
+    await sleep(250);
+  }
+  const secs = ((Date.now() - start) / 1000).toFixed(1);
+  const met = [
+    spec.text && `text "${spec.text}" appeared`,
+    spec.gone && `text "${spec.gone}" is gone`,
+    spec.url && `URL contains "${spec.url}"`,
+  ].filter(Boolean);
+  const verdict = dialogs.has(tab.id)
+    ? `A dialog opened after ${secs}s${pending.length ? `; still waiting for ${pending.join(", ")}` : ""}.`
+    : checked && !pending.length
+      ? `Matched after ${secs}s: ${met.join(", ")}.`
+      : `Timed out after ${secs}s; still waiting for ${pending.join(", ")}.`;
+  return [verdict, ...(await consequences(tab, urlBefore))].join("\n");
+}
+
 /** Tools that need the page itself to answer; a dialog pauses it. */
-const PAGE_TOOLS = new Set(["check", "snapshot", "act", "screenshot", "viewport"]);
+const PAGE_TOOLS = new Set([
+  "check",
+  "snapshot",
+  "act",
+  "screenshot",
+  "viewport",
+  "eval",
+  "wait_for",
+]);
 
 export async function runAgentTool(tool: string, args: Args): Promise<string> {
   const answering = tool === "act" && (args.action === "accept" || args.action === "dismiss");
@@ -832,6 +1082,10 @@ ${note}`;
       return screenshotTool(args);
     case "viewport":
       return viewportTool(args);
+    case "eval":
+      return evalTool(args);
+    case "wait_for":
+      return waitForTool(args);
     default:
       throw new Error(`Unknown tool "${tool}".`);
   }

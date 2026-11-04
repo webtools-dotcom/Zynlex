@@ -15,9 +15,9 @@ Status: **todo** · **doing** · **done**.
 | # | Feature | Why it matters | Status |
 |---|---|---|---|
 | P1 | **Viewport / mobile emulation** (`viewport` tool: device presets, width×height, touch, back to normal) | "Does it break on mobile?" is one of the most common checks. ZYNLEX has a viewport panel for people, not for agents. | done |
-| P2 | **`eval`** (run JS in the page, return a value; localhost tabs only) | Escape hatch for anything the other tools don't cover. | todo |
-| P3 | **`hover`, `back`/`forward`, drag** | Hover menus, history navigation. | todo |
-| P4 | **`wait_for`** (text appears/disappears, URL changes, timeout) | Long async flows beyond the settle rule. | todo |
+| P2 | **`eval`** (run JS in the page, return a value; localhost tabs only) | Escape hatch for anything the other tools don't cover. | done, untested on Windows |
+| P3 | **`hover`, `back`/`forward`, drag** | Hover menus, history navigation. | done, untested on Windows |
+| P4 | **`wait_for`** (text appears/disappears, URL changes, timeout) | Long async flows beyond the settle rule. | done, untested on Windows |
 | P5 | **Tabs and popups** (follow `target=_blank` and `window.open`, list/switch/close tabs the agent opened) | OAuth popups, "open in new tab" links. | todo |
 | P6 | **Iframes in the snapshot** (same-origin frames walked, refs that work inside them) | Embedded widgets, payment forms. | todo |
 | P7 | **File upload** (`act` upload on an `<input type=file>`) | Upload forms. | todo |

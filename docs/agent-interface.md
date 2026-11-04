@@ -108,11 +108,13 @@ call to find out.
 | `check` | Settles, then new errors + failed requests since the last report; `reload` reloads first | Built |
 | `errors` | Every recorded error and failed request; `warnings` adds warnings | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
-| `act` | `click` / `type` / `select` / `press` on a ref with real input, then the consequences | Built |
+| `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` on a ref with real input, `back` / `forward` in history (localhost entries only), then the consequences | Built (hover, drag, back/forward untested on Windows) |
 | `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
 | `screenshot` | Visible area to `%TEMP%\zynlex-agent`, returns the path | Built (no element crop yet) |
+| `viewport` | Device presets or width×height, touch, mobile UA; `reset` | Built |
+| `eval` | `Runtime.evaluate` (`awaitPromise`, `returnByValue`, `replMode`): an expression, or a function body when the code has `return`; value as compact JSON cut at 4 KB, exceptions as `Threw: …`, gives up after 10 s | Built, untested on Windows |
+| `wait_for` | Polls every 250 ms until all given conditions hold: `text` appears, `gone` disappears (full snapshot + `body.innerText`), `url` contains; `timeout` s (default 10, max 30); says what matched or what's pending, then the consequences | Built, untested on Windows |
 | `mock` | Add/list/clear mocks through the mocks store, so they show in the UI | Phase 4 |
-| `eval` | Escape hatch, in-scope tabs only | Phase 4 |
 
 `check`, `act` and `open` share one report cursor per tab: whatever one of them
 reported, the next one doesn't repeat. Bodies over 8 KB are cut inline (writing
@@ -152,7 +154,13 @@ Acting is real input, not `element.click()`: `DOM.scrollIntoViewIfNeeded` +
 `DOM.getContentQuads` + `Input.dispatchMouseEvent` at the centre for clicks;
 `DOM.focus`, select-all and `Input.insertText` for typing (replaces the value);
 a `change` + `input` event pair for `<select>`; `Input.dispatchKeyEvent` for
-keys. An action brings its tab to the front so the developer sees it happen.
+keys. `hover` is a lone `mouseMoved` at the centre; `drag` presses on `ref`,
+moves in five steps and releases on `to` (button held, `buttons: 1`), after the
+same covered-element check `click` makes (and one on the drop target, done
+before anything is pressed). `back`/`forward` read `Page.getNavigationHistory`
+and go to the neighbouring entry with `Page.navigateToHistoryEntry`, refusing
+an entry that isn't on localhost. An action brings its tab to the front so the
+developer sees it happen.
 
 Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`); iframes
 aren't walked; the snapshot is cut at 300 lines (use `within`).

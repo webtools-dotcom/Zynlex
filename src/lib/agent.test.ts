@@ -25,7 +25,19 @@ vi.mock("@/services/browser", async (importOriginal) => ({
   },
 }));
 
-import { findDevice, listenForAgents, resolveTab, runAgentTool } from "./agent";
+import {
+  cut,
+  dragPath,
+  evalSource,
+  findDevice,
+  formatEvalValue,
+  historyTarget,
+  listenForAgents,
+  parseWaitFor,
+  resolveTab,
+  runAgentTool,
+  waitPending,
+} from "./agent";
 import { useConsoleStore } from "@/stores/console";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useTabsStore } from "@/stores/tabs";
@@ -162,12 +174,13 @@ describe("agent tools", () => {
       message: 'Delete "Buy milk"?',
     });
     hooks.cdp.length = 0;
-    for (const tool of ["check", "snapshot", "screenshot"]) {
+    for (const tool of ["check", "snapshot", "screenshot", "eval", "wait_for"]) {
       const out = await runAgentTool(tool, {});
       expect(out).toContain('A confirm dialog is open: "Delete "Buy milk"?"');
       expect(out).toContain('action="accept"');
     }
     expect(await runAgentTool("act", { ref: "e5", action: "click" })).toContain("dialog is open");
+    expect(await runAgentTool("act", { action: "back" })).toContain("dialog is open");
     expect(hooks.cdp).toEqual([]);
     // Reads that don't need the page still work.
     expect(await runAgentTool("errors", {})).not.toContain("dialog");
@@ -192,5 +205,99 @@ describe("findDevice", () => {
     expect(d?.mobile).toBe(true);
     expect(d?.touch).toBe(true);
     expect(d?.width).toBeLessThan(500);
+  });
+});
+
+describe("eval", () => {
+  it("runs code with a return as an async function body, else as an expression", () => {
+    expect(evalSource("document.title")).toBe("document.title");
+    expect(evalSource("await fetch('/api').then((r) => r.status)")).toBe(
+      "await fetch('/api').then((r) => r.status)",
+    );
+    const body = evalSource("const r = await fetch('/api');\nreturn r.status;");
+    expect(body.startsWith("(async () => {")).toBe(true);
+    expect(body.endsWith("})()")).toBe(true);
+  });
+
+  it("formats values as compact JSON", () => {
+    expect(formatEvalValue({ type: "object", value: { a: [1, 2], b: "x" } })).toBe(
+      '{"a":[1,2],"b":"x"}',
+    );
+    expect(formatEvalValue({ type: "string", value: "hi" })).toBe('"hi"');
+    expect(formatEvalValue({ type: "undefined" })).toBe("undefined");
+    expect(formatEvalValue({ type: "number", unserializableValue: "NaN" })).toBe("NaN");
+    expect(formatEvalValue({ type: "function", description: "function f() {}" })).toBe(
+      "function f() {}",
+    );
+  });
+
+  it("cuts long output with a note", () => {
+    expect(cut("short", 4000)).toBe("short");
+    const out = cut("x".repeat(5000), 4000);
+    expect(out.startsWith("x".repeat(4000))).toBe(true);
+    expect(out).toContain("1000 more chars cut");
+  });
+
+  it("needs code", async () => {
+    await expect(runAgentTool("eval", {})).rejects.toThrow("Pass code");
+  });
+});
+
+describe("back/forward", () => {
+  const h = {
+    currentIndex: 1,
+    entries: [
+      { id: 10, url: "http://localhost:5173/" },
+      { id: 11, url: "http://localhost:5173/cart" },
+      { id: 12, url: "https://pay.example.com/" },
+    ],
+  };
+
+  it("picks the neighbouring entry", () => {
+    expect(historyTarget(h, "back").id).toBe(10);
+    expect(historyTarget({ ...h, currentIndex: 0 }, "forward").id).toBe(11);
+  });
+
+  it("refuses to run off the history or off localhost", () => {
+    expect(() => historyTarget({ ...h, currentIndex: 0 }, "back")).toThrow("Nothing to go back");
+    expect(() => historyTarget({ ...h, currentIndex: 2 }, "forward")).toThrow(
+      "Nothing to go forward",
+    );
+    expect(() => historyTarget(h, "forward")).toThrow("would leave localhost");
+  });
+});
+
+describe("drag", () => {
+  it("moves in even steps that end on the target", () => {
+    const path = dragPath({ x: 0, y: 0 }, { x: 100, y: 50 });
+    expect(path).toHaveLength(5);
+    expect(path[0]).toEqual({ x: 20, y: 10 });
+    expect(path[4]).toEqual({ x: 100, y: 50 });
+  });
+
+  it("needs a target ref", async () => {
+    await expect(runAgentTool("act", { action: "drag", ref: "e3" })).rejects.toThrow(
+      "Expected a ref",
+    );
+  });
+});
+
+describe("wait_for", () => {
+  it("validates conditions and caps the timeout", () => {
+    expect(() => parseWaitFor({})).toThrow("Pass text");
+    expect(() => parseWaitFor({ text: "Saved", timeout: -1 })).toThrow("seconds");
+    expect(parseWaitFor({ text: "Saved" }).timeoutMs).toBe(10_000);
+    expect(parseWaitFor({ url: "/done", timeout: 120 }).timeoutMs).toBe(30_000);
+    expect(parseWaitFor({ gone: "Loading", timeout: 2.5 }).timeoutMs).toBe(2500);
+  });
+
+  it("lists what is still pending", () => {
+    const spec = parseWaitFor({ text: "Saved", gone: "Loading", url: "/done" });
+    expect(waitPending(spec, "Loading…", "http://localhost:5173/form")).toEqual([
+      'text "Saved" to appear',
+      'text "Loading" to disappear',
+      'URL to contain "/done"',
+    ]);
+    expect(waitPending(spec, "Saved!", "http://localhost:5173/done")).toEqual([]);
   });
 });
