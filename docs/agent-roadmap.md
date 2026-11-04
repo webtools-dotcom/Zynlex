@@ -20,9 +20,9 @@ Status: **todo** · **doing** · **done**.
 | P4 | **`wait_for`** (text appears/disappears, URL changes, timeout) | Long async flows beyond the settle rule. | done, untested on Windows |
 | P5 | **Tabs and popups** (follow `target=_blank` and `window.open`, list/switch/close tabs the agent opened) | OAuth popups, "open in new tab" links. | done, untested on Windows |
 | P6 | **Iframes in the snapshot** (same-origin frames walked, refs that work inside them) | Embedded widgets, payment forms. | done, untested on Windows |
-| P7 | **File upload** (`act` upload on an `<input type=file>`) | Upload forms. | todo |
-| P8 | **Screenshots: element crop, full page** | Smaller images, whole-page layout checks. | todo |
-| P9 | **Large output to a file** (snapshot over 300 lines, bodies over 8 KB written to `%TEMP%`, path returned) | Big pages and payloads without blowing the context. | todo |
+| P7 | **File upload** (`act` upload on an `<input type=file>`) | Upload forms. | done, untested on Windows |
+| P8 | **Screenshots: element crop, full page** | Smaller images, whole-page layout checks. | done, untested on Windows |
+| P9 | **Large output to a file** (snapshot over 300 lines, bodies over 8 KB written to `%TEMP%`, path returned) | Big pages and payloads without blowing the context. | done, untested on Windows |
 | P10 | **Network mocking and header rules for agents** (`mock` add/list/clear through the existing stores) | Test error states and auth without a backend change. ZYNLEX already has both for people. | todo |
 | P11 | **Console at all levels** (`errors` can include log/info on request) | Debug-print driven debugging. | todo |
 | P12 | **Staging hosts** (per-workspace list of non-localhost hosts the agent may use, granted in the UI) | Test what's deployed, not only localhost. | todo |

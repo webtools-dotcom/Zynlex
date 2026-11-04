@@ -330,6 +330,7 @@ pub fn run() {
             agent::agent_set_enabled,
             agent::agent_reveal_window,
             agent::agent_mcp_path,
+            agent::agent_write_temp,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

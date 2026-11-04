@@ -52,7 +52,7 @@ fn tools() -> Value {
         },
         {
             "name": "snapshot",
-            "description": "The page's interactive elements with refs (e12) for `act`, under the headings and landmarks they sit in. Says `unchanged` when nothing changed since your last one.",
+            "description": "The page's interactive elements with refs (e12) for `act`, under the headings and landmarks they sit in. Says `unchanged` when nothing changed since your last one. Over 300 lines, the rest is saved to a file whose path is given.",
             "inputSchema": { "type": "object", "properties": {
                 "tab": tab,
                 "full": { "type": "boolean", "description": "Include all text, not just interactive elements." },
@@ -61,13 +61,14 @@ fn tools() -> Value {
         },
         {
             "name": "act",
-            "description": "Click, hover, drag, type into, choose an option in, or press a key on an element, with real input; go back/forward in history (no ref); or accept/dismiss an open alert, confirm or prompt dialog (no ref). Returns what changed on the page, any tab it opened, and any new errors.",
+            "description": "Click, hover, drag, type into, choose an option in, press a key on, or upload files to an element, with real input; go back/forward in history (no ref); or accept/dismiss an open alert, confirm or prompt dialog (no ref). Returns what changed on the page, any tab it opened, and any new errors.",
             "inputSchema": { "type": "object", "properties": {
                 "tab": tab,
                 "ref": { "type": "string", "description": "From snapshot, e.g. e12. Optional for press." },
-                "action": { "type": "string", "enum": ["click", "hover", "drag", "type", "select", "press", "back", "forward", "accept", "dismiss"] },
+                "action": { "type": "string", "enum": ["click", "hover", "drag", "type", "select", "press", "upload", "back", "forward", "accept", "dismiss"] },
                 "to": { "type": "string", "description": "drag: ref to drop onto." },
-                "text": { "type": "string", "description": "type: text to replace the value with. select: option value or label. press: Enter, Tab, Escape, Backspace, Delete, Space, Arrow keys, Home, End, PageUp, PageDown. accept: the reply to a prompt() dialog." }
+                "text": { "type": "string", "description": "type: text to replace the value with. select: option value or label. press: Enter, Tab, Escape, Backspace, Delete, Space, Arrow keys, Home, End, PageUp, PageDown. accept: the reply to a prompt() dialog." },
+                "files": { "type": "array", "items": { "type": "string" }, "description": "upload: absolute paths on this machine, for a file input (or its label)." }
             }, "required": ["action"] }
         },
         {
@@ -80,7 +81,7 @@ fn tools() -> Value {
         },
         {
             "name": "network",
-            "description": "Requests a tab made: id, method, status, time, URL. Scripts, styles, images and fonts are hidden unless `all` is true. Pass `id` for one request's headers and body.",
+            "description": "Requests a tab made: id, method, status, time, URL. Scripts, styles, images and fonts are hidden unless `all` is true. Pass `id` for one request's headers and body (over 8 KB, the whole body is saved to a file whose path is given).",
             "inputSchema": { "type": "object", "properties": {
                 "tab": tab,
                 "failed": { "type": "boolean", "description": "Only 4xx/5xx and requests that got no response." },
@@ -91,8 +92,12 @@ fn tools() -> Value {
         },
         {
             "name": "screenshot",
-            "description": "Saves a PNG of a tab's visible area and returns its file path. For layout only; `check` is cheaper for errors.",
-            "inputSchema": { "type": "object", "properties": { "tab": tab } }
+            "description": "Saves a PNG of a tab's visible area, one element, or the whole page, and returns its file path. For layout only; `check` is cheaper for errors.",
+            "inputSchema": { "type": "object", "properties": {
+                "tab": tab,
+                "ref": { "type": "string", "description": "Only this element, from snapshot." },
+                "full": { "type": "boolean", "description": "The whole page, not just what's visible." }
+            } }
         },
         {
             "name": "viewport",
@@ -288,6 +293,16 @@ mod tests {
             tools[0]["inputSchema"]["properties"]["close"]["type"],
             "string"
         );
+        let schema = |name: &str| {
+            tools.iter().find(|t| t["name"] == name).unwrap()["inputSchema"]["properties"].clone()
+        };
+        assert!(schema("act")["action"]["enum"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("upload")));
+        assert_eq!(schema("act")["files"]["type"], "array");
+        assert_eq!(schema("screenshot")["ref"]["type"], "string");
+        assert_eq!(schema("screenshot")["full"]["type"], "boolean");
 
         let unknown = handle(
             &json!({"jsonrpc": "2.0", "id": 3, "method": "resources/list"}),

@@ -11,6 +11,7 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportPresets";
 import { getActiveTabId } from "@/hooks/useActiveScope";
+import { clipRect, cutForInline, MAX_BODY, MAX_LINES, uploadPaths } from "@/lib/agentOutput";
 import {
   type AXNode,
   diffSnapshot,
@@ -30,6 +31,7 @@ import { closeTab, openTab } from "@/lib/tabActions";
 import { isLoopbackUrl } from "@/lib/url";
 import {
   agentReply,
+  agentWriteTemp,
   captureScreenshot,
   getAgentStatus,
   onAgentRequest,
@@ -53,8 +55,6 @@ type Args = Record<string, unknown>;
 /** Short enough to type, long enough to stay unique across open tabs. */
 const shortId = (t: Tab) => t.id.slice(0, 8);
 
-/** Longest response body returned inline. */
-const MAX_BODY = 8000;
 /** Most rows a `network` list returns. */
 const MAX_ROWS = 50;
 /** Static assets: noise when debugging an app, so `network` hides them by default. */
@@ -147,6 +147,34 @@ function failures(rows: NetworkLogEntry[], consoleFailed: ConsoleEntry[]): strin
 function section(title: string, lines: string[]): string[] {
   return lines.length ? [`${lines.length} ${title}:`, ...lines] : [];
 }
+
+/**
+ * `text` as is when it fits `limit`; otherwise its head, and the whole of it
+ * written to %TEMP%\zynlex-agent for the agent to read if it needs the rest.
+ */
+async function inlineOrFile(
+  text: string,
+  name: string,
+  limit: { lines: number } | { chars: number },
+  hint = "",
+): Promise<string> {
+  const cut = cutForInline(text, limit);
+  if (!cut) return text;
+  const where = await agentWriteTemp(`${name}-${Date.now()}`, text).then(
+    (path) => `all of it is in ${path}`,
+    (err) => `couldn't write it to a file (${err instanceof Error ? err.message : String(err)})`,
+  );
+  return `${cut.head}\n… ${cut.more}; ${where}.${hint}`;
+}
+
+/** A snapshot for the agent: the first MAX_LINES lines, the rest in a file. */
+const showPage = (tab: Tab, text: string) =>
+  inlineOrFile(
+    text,
+    `snapshot-${shortId(tab)}`,
+    { lines: MAX_LINES },
+    " Or pass within=<ref of a landmark> to see one part.",
+  );
 
 function tabsTool(args: Args = {}): string {
   if (typeof args.close === "string" && args.close) return closeAgentTab(args.close);
@@ -462,9 +490,9 @@ async function consequences(tab: Tab, urlBefore: string, mark?: number): Promise
   // A diff longer than the page itself is worse than just the page.
   const page =
     before == null || diff.length > after.compact.split("\n").length
-      ? ["Page:", after.compact]
+      ? ["Page:", await showPage(now, after.compact)]
       : diff.length
-        ? ["Page changes:", ...diff]
+        ? ["Page changes:", await showPage(now, diff.join("\n"))]
         : ["Page unchanged."];
   const problems = newProblems(now);
   return [
@@ -508,7 +536,7 @@ async function checkTool(args: Args): Promise<string> {
   if (args.reload) {
     const now = await takePage(tab.id);
     snapshots.set(tab.id, now);
-    page = ["Page:", now.compact];
+    page = ["Page:", await showPage(tab, now.compact)];
   }
   return [
     header(useTabsStore.getState().tabs[tab.id] ?? tab),
@@ -524,13 +552,15 @@ async function snapshotTool(args: Args): Promise<string> {
   const within = args.within == null ? undefined : parseRef(args.within);
   const full = !!args.full;
   if (full || within != null) {
-    return `${header(tab)}\n${formatSnapshot(await axTree(tab.id), { full, within })}`;
+    const text = formatSnapshot(await axTree(tab.id), { full, within });
+    return `${header(tab)}\n${await showPage(tab, text)}`;
   }
   // "Unchanged" goes by the full text: a total that changed is a change.
   const now = await takePage(tab.id);
   const unchanged = snapshots.get(tab.id)?.full === now.full;
   snapshots.set(tab.id, now);
-  return `${header(tab)}\n${unchanged ? "Unchanged since your last snapshot." : now.compact}`;
+  const body = unchanged ? "Unchanged since your last snapshot." : await showPage(tab, now.compact);
+  return `${header(tab)}\n${body}`;
 }
 
 /** CDP key events for the keys an agent needs. */
@@ -751,6 +781,87 @@ const CHOOSE_OPTION = `function (v) {
   return "";
 }`;
 
+/**
+ * WebView2 reports every CDP error as E_INVALIDARG, dropping CDP's own
+ * message; for an element-scoped call that almost always means the node is
+ * gone (re-render, navigation, reload). Then the agent gets the current page
+ * instead; any other error is passed on.
+ */
+async function rethrowStale(
+  tab: Tab,
+  ref: number | null,
+  err: unknown,
+  to: number | null = null,
+): Promise<never> {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (ref != null && /0x80070057|no node|could not find node/i.test(msg)) {
+    const fresh = await takePage(tab.id);
+    snapshots.set(tab.id, fresh);
+    const which = to == null ? `e${ref}` : `e${ref} or e${to}`;
+    throw new Error(
+      `Stale ref ${which}: that element is gone. Current page:\n${await showPage(tab, fresh.compact)}`,
+    );
+  }
+  throw err;
+}
+
+/**
+ * The file input a ref stands for: the element itself, the input a <label>
+ * is for, or the one inside it (a styled drop zone); the input itself is often
+ * hidden, so it has no ref of its own. Otherwise what the element is instead.
+ */
+const FILE_INPUT = `function () {
+  const isFile = (e) => e instanceof HTMLInputElement && e.type === "file";
+  if (isFile(this)) return this;
+  if (isFile(this.control)) return this.control;
+  const inner = this.querySelector ? this.querySelector('input[type="file"]') : null;
+  if (inner) return inner;
+  const tag = this.tagName ? this.tagName.toLowerCase() : "not an element";
+  return tag + (typeof this.type === "string" && this.type ? "[type=" + this.type + "]" : "");
+}`;
+
+/** Sets an <input type=file>'s files, as a picked file would; the page gets its input and change events. */
+async function upload(tabId: string, backendNodeId: number, files: string[]): Promise<void> {
+  const { object } = await tabCdp<{ object: { objectId: string } }>(tabId, "DOM.resolveNode", {
+    backendNodeId,
+  });
+  const { result } = await tabCdp<{
+    result: { type: string; value?: unknown; objectId?: string };
+  }>(tabId, "Runtime.callFunctionOn", {
+    objectId: object.objectId,
+    functionDeclaration: FILE_INPUT,
+  });
+  if (result.type === "string" || !result.objectId) {
+    throw new Error(
+      `e${backendNodeId} is ${String(result.value)}: not a file input (<input type=file>), and it holds none. Nothing was uploaded.`,
+    );
+  }
+  const input = result.objectId;
+  if (files.length > 1) {
+    const multiple = await tabCdp<{ result: { value?: unknown } }>(
+      tabId,
+      "Runtime.callFunctionOn",
+      {
+        objectId: input,
+        functionDeclaration: "function () { return this.multiple; }",
+        returnByValue: true,
+      },
+    );
+    if (!multiple.result.value) {
+      throw new Error(
+        `e${backendNodeId} takes one file (no multiple attribute), not ${files.length}. Nothing was uploaded.`,
+      );
+    }
+  }
+  try {
+    await tabCdp(tabId, "DOM.setFileInputFiles", { files, objectId: input });
+  } catch {
+    throw new Error("The browser refused the files. Check that each path is a file that exists.");
+  }
+}
+
+const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
 /** accept/dismiss: answers the open dialog, then reports what the page did next. */
 async function answerDialog(tab: Tab, accept: boolean, text: string): Promise<string> {
   const d = dialogs.get(tab.id);
@@ -776,6 +887,7 @@ async function actTool(args: Args): Promise<string> {
   const history = action === "back" || action === "forward";
   const ref = history || (action === "press" && args.ref == null) ? null : parseRef(args.ref);
   const to = action === "drag" ? parseRef(args.to) : null;
+  const files = action === "upload" ? uploadPaths(args.files) : [];
   await showTab(tab);
   if (!snapshots.has(tab.id)) snapshots.set(tab.id, await takePage(tab.id));
   const labelOf = (r: number | null) =>
@@ -811,23 +923,15 @@ async function actTool(args: Args): Promise<string> {
     } else if (action === "press") {
       if (ref != null) await tabCdp(tab.id, "DOM.focus", { backendNodeId: ref });
       await pressKey(tab.id, text);
+    } else if (action === "upload") {
+      await upload(tab.id, ref as number, files);
     } else {
       throw new Error(
-        `Unknown action "${action}". Use click, hover, drag, type, select, press, back, forward, accept or dismiss.`,
+        `Unknown action "${action}". Use click, hover, drag, type, select, press, upload, back, forward, accept or dismiss.`,
       );
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // WebView2 reports every CDP error as E_INVALIDARG, dropping CDP's own
-    // message; for an element-scoped call that almost always means the node
-    // is gone (re-render, navigation, reload).
-    if (ref != null && /0x80070057|no node|could not find node/i.test(msg)) {
-      const fresh = await takePage(tab.id);
-      snapshots.set(tab.id, fresh);
-      const which = to == null ? `e${ref}` : `e${ref} or e${to}`;
-      throw new Error(`Stale ref ${which}: that element is gone. Current page:\n${fresh.compact}`);
-    }
-    throw err;
+    await rethrowStale(tab, ref, err, to);
   }
 
   const did =
@@ -841,9 +945,11 @@ async function actTool(args: Args): Promise<string> {
             ? `Hovered ${label}`
             : action === "drag"
               ? `Dragged ${label} onto ${labelOf(to)}`
-              : history
-                ? `Went ${action}`
-                : `Clicked ${label}`;
+              : action === "upload"
+                ? `Attached ${files.map(baseName).join(", ")} to ${label}`
+                : history
+                  ? `Went ${action}`
+                  : `Clicked ${label}`;
   return [did, ...(await consequences(tab, urlBefore, mark))].join("\n");
 }
 
@@ -891,12 +997,12 @@ function errorsTool(args: Args): string {
     .join("\n");
 }
 
-function requestDetail(n: NetworkLogEntry): string {
+async function requestDetail(tab: Tab, n: NetworkLogEntry): Promise<string> {
   const body = n.bodyEvicted
     ? "(body dropped to save memory; only the 50 newest requests keep theirs)"
-    : n.body.length > MAX_BODY
-      ? `${n.body.slice(0, MAX_BODY)}\n… (${n.body.length - MAX_BODY} more chars cut)`
-      : n.body || "(empty)";
+    : n.body
+      ? await inlineOrFile(n.body, `body-${shortId(tab)}-${n.id}`, { chars: MAX_BODY })
+      : "(empty)";
   return [
     `${n.method} ${n.statusCode} ${n.reasonPhrase} ${n.url}`.trim(),
     `${n.resourceType}, ${n.durationMs}ms${n.mocked ? ", served by a ZYNLEX mock" : ""}${n.bodyTruncated ? ", body capped at 64 KB" : ""}`,
@@ -907,13 +1013,13 @@ function requestDetail(n: NetworkLogEntry): string {
   ].join("\n");
 }
 
-function networkTool(args: Args): string {
+async function networkTool(args: Args): Promise<string> {
   const tab = resolveTab(args.tab);
   const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
   if (typeof args.id === "string" && args.id) {
     const hit = rows.find((n) => n.id === args.id);
     if (!hit) throw new Error(`No request ${args.id} in this tab.`);
-    return requestDetail(hit);
+    return requestDetail(tab, hit);
   }
   if (!rows.length) {
     return `${header(tab)}\nNo requests recorded. Capture starts when an agent connects; requests the page made before that aren't here (failed ones are, in errors).`;
@@ -1019,10 +1125,38 @@ async function viewportTool(args: Args): Promise<string> {
   ].join("\n");
 }
 
+/** The parts of CDP's Page.getLayoutMetrics read here. */
+interface LayoutMetrics {
+  cssLayoutViewport?: { pageX: number; pageY: number };
+  layoutViewport?: { pageX: number; pageY: number };
+}
+
+/** The visible area, the whole page (`full`), or one element (`ref`), as a PNG in %TEMP%\zynlex-agent. */
 async function screenshotTool(args: Args): Promise<string> {
   const tab = resolveTab(args.tab);
-  const path = await captureScreenshot(tab.id, "agent");
-  return `${header(tab)}\nSaved ${path}`;
+  if (args.ref == null) {
+    const path = await captureScreenshot(tab.id, args.full ? "agent-full" : "agent");
+    return `${header(tab)}\nSaved ${path}${args.full ? " (whole page)" : ""}`;
+  }
+  if (args.full) throw new Error("Pass ref or full, not both.");
+  const ref = parseRef(args.ref);
+  let clip: ReturnType<typeof clipRect> = null;
+  try {
+    // Scrolled into view first, so lazy content in it has loaded and it's
+    // laid out where the user would see it.
+    await tabCdp(tab.id, "DOM.scrollIntoViewIfNeeded", { backendNodeId: ref });
+    const { quads } = await tabCdp<{ quads: number[][] }>(tab.id, "DOM.getContentQuads", {
+      backendNodeId: ref,
+    });
+    const m = await tabCdp<LayoutMetrics>(tab.id, "Page.getLayoutMetrics");
+    const vp = m.cssLayoutViewport ?? m.layoutViewport;
+    clip = clipRect(quads, { x: vp?.pageX ?? 0, y: vp?.pageY ?? 0 });
+  } catch (err) {
+    await rethrowStale(tab, ref, err);
+  }
+  if (!clip) throw new Error(`e${ref} has no box on screen (hidden or zero-size).`);
+  const path = await captureScreenshot(tab.id, "agent", clip);
+  return `${header(tab)}\nSaved ${path} (e${ref}, ${clip.width}×${clip.height})`;
 }
 
 /** Longest `eval` result returned. */

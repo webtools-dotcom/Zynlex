@@ -274,3 +274,58 @@ pub fn agent_set_enabled(app: AppHandle, enabled: bool) {
     }
     emit_status(&app);
 }
+
+/// Where an agent's working files go (screenshots, output too long to return
+/// inline): `%TEMP%\zynlex-agent`, not Downloads, since the user didn't save them.
+pub fn agent_temp_dir() -> Result<std::path::PathBuf, String> {
+    let dir = std::env::temp_dir().join("zynlex-agent");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("agent folder: {e}"))?;
+    Ok(dir)
+}
+
+/// `zynlex-<name>.txt`, with `name` cut to ASCII letters, digits, `-` and `_`
+/// (at most 80), so the file can only land directly in the agent folder. The
+/// prefix also keeps it clear of reserved device names (`CON`, `NUL`).
+fn temp_file_name(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(80)
+        .collect();
+    format!(
+        "zynlex-{}.txt",
+        if safe.is_empty() { "output" } else { &safe }
+    )
+}
+
+/// Writes text the agent asked for but that is too long to return inline (a
+/// big snapshot, a response body) and returns the file's path.
+#[tauri::command]
+pub fn agent_write_temp(name: String, text: String) -> Result<String, String> {
+    let path = agent_temp_dir()?.join(temp_file_name(&name));
+    std::fs::write(&path, text).map_err(|e| format!("agent_write_temp: {e}"))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::temp_file_name;
+
+    #[test]
+    fn temp_file_names_stay_in_the_folder() {
+        assert_eq!(
+            temp_file_name("snapshot-1a2b3c4d-17"),
+            "zynlex-snapshot-1a2b3c4d-17.txt"
+        );
+        assert_eq!(
+            temp_file_name(r"..\..\Windows\win.ini"),
+            "zynlex-Windowswinini.txt"
+        );
+        assert_eq!(temp_file_name("C:/x/y:z"), "zynlex-Cxyz.txt");
+        assert_eq!(temp_file_name("../"), "zynlex-output.txt");
+        assert_eq!(
+            temp_file_name(&"a".repeat(200)).len(),
+            "zynlex-.txt".len() + 80
+        );
+    }
+}
