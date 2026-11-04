@@ -243,6 +243,7 @@ fn create_webview_for_tab(
     let tab_id_load = tab_id.to_string();
     let app_for_load = app.clone();
     let app_for_new_window = app.clone();
+    let tab_id_new_window = tab_id.to_string();
     let tab_id_download = tab_id.to_string();
     let app_for_download = app.clone();
 
@@ -339,7 +340,9 @@ fn create_webview_for_tab(
             let _ = app_for_new_window.emit(
                 "browser://open-new-tab",
                 serde_json::json!({
-                    "url": url.to_string()
+                    "url": url.to_string(),
+                    // The opener, so an agent's action can report the tab it caused.
+                    "tabId": tab_id_new_window,
                 }),
             );
             tauri::webview::NewWindowResponse::Deny

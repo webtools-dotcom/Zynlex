@@ -11,15 +11,23 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportPresets";
 import { getActiveTabId } from "@/hooks/useActiveScope";
-import { type AXNode, diffSnapshot, formatSnapshot } from "@/lib/agentSnapshot";
-import { openTab } from "@/lib/tabActions";
+import {
+  type AXNode,
+  diffSnapshot,
+  type FrameTrees,
+  formatSnapshot,
+  isIframe,
+  mergeFrames,
+} from "@/lib/agentSnapshot";
+import {
+  forgetAgentTab,
+  isAgentOpened,
+  markAgentOpened,
+  popupMark,
+  takePopups,
+} from "@/lib/agentTabs";
+import { closeTab, openTab } from "@/lib/tabActions";
 import { isLoopbackUrl } from "@/lib/url";
-import { useAgentStore } from "@/stores/agent";
-import { type ConsoleEntry, isFailedRequest, useConsoleStore } from "@/stores/console";
-import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
-import { useServersStore } from "@/stores/servers";
-import { useTabsStore } from "@/stores/tabs";
-import { useWorkspacesStore } from "@/stores/workspaces";
 import {
   agentReply,
   captureScreenshot,
@@ -32,6 +40,12 @@ import {
   tabCdp,
   webviewReload,
 } from "@/services/browser";
+import { useAgentStore } from "@/stores/agent";
+import { type ConsoleEntry, isFailedRequest, useConsoleStore } from "@/stores/console";
+import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
+import { useServersStore } from "@/stores/servers";
+import { useTabsStore } from "@/stores/tabs";
+import { useWorkspacesStore } from "@/stores/workspaces";
 import type { Tab } from "@/types";
 
 type Args = Record<string, unknown>;
@@ -134,14 +148,16 @@ function section(title: string, lines: string[]): string[] {
   return lines.length ? [`${lines.length} ${title}:`, ...lines] : [];
 }
 
-function tabsTool(): string {
+function tabsTool(args: Args = {}): string {
+  if (typeof args.close === "string" && args.close) return closeAgentTab(args.close);
   const tabs = scopedTabs();
   const counts = useConsoleStore.getState().countsByTab;
   const activeId = getActiveTabId();
   const lines = tabs.map((t) => {
     const c = counts[t.id];
     const problems = c && c.errors + c.failed ? ` — ${c.errors} errors, ${c.failed} failed` : "";
-    return `${t.id === activeId ? "*" : " "} ${header(t)}${problems}`;
+    const yours = isAgentOpened(t.id) ? " (opened by you)" : "";
+    return `${t.id === activeId ? "*" : " "} ${header(t)}${yours}${problems}`;
   });
   const open = new Set(tabs.map((t) => new URL(t.url).port));
   const idle = useServersStore
@@ -157,6 +173,30 @@ function tabsTool(): string {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * Closes a tab the agent opened (with `open`, or a popup one of its actions
+ * caused). The developer's own tabs are refused. Searches only the agent's
+ * tabs, so an id prefix reveals nothing about other tabs.
+ */
+function closeAgentTab(arg: string): string {
+  const all = Object.values(useTabsStore.getState().tabs);
+  const hits = all.filter((t) => isAgentOpened(t.id) && t.id.startsWith(arg));
+  if (hits.length > 1) throw new Error(`Tab id "${arg}" is ambiguous.`);
+  const t = hits[0];
+  if (!t) {
+    const theirs = scopedTabs().some((x) => x.id.startsWith(arg));
+    throw new Error(
+      theirs
+        ? `Tab "${arg}" is the developer's; you can only close tabs you opened.`
+        : `No tab you opened is "${arg}". Call tabs.`,
+    );
+  }
+  closeTab(t.id);
+  forgetAgentTab(t.id);
+  for (const m of [snapshots, cursors, emulated, dialogs]) m.delete(t.id);
+  return `Closed [${shortId(t)}] ${t.url}\n${tabsTool()}`;
 }
 
 /**
@@ -314,8 +354,64 @@ interface Seen {
 }
 const snapshots = new Map<string, Seen>();
 
+async function frameAX(tabId: string, frameId?: string): Promise<AXNode[]> {
+  const params = frameId ? { frameId } : {};
+  return (await tabCdp<{ nodes: AXNode[] }>(tabId, "Accessibility.getFullAXTree", params)).nodes;
+}
+
+interface FrameTree {
+  frame: { id: string; securityOrigin?: string };
+  childFrames?: FrameTree[];
+}
+
+/** Most iframes walked per snapshot; ad-heavy pages can have dozens. */
+const MAX_FRAMES = 20;
+
+/**
+ * The page's tree with its same-origin iframes' trees nested in (CDP gives one
+ * tree per frame). Costs nothing extra on a page without iframes. Cross-origin
+ * frames, and any frame whose tree can't be read (an out-of-process frame
+ * isn't this target's), are marked rather than walked.
+ */
 async function axTree(tabId: string): Promise<AXNode[]> {
-  return (await tabCdp<{ nodes: AXNode[] }>(tabId, "Accessibility.getFullAXTree")).nodes;
+  const main = await frameAX(tabId);
+  if (!main.some(isIframe)) return main;
+  const { frameTree } = await tabCdp<{ frameTree: FrameTree }>(tabId, "Page.getFrameTree");
+  const origins = new Map<string, string>();
+  const index = (t: FrameTree) => {
+    origins.set(t.frame.id, t.frame.securityOrigin ?? "");
+    for (const c of t.childFrames ?? []) index(c);
+  };
+  index(frameTree);
+  const home = frameTree.frame.securityOrigin;
+  const frames: FrameTrees = new Map();
+  const queue = [main];
+  for (let nodes = queue.shift(); nodes && frames.size < MAX_FRAMES; nodes = queue.shift()) {
+    for (const n of nodes.filter(isIframe)) {
+      const key = n.backendDOMNodeId;
+      if (key == null || frames.has(key) || frames.size >= MAX_FRAMES) continue;
+      const frameId = await tabCdp<{ node: { frameId?: string } }>(tabId, "DOM.describeNode", {
+        backendNodeId: key,
+      }).then(
+        (r) => r.node.frameId,
+        () => undefined,
+      );
+      // No frame yet: the iframe hasn't loaded anything.
+      if (!frameId) continue;
+      if (!home || home === "null" || origins.get(frameId) !== home) {
+        frames.set(key, "cross-origin");
+        continue;
+      }
+      try {
+        const sub = await frameAX(tabId, frameId);
+        frames.set(key, sub);
+        queue.push(sub);
+      } catch {
+        frames.set(key, "cross-origin");
+      }
+    }
+  }
+  return mergeFrames(main, frames);
 }
 
 /** Both views from one tree fetch. */
@@ -330,14 +426,34 @@ function parseRef(ref: unknown): number {
   return Number(m[1]);
 }
 
-/** What happened after an action: settle note, URL change, page diff, new problems. */
-async function consequences(tab: Tab, urlBefore: string): Promise<string[]> {
+/**
+ * Tabs the page opened since `mark` (target=_blank, window.open). They open in
+ * front, so a localhost one becomes the default tab; any other can't be used,
+ * only closed.
+ */
+function popupLines(tab: Tab, mark: number | undefined): string[] {
+  if (mark == null) return [];
+  return takePopups(tab.id, mark).map((p) => {
+    const t = useTabsStore.getState().tabs[p.tabId];
+    if (!t) return `Opened a new tab, already closed: ${p.url}`;
+    const id = shortId(t);
+    return isLoopbackUrl(t.url)
+      ? `Opened new tab [${id}] ${t.url}, now the default tab; pass tab="${shortId(tab)}" to stay on this one.`
+      : `Opened new tab [${id}] ${t.url}: not localhost, so you can't use it (tabs close="${id}" closes it).`;
+  });
+}
+
+/**
+ * What happened after an action: settle note, URL change, tabs it opened (when
+ * given the `popupMark` from before it), page diff, new problems.
+ */
+async function consequences(tab: Tab, urlBefore: string, mark?: number): Promise<string[]> {
   const unsettled = await settle(tab.id);
   const now = useTabsStore.getState().tabs[tab.id] ?? tab;
   if (dialogs.has(tab.id)) {
     // The page is paused: its tree can't be read until the dialog is answered.
     const problems = newProblems(now);
-    return [dialogNote(tab.id) as string, ...problems];
+    return [dialogNote(tab.id) as string, ...popupLines(tab, mark), ...problems];
   }
   const before = snapshots.get(tab.id);
   const after = await takePage(tab.id);
@@ -354,6 +470,7 @@ async function consequences(tab: Tab, urlBefore: string): Promise<string[]> {
   return [
     ...(unsettled ? [unsettled] : []),
     ...(now.url !== urlBefore ? [`Navigated to ${now.url}`] : []),
+    ...popupLines(tab, mark),
     ...page,
     ...(problems.length ? problems : ["No new errors or failed requests."]),
   ];
@@ -483,11 +600,20 @@ async function centre(tabId: string, backendNodeId: number): Promise<{ x: number
 /**
  * "" when a click at the point lands on the element (or inside it), else what
  * is on top of it there. Asks the element's own root, so an element inside a
- * shadow tree isn't mistaken for being covered by its host.
+ * shadow tree isn't mistaken for being covered by its host. The point is in
+ * the top page's viewport (content quads of same-process frames are); inside
+ * an iframe, elementFromPoint wants the frame's own, so each enclosing
+ * frame's content-box offset is taken off.
  */
 const HIT_TEST = `function (p) {
+  let x = p.x, y = p.y;
+  for (let w = this.ownerDocument.defaultView; w && w.frameElement; w = w.parent) {
+    const f = w.frameElement, r = f.getBoundingClientRect(), s = getComputedStyle(f);
+    x -= r.left + f.clientLeft + parseFloat(s.paddingLeft);
+    y -= r.top + f.clientTop + parseFloat(s.paddingTop);
+  }
   const root = this.getRootNode();
-  const t = (root.elementFromPoint ? root : document).elementFromPoint(p.x, p.y);
+  const t = (root.elementFromPoint ? root : document).elementFromPoint(x, y);
   if (!t) return "nothing (it is off screen)";
   if (this === t || this.contains(t)) return "";
   const name = (t.getAttribute("aria-label") || t.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 40);
@@ -630,13 +756,14 @@ async function answerDialog(tab: Tab, accept: boolean, text: string): Promise<st
   const d = dialogs.get(tab.id);
   if (!d) throw new Error("No dialog is open in this tab.");
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+  const mark = popupMark();
   await tabCdp(tab.id, "Page.handleJavaScriptDialog", {
     accept,
     ...(d.type === "prompt" && accept ? { promptText: text } : {}),
   });
   dialogs.delete(tab.id);
   const did = `${accept ? "Accepted" : "Dismissed"} the ${d.type} dialog "${d.message}"`;
-  return [did, ...(await consequences(tab, urlBefore))].join("\n");
+  return [did, ...(await consequences(tab, urlBefore, mark))].join("\n");
 }
 
 async function actTool(args: Args): Promise<string> {
@@ -661,6 +788,7 @@ async function actTool(args: Args): Promise<string> {
           ?.trim() ?? `e${r}`);
   const label = labelOf(ref);
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+  const mark = popupMark();
 
   try {
     if (action === "click") {
@@ -716,7 +844,7 @@ async function actTool(args: Args): Promise<string> {
               : history
                 ? `Went ${action}`
                 : `Clicked ${label}`;
-  return [did, ...(await consequences(tab, urlBefore))].join("\n");
+  return [did, ...(await consequences(tab, urlBefore, mark))].join("\n");
 }
 
 async function openTool(args: Args): Promise<string> {
@@ -727,6 +855,7 @@ async function openTool(args: Args): Promise<string> {
   }
   const existing = scopedTabs().find((t) => t.url === url);
   const id = existing?.id ?? openTab({ url });
+  if (!existing) markAgentOpened(id);
   const tab = useTabsStore.getState().tabs[id];
   await showTab(tab);
   // A fresh page: report it whole, not as a diff against an old visit.
@@ -1065,7 +1194,7 @@ ${note}`;
   }
   switch (tool) {
     case "tabs":
-      return tabsTool();
+      return tabsTool(args);
     case "check":
       return checkTool(args);
     case "snapshot":

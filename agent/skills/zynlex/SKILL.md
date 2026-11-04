@@ -49,8 +49,12 @@ action reports what it caused, so the cheapest loop is short:
   reply includes the current page; use its refs.
 - **"Not settled after 10s: …"**: it names what's still pending (requests, or a
   page that keeps changing). That is often the bug.
-- **Elements inside an iframe** don't appear in the outline. `open` the frame's
-  own URL (from its `src`) in a tab and work there.
+- **Iframes**: same-origin frames are shown nested under `iframe "…"` and their
+  refs work like any other. `iframe "…" (cross-origin, not shown)` can't be
+  reached; `open` the frame's own URL in a tab if it's localhost.
+- **"Opened new tab [id] …"**: your action opened a popup. A localhost one is
+  now the default tab; pass `tab` to go back. Close tabs you opened with
+  `tabs close=<id>` when done.
 
 ## Rules
 

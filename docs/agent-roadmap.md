@@ -18,8 +18,8 @@ Status: **todo** · **doing** · **done**.
 | P2 | **`eval`** (run JS in the page, return a value; localhost tabs only) | Escape hatch for anything the other tools don't cover. | done, untested on Windows |
 | P3 | **`hover`, `back`/`forward`, drag** | Hover menus, history navigation. | done, untested on Windows |
 | P4 | **`wait_for`** (text appears/disappears, URL changes, timeout) | Long async flows beyond the settle rule. | done, untested on Windows |
-| P5 | **Tabs and popups** (follow `target=_blank` and `window.open`, list/switch/close tabs the agent opened) | OAuth popups, "open in new tab" links. | todo |
-| P6 | **Iframes in the snapshot** (same-origin frames walked, refs that work inside them) | Embedded widgets, payment forms. | todo |
+| P5 | **Tabs and popups** (follow `target=_blank` and `window.open`, list/switch/close tabs the agent opened) | OAuth popups, "open in new tab" links. | done, untested on Windows |
+| P6 | **Iframes in the snapshot** (same-origin frames walked, refs that work inside them) | Embedded widgets, payment forms. | done, untested on Windows |
 | P7 | **File upload** (`act` upload on an `<input type=file>`) | Upload forms. | todo |
 | P8 | **Screenshots: element crop, full page** | Smaller images, whole-page layout checks. | todo |
 | P9 | **Large output to a file** (snapshot over 300 lines, bodies over 8 KB written to `%TEMP%`, path returned) | Big pages and payloads without blowing the context. | todo |

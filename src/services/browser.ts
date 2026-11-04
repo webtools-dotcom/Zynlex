@@ -250,8 +250,13 @@ export function onHoveredUrlChanged(
   );
 }
 
-export function onNewTabRequested(callback: (url: string) => void): Promise<UnlistenFn> {
-  return listen<{ url: string }>("browser://open-new-tab", (e) => callback(e.payload.url));
+/** A page asked for a new window (`target=_blank`, `window.open`); `openerTabId` is the tab it came from. */
+export function onNewTabRequested(
+  callback: (url: string, openerTabId: string | null) => void,
+): Promise<UnlistenFn> {
+  return listen<{ url: string; tabId?: string }>("browser://open-new-tab", (e) =>
+    callback(e.payload.url, e.payload.tabId ?? null),
+  );
 }
 
 // ─── Downloads ──────────────────────────────────────────────────────

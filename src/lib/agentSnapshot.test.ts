@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { type AXNode, diffSnapshot, formatSnapshot } from "./agentSnapshot";
+import {
+  type AXNode,
+  diffSnapshot,
+  type FrameTrees,
+  formatSnapshot,
+  mergeFrames,
+} from "./agentSnapshot";
 
 let next = 0;
 const node = (
@@ -78,6 +84,77 @@ describe("formatSnapshot", () => {
     const nodes = tree("RootWebArea", "", [tree("paragraph", "", [tree("StaticText", "Hello")])]);
     expect(formatSnapshot(nodes)).toBe("(nothing actionable on the page)");
     expect(formatSnapshot(nodes, { full: true })).toContain('"Hello"');
+  });
+});
+
+describe("mergeFrames", () => {
+  // CDP restarts AX node ids in every frame's tree; refs stay page-unique.
+  const frameTree = (role: string, name: string, kids: AXNode[][] = []) => {
+    const nodes = tree(role, name, kids);
+    return nodes.map((n) => ({
+      ...n,
+      nodeId: `x${n.nodeId}`,
+      childIds: n.childIds?.map((c) => `x${c}`),
+    }));
+  };
+
+  it("nests a same-origin frame under its iframe, with refs act can use", () => {
+    const frame = frameTree("RootWebArea", "Feedback", [
+      tree("form", "", [tree("textbox", "Message"), tree("button", "Send")]),
+    ]);
+    const iframe = tree("Iframe", "Feedback widget");
+    const ad = tree("Iframe", "Ad");
+    const nodes = tree("RootWebArea", "App", [
+      tree("main", "", [tree("button", "Save"), iframe]),
+      ad,
+      tree("Iframe", "Not loaded yet"),
+    ]);
+    const frames: FrameTrees = new Map<number, AXNode[] | "cross-origin">([
+      [iframe[0].backendDOMNodeId as number, frame],
+      [ad[0].backendDOMNodeId as number, "cross-origin"],
+    ]);
+    const merged = mergeFrames(nodes, frames);
+    expect(merged[0]).toBe(nodes[0]);
+    const ref = (name: string) => `e${frame.find((n) => n.name?.value === name)?.backendDOMNodeId}`;
+    const save = `e${nodes.find((n) => n.name?.value === "Save")?.backendDOMNodeId}`;
+    expect(formatSnapshot(merged)).toBe(
+      [
+        "main",
+        `  button "Save" [${save}]`,
+        '  iframe "Feedback widget"',
+        "    form",
+        `      textbox "Message" [${ref("Message")}] value=""`,
+        `      button "Send" [${ref("Send")}]`,
+        'iframe "Ad" (cross-origin, not shown)',
+      ].join("\n"),
+    );
+    // within can root inside a frame.
+    expect(formatSnapshot(merged, { within: frame[1].backendDOMNodeId })).toContain("Send");
+  });
+
+  it("walks frames inside frames, and leaves a page without frames as it was", () => {
+    const inner = frameTree("RootWebArea", "", [tree("button", "Pay")]);
+    const innerIframe = tree("Iframe", "Card");
+    const outer = frameTree("RootWebArea", "", [innerIframe]).map((n) => ({
+      ...n,
+      nodeId: `y${n.nodeId}`,
+      childIds: n.childIds?.map((c) => `y${c}`),
+    }));
+    const outerIframe = tree("Iframe", "Checkout");
+    const nodes = tree("RootWebArea", "", [outerIframe]);
+    const merged = mergeFrames(
+      nodes,
+      new Map([
+        [outerIframe[0].backendDOMNodeId as number, outer],
+        [innerIframe[0].backendDOMNodeId as number, inner],
+      ]),
+    );
+    expect(formatSnapshot(merged)).toMatch(
+      /^iframe "Checkout"\n {2}iframe "Card"\n {4}button "Pay" \[e\d+\]$/,
+    );
+    expect(mergeFrames(nodes, new Map())).toBe(nodes);
+    // An iframe nobody walked shows only when it holds something (or in full mode).
+    expect(formatSnapshot(nodes)).toBe("(nothing actionable on the page)");
   });
 });
 

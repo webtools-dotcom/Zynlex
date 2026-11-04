@@ -103,12 +103,12 @@ call to find out.
 
 | Tool | Does | Status |
 |---|---|---|
-| `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab | Built |
+| `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab; `close` closes a tab the agent opened | Built |
 | `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors | Built |
 | `check` | Settles, then new errors + failed requests since the last report; `reload` reloads first | Built |
 | `errors` | Every recorded error and failed request; `warnings` adds warnings | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
-| `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` on a ref with real input, `back` / `forward` in history (localhost entries only), then the consequences | Built (hover, drag, back/forward untested on Windows) |
+| `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` on a ref with real input, `back` / `forward` in history (localhost entries only), then the consequences (including any tab it opened) | Built (hover, drag, back/forward untested on Windows) |
 | `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
 | `screenshot` | Visible area to `%TEMP%\zynlex-agent`, returns the path | Built (no element crop yet) |
 | `viewport` | Device presets or width×height, touch, mobile UA; `reset` | Built |
@@ -162,8 +162,65 @@ and go to the neighbouring entry with `Page.navigateToHistoryEntry`, refusing
 an entry that isn't on localhost. An action brings its tab to the front so the
 developer sees it happen.
 
-Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`); iframes
-aren't walked; the snapshot is cut at 300 lines (use `within`).
+Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`);
+cross-origin iframes aren't walked; the snapshot is cut at 300 lines (use
+`within`).
+
+### Iframes
+
+`Accessibility.getFullAXTree` returns one frame's tree. When the page's tree
+has `Iframe` nodes (and only then, so a page without iframes costs no extra
+calls), `axTree` in [agent.ts](../src/lib/agent.ts) reads `Page.getFrameTree`,
+finds each iframe's frame with `DOM.describeNode`, and fetches that frame's
+tree with `getFullAXTree({ frameId })` when its `securityOrigin` equals the top
+page's. `mergeFrames` ([agentSnapshot.ts](../src/lib/agentSnapshot.ts)) hangs
+each frame's root under its iframe node (frame node ids are prefixed, since
+they restart per frame), so frames nest at any depth, up to 20 per snapshot:
+
+```
+main
+  button "Save" [e12]
+  iframe "Feedback widget"
+    textbox "Message" [e40] value=""
+    button "Send" [e41]
+iframe "Payment" (cross-origin, not shown)
+```
+
+Refs inside a frame are ordinary refs: backendDOMNodeIds are unique across
+the frames of one renderer target, so `DOM.resolveNode`, `getContentQuads`
+and `scrollIntoViewIfNeeded` take them unchanged. Content quads of a
+same-process frame are already in the top page's viewport, which is what
+`Input.dispatchMouseEvent` wants; the covered-element hit test subtracts each
+enclosing frame's content-box offset before `elementFromPoint`, which works
+in the frame's own coordinates. A cross-origin frame (or one whose tree can't
+be read, e.g. out-of-process) is listed with its title and not walked. The
+settle rule's DOM-stillness probe watches the top document only.
+
+### Tabs and popups
+
+A page's new-window request (`target=_blank`, `window.open`) is denied as a
+window and opened as a tab, as it always was for people
+(`browser://open-new-tab` → `openTab` in
+[useWebviewBridge.ts](../src/hooks/useWebviewBridge.ts)); the event now
+carries the opener's tab id, and the bridge notes each popup in
+[agentTabs.ts](../src/lib/agentTabs.ts). `act` (and dialog `accept`/`dismiss`)
+takes a mark before the input and, after settling, reports the popups its tab
+opened since:
+
+```
+Clicked link "Terms" [e9]
+Opened new tab [3f2a91c0] http://localhost:5173/terms, now the default tab; pass tab="a1b2c3d4" to stay on this one.
+```
+
+The popup opens in front, so it becomes the default tab for the next call.
+A non-localhost popup (an OAuth provider) is reported but stays out of scope
+like any other tab: `Opened new tab [id] https://…: not localhost, so you
+can't use it`. Popups an action caused, and tabs `open` created, are the
+agent's: `tabs` marks them `(opened by you)` and `tabs close=<id>` closes them.
+Any other tab is refused, and the lookup only searches the agent's tabs, so
+an id prefix says nothing about tabs it can't see. Known ceiling: the window is
+denied and reopened as a tab, so the popup has no `window.opener`; an OAuth
+flow that `postMessage`s back to its opener won't complete.
 
 ### Settle rule
 

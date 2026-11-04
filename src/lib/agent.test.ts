@@ -19,6 +19,7 @@ vi.mock("@/services/browser", async (importOriginal) => ({
     hooks.dialog = cb;
     return Promise.resolve(() => {});
   },
+  closeTabWebview: () => Promise.resolve(),
   tabCdp: (_tab: string, method: string) => {
     hooks.cdp.push(method);
     return Promise.reject(new Error("tab not loaded"));
@@ -42,6 +43,7 @@ import { useConsoleStore } from "@/stores/console";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useTabsStore } from "@/stores/tabs";
 import type { Tab } from "@/types";
+import { notePopup, popupMark, takePopups } from "./agentTabs";
 
 const tab = (id: string, url: string, lastActiveAt = 0): Tab => ({
   id,
@@ -163,6 +165,35 @@ describe("agent tools", () => {
     expect(list).not.toContain("main.js");
     expect(await runAgentTool("network", { all: true })).toContain("main.js");
     expect(await runAgentTool("network", { id: "net-2" })).toContain('{"items":[]}');
+  });
+
+  it("closes only tabs the agent opened", async () => {
+    useTabsStore.setState((s) => ({
+      tabs: {
+        ...s.tabs,
+        "dddddddd-4": tab("dddddddd-4", "http://localhost:5173/terms"),
+        "eeeeeeee-5": tab("eeeeeeee-5", "https://accounts.example.com/oauth"),
+      },
+    }));
+    const mark = popupMark();
+    notePopup("aaaaaaaa-1", "dddddddd-4", "http://localhost:5173/terms");
+    notePopup("aaaaaaaa-1", "eeeeeeee-5", "https://accounts.example.com/oauth");
+    // What an act on aaaaaaaa-1 does after the click.
+    expect(takePopups("aaaaaaaa-1", mark)).toHaveLength(2);
+
+    expect(await runAgentTool("tabs", {})).toContain(
+      'localhost:5173/terms "dddddddd-4" [dddddddd] (opened by you)',
+    );
+    await expect(runAgentTool("tabs", { close: "bbbb" })).rejects.toThrow("the developer's");
+    await expect(runAgentTool("tabs", { close: "cccc" })).rejects.toThrow("No tab you opened");
+
+    const out = await runAgentTool("tabs", { close: "dddd" });
+    expect(out).toContain("Closed [dddddddd]");
+    expect(useTabsStore.getState().tabs["dddddddd-4"]).toBeUndefined();
+    // A non-localhost popup can't be used, but it can be closed.
+    await runAgentTool("tabs", { close: "eeee" });
+    expect(useTabsStore.getState().tabs["eeeeeeee-5"]).toBeUndefined();
+    await expect(runAgentTool("tabs", { close: "dddd" })).rejects.toThrow("No tab you opened");
   });
 
   it("reports an open dialog instead of calling into the paused page", async () => {
