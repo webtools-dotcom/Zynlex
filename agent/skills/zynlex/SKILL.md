@@ -36,6 +36,9 @@ action reports what it caused, so the cheapest loop is short:
 - **`screenshot`**: for layout questions only (overlap, spacing, color). It
   doesn't show errors; `check` does, and costs far less.
 - **`tabs`**: lists open localhost tabs and running dev servers without a tab.
+- **`recording`**: the steps the developer recorded (their clicks and typing,
+  with refs) and what each caused. Read it when they say they showed you the
+  bug; then replay the steps with `act`, after a `snapshot` (refs may be old).
 
 ## Replies that need a different next step
 

@@ -15,6 +15,7 @@ import {
   Bookmark,
   Bug,
   Camera,
+  Circle,
   Clock,
   Code2,
   Eraser,
@@ -46,6 +47,7 @@ import { getActiveTabId } from "@/hooks/useActiveScope";
 import { activeEnv, switchEnv, workspaceEnvs } from "@/lib/envActions";
 import { originOf } from "@/lib/url";
 import { copyBugReport } from "@/lib/bugReport";
+import { toggleRecording } from "@/lib/recorder";
 import {
   clearSiteData,
   hardReload,
@@ -478,6 +480,17 @@ const COMMANDS: Command[] = [
       if (!ui.settingsPanelOpen) ui.toggleSettingsPanel();
       // The panel mounts on the next render; scroll once it's there.
       setTimeout(() => document.getElementById(AI_AGENTS_SECTION)?.scrollIntoView(), 50);
+    },
+  },
+  {
+    id: "agent.record",
+    title: "Record Steps for Agent (start/stop)",
+    keys: [],
+    icon: Circle,
+    run: () => {
+      const tabId = getActiveTabId();
+      if (!tabId) return false;
+      void toggleRecording(tabId);
     },
   },
   {

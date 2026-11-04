@@ -119,6 +119,63 @@ call to find out.
 | `eval` | `Runtime.evaluate` (`awaitPromise`, `returnByValue`, `replMode`): an expression, or a function body when the code has `return`; value as compact JSON cut at 4 KB, exceptions as `Threw: …`, gives up after 10 s | Built, untested on Windows |
 | `wait_for` | Polls every 250 ms until all given conditions hold: `text` appears, `gone` disappears (full snapshot + `body.innerText`), `url` contains; `timeout` s (default 10, max 30); says what matched or what's pending, then the consequences | Built, untested on Windows |
 | `mock` | `add` a canned response (or, with `header`+`value`, a request-header rule), `list`, `remove` by id, `clear`, through the panels' stores | Built |
+| `recording` | The developer's latest recorded steps (click/type/select/press/upload, with refs) and what each caused; see [Recorded steps](#recorded-steps) | Built, untested on Windows |
+
+### Recorded steps
+
+"Show the agent what I did" (roadmap M2). The developer starts recording on a
+localhost tab (palette: **Record Steps for Agent (start/stop)**, or **Record**
+in the status bar while an agent is connected), uses the page, and stops
+(**Stop** next to `● Recording 3 steps`). The agent reads it with `recording`:
+
+```
+Recording of http://localhost:5173/cart "Shop" [a1b2c3d4], 42s, 4 steps:
+1. type textbox "Email" [e52] "a@b.co"
+2. type textbox "Password" [e53] (password, not recorded)
+3. click button "Pay" [e41] → POST /api/pay 500, TypeError: total is undefined
+4. press Escape
+Refs are from recording time; take a snapshot before acting on them.
+```
+
+A tool of its own rather than an option on `errors` or `check`: those report
+the live page, a recording is a finished artefact from earlier, and one empty
+schema costs fewer tokens than explaining a mode switch.
+
+- **Capture without page IPC.** [recorder.ts](../src/lib/recorder.ts) puts a
+  listener in the page ([RECORDER_SCRIPT](../src/lib/agentRecord.ts), by
+  `Runtime.evaluate` and `Page.addScriptToEvaluateOnNewDocument`; top document
+  only). It buffers trusted `click`/`input`/`change`/`keydown` events and calls
+  nothing; the app drains the buffer with its own `Runtime.evaluate` every
+  300 ms. Each element is fetched as a remote object and resolved with
+  `DOM.describeNode` (backendNodeId → the ref, attributes) and
+  `Accessibility.getPartialAXTree` (role and name, the snapshot's words); the
+  page's own label and tag stand in when that fails.
+- **Same vocabulary as `act`.** Typing into one field in a row collapses to
+  its final value (the click that focused it folds in, editing keys inside it
+  are dropped). The click an Enter causes is not a second step. Only the keys
+  `act` can press are recorded, without modifiers.
+- **What each step caused.** Errors and failed requests are copied from the
+  console and network stores as they arrive (a navigation clears those
+  stores) and given to the last step before them; a request row's arrival time
+  is its time, and the console's line for the same URL gives way to it.
+  Recording holds a network-capture reference so rows have method and status.
+  A URL change within 3 s of a step is its result (`→ /checkout`); a later one
+  is an `open` step of its own (the address bar). Up to 4 per step, then
+  `+N more`.
+- **Passwords.** The page script never puts a password field's value in the
+  buffer (`type=password`, `autocomplete` password/one-time-code/card number
+  or CVC, and a field that was a password before a show-password toggle).
+  The app drops it again from the node's attributes, so a value the page sent
+  anyway is never kept: `(password, not recorded)`.
+- **Scope and lifetime.** Localhost tabs only; recording stops by itself if
+  the tab closes or leaves localhost. One recording, in memory, replaced by
+  the next. `recording` during a recording drains first and says `still
+  recording`. 200 steps at most.
+- **Known gaps.** A click that unloads the page within 300 ms of the last
+  drain is lost with the old document (its navigation still shows as a
+  step's result or an `open` step). Steps in iframes aren't recorded. The page
+  can read or forge its own buffer: a recording is page data, like console
+  text. Input an agent sends while recording is recorded too.
 
 ### Mocks and header rules
 
@@ -591,8 +648,9 @@ another client" checks, not benchmark runs.
 3. **MCP + skill + benchmark. Done.** MCP server, tuned and held-out
    benchmarks, dialog support (v3), and the agent skill (measured: no
    benefit over the MCP instructions; kept as optional).
-4. **Developer features.** `mock` and console levels done (untested on
-   Windows); `eval`, flag-for-agent, scope grants UI to do.
+4. **Developer features.** `mock`, console levels, `eval` and recorded steps
+   (`recording`) done (untested on Windows); flag-for-agent, scope grants UI
+   to do.
 
 ## Not doing
 

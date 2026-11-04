@@ -1,4 +1,6 @@
-import { originOf } from "@/lib/url";
+import { isLoopbackUrl, originOf } from "@/lib/url";
+import { toggleRecording } from "@/lib/recorder";
+import { useRecordingStore } from "@/stores/recording";
 import { useConsoleStore } from "@/stores/console";
 import { useUIStore } from "@/stores/ui";
 import { useAgentStore } from "@/stores/agent";
@@ -46,7 +48,10 @@ function AgentIndicator() {
   return (
     <span className="flex items-center gap-2">
       {enabled ? (
-        <span style={{ color: "var(--color-accent)" }} title="An AI agent can read your localhost tabs">
+        <span
+          style={{ color: "var(--color-accent)" }}
+          title="An AI agent can read your localhost tabs"
+        >
           ● Agent: {clients.join(", ")}
         </span>
       ) : (
@@ -62,6 +67,50 @@ function AgentIndicator() {
         {enabled ? "Stop" : "Turn on"}
       </button>
     </span>
+  );
+}
+
+/**
+ * Recording the developer's steps for an agent: while on, the step count and
+ * Stop; otherwise Record, offered on a localhost tab while an agent is
+ * connected (the palette command works any time).
+ */
+function RecordControl({ tabId, url }: { tabId: string | null; url: string }) {
+  const { active, rec } = useRecordingStore();
+  const connected = useAgentStore((s) => s.enabled && s.clients.length > 0);
+  if (active && rec) {
+    const n = rec.steps.length;
+    return (
+      <span className="flex items-center gap-2">
+        <span
+          style={{ color: "var(--color-accent)" }}
+          title="Your clicks and typing in this tab are being recorded for an agent; password values never are"
+        >
+          ● Recording {n} step{n === 1 ? "" : "s"}
+        </span>
+        <button
+          type="button"
+          onClick={() => void toggleRecording(rec.tabId)}
+          className="hover:underline"
+          style={{ color: "var(--color-text-muted)" }}
+          title="Stop recording; an agent can then read the steps"
+        >
+          Stop
+        </button>
+      </span>
+    );
+  }
+  if (!connected || !tabId || !isLoopbackUrl(url)) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => void toggleRecording(tabId)}
+      className="hover:underline"
+      style={{ color: "var(--color-text-muted)" }}
+      title="Record your clicks and typing in this tab for the agent"
+    >
+      Record
+    </button>
   );
 }
 
@@ -111,6 +160,7 @@ export function StatusBar({ isLoading, loadTime, url, hoveredUrl, zoom, tabId }:
       {leftContent}
       <ConsoleCounts tabId={tabId} />
       <AgentIndicator />
+      <RecordControl tabId={tabId} url={url} />
       <div className="flex-1" />
       <Toast />
       {zoom !== 1 && (
