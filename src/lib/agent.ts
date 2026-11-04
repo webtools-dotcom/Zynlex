@@ -12,6 +12,13 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportPresets";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 import { clipRect, cutForInline, MAX_BODY, MAX_LINES, uploadPaths } from "@/lib/agentOutput";
+import {
+  actsOnPage,
+  cancelPause,
+  holdWhilePaused,
+  PAUSED_REPLY,
+  tookOverLine,
+} from "@/lib/agentPause";
 import { dropAgentRules, mockTool } from "@/lib/agentRules";
 import {
   type AXNode,
@@ -45,6 +52,7 @@ import {
   webviewReload,
 } from "@/services/browser";
 import { useAgentStore } from "@/stores/agent";
+import { firstLine, summarizeCall, useAgentActivityStore } from "@/stores/agentActivity";
 import { type ConsoleEntry, isFailedRequest, useConsoleStore } from "@/stores/console";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useServersStore } from "@/stores/servers";
@@ -1338,7 +1346,51 @@ const PAGE_TOOLS = new Set([
   "wait_for",
 ]);
 
+/**
+ * After a takeover: how the page differs from the agent's last snapshot of
+ * it, so the agent knows what the developer changed before its own call runs.
+ * Nothing for `open` and `tabs close` (no page of the agent's to compare), a
+ * tab never snapshotted, a tab paused by a dialog, or a page that can't be read.
+ */
+async function takeoverDiff(tool: string, args: Args): Promise<string[]> {
+  if (tool === "open" || tool === "tabs") return [];
+  try {
+    const tab = resolveTab(args.tab);
+    const before = snapshots.get(tab.id);
+    if (!before || dialogs.has(tab.id)) return [];
+    const after = await takePage(tab.id);
+    snapshots.set(tab.id, after);
+    const diff = diffSnapshot(before.full, after.full);
+    if (!diff.length) return ["Page unchanged since your last look."];
+    return diff.length > after.compact.split("\n").length
+      ? ["Page now:", await showPage(tab, after.compact)]
+      : ["Page changes since your last look:", await showPage(tab, diff.join("\n"))];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Runs one tool call. While the developer has paused the agent, calls that
+ * act on a page wait (see agentPause.ts); once resumed they run, and their
+ * reply leads with the takeover note and what changed meanwhile.
+ */
 export async function runAgentTool(tool: string, args: Args): Promise<string> {
+  if (!actsOnPage(tool, args)) return runNow(tool, args);
+  const held = await holdWhilePaused();
+  if (!held) return runNow(tool, args);
+  if (held.kind === "timeout") return PAUSED_REPLY;
+  if (held.kind === "stopped")
+    throw new Error("The developer stopped the agent while it was paused.");
+  const lead = [tookOverLine(held.pausedMs), ...(await takeoverDiff(tool, args))].join("\n");
+  try {
+    return `${lead}\n${await runNow(tool, args)}`;
+  } catch (err) {
+    throw new Error(`${lead}\n${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function runNow(tool: string, args: Args): Promise<string> {
   const answering = tool === "act" && (args.action === "accept" || args.action === "dismiss");
   if (PAGE_TOOLS.has(tool) && !answering) {
     const tab = resolveTab(args.tab);
@@ -1386,6 +1438,60 @@ function setStatus(s: AgentStatus): void {
   const wasConnected = useAgentStore.getState().clients.length > 0;
   useAgentStore.setState(s);
   if (wasConnected && !s.clients.length) dropAgentRules();
+  // A pause nobody can see (the indicator hides with no agent) or that Stop
+  // overrides would only surprise the next agent.
+  if (!s.enabled || !s.clients.length) cancelPause();
+}
+
+/** The tab a call is about, for the activity list; null when it names none that resolves. */
+function callTab(tool: string, args: Args): { id: string | null; label: string } {
+  if (tool === "tabs") {
+    const close = typeof args.close === "string" ? args.close : "";
+    return { id: null, label: close ? `[${close.slice(0, 8)}]` : "" };
+  }
+  try {
+    const t = resolveTab(args.tab);
+    return { id: t.id, label: `[${shortId(t)}] ${t.url}` };
+  } catch {
+    return { id: null, label: "" };
+  }
+}
+
+/** Runs a call and records it in the activity list (roadmap S6). */
+export async function handleAgentCall(
+  tool: string,
+  args: Args,
+): Promise<{ ok: boolean; text: string }> {
+  const at = Date.now();
+  // `open` has no tab until it runs; it brings the one it opened forward, so
+  // afterwards that's the default tab.
+  let tab = tool === "open" ? { id: null, label: "" } : callTab(tool, args);
+  let ok = true;
+  let text: string;
+  try {
+    text = await runAgentTool(tool, args);
+  } catch (err) {
+    ok = false;
+    text = err instanceof Error ? err.message : String(err);
+  }
+  if (tool === "open" && ok) tab = callTab(tool, {});
+  const tookOver = text.startsWith("The developer took over");
+  const paused = ok && text === PAUSED_REPLY;
+  useAgentActivityStore.getState().record(
+    {
+      at,
+      tool,
+      tabId: tab.id,
+      tabLabel: tab.label,
+      summary: summarizeCall(args),
+      // A takeover note leads the reply; the error is the line after it.
+      error: ok ? null : firstLine(tookOver ? text.split("\n").slice(1).join("\n") : text),
+      ms: Date.now() - at,
+      note: paused ? "paused, not run" : tookOver ? "ran after takeover" : null,
+    },
+    actsOnPage(tool, args) && !paused,
+  );
+  return { ok, text };
 }
 
 /** Subscribes the dispatcher and the status mirror. */
@@ -1400,14 +1506,7 @@ export function listenForAgents(): Promise<UnlistenFn>[] {
       else dialogs.delete(tabId);
     }),
     onAgentRequest(async ({ id, tool, args }) => {
-      let ok = true;
-      let text: string;
-      try {
-        text = await runAgentTool(tool, args ?? {});
-      } catch (err) {
-        ok = false;
-        text = err instanceof Error ? err.message : String(err);
-      }
+      const { ok, text } = await handleAgentCall(tool, args ?? {});
       agentReply(id, ok, text).catch(() => {});
     }),
   ];

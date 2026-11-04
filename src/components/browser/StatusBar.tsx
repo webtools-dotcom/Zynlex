@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { toggleAgentPause } from "@/lib/agentPause";
 import { originOf } from "@/lib/url";
 import { useConsoleStore } from "@/stores/console";
 import { useUIStore } from "@/stores/ui";
@@ -35,28 +37,81 @@ function ConsoleCounts({ tabId }: { tabId: string | null }) {
   );
 }
 
+/** Seconds since `since`, ticking once a second while mounted. */
+function useSecondsSince(since: number): number {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return Math.max(0, Math.round((now - since) / 1000));
+}
+
+function PausedFor({ since, waiting }: { since: number; waiting: number }) {
+  const secs = useSecondsSince(since);
+  return (
+    <span
+      style={{ color: "var(--color-text-secondary)" }}
+      title="The agent's page actions wait until you press Resume; reads still answer"
+    >
+      ❚❚ Agent paused {secs} s{waiting ? ` · ${waiting} waiting` : ""}
+    </span>
+  );
+}
+
+const linkStyle = { color: "var(--color-text-muted)" };
+
 /**
- * Shown while an AI agent is connected over MCP, with Stop; or, after Stop,
- * a way to turn agent access back on. Hidden otherwise.
+ * Shown while an AI agent is connected over MCP, with Pause/Resume (take
+ * over) and Stop; or, after Stop, a way to turn agent access back on. Hidden
+ * otherwise. The name opens the Agent Activity panel: nothing may float over
+ * the tab, so the list lives in the sidebar, not a popover.
  */
 function AgentIndicator() {
-  const { enabled, clients } = useAgentStore();
+  const { enabled, clients, pausedAt, waiting } = useAgentStore();
   if (enabled && !clients.length) return null;
   const toggle = () => setAgentEnabled(!enabled).catch(() => {});
+  const openActivity = () => {
+    useUIStore.getState().setActivePanel("agent");
+    useUIStore.getState().setSidebarOpen(true);
+  };
   return (
     <span className="flex items-center gap-2">
-      {enabled ? (
-        <span style={{ color: "var(--color-accent)" }} title="An AI agent can read your localhost tabs">
-          ● Agent: {clients.join(", ")}
-        </span>
-      ) : (
+      {!enabled ? (
         <span style={{ color: "var(--color-text-muted)" }}>Agent access off</span>
+      ) : pausedAt != null ? (
+        <PausedFor since={pausedAt} waiting={waiting} />
+      ) : (
+        <button
+          type="button"
+          onClick={openActivity}
+          className="hover:underline"
+          style={{ color: "var(--color-accent)" }}
+          title="An AI agent can read your localhost tabs. Show what it did."
+        >
+          ● Agent: {clients.join(", ")}
+        </button>
+      )}
+      {enabled && (
+        <button
+          type="button"
+          onClick={toggleAgentPause}
+          className="hover:underline"
+          style={pausedAt != null ? { color: "var(--color-accent)" } : linkStyle}
+          title={
+            pausedAt != null
+              ? "Let the agent carry on; its waiting call runs and is told what changed"
+              : "Take over: the agent's page actions wait while you use the page"
+          }
+        >
+          {pausedAt != null ? "Resume" : "Pause"}
+        </button>
       )}
       <button
         type="button"
         onClick={toggle}
         className="hover:underline"
-        style={{ color: "var(--color-text-muted)" }}
+        style={linkStyle}
         title={enabled ? "Disconnect agents and refuse new calls" : "Let agents connect again"}
       >
         {enabled ? "Stop" : "Turn on"}

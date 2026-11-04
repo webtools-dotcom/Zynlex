@@ -29,12 +29,14 @@ import {
   Search,
   Settings,
   Bot,
+  Pause,
   Star,
   TerminalSquare,
   X,
 } from "lucide-react";
 import { useUIStore, isFindOpen } from "@/stores/ui";
 import { AI_AGENTS_SECTION } from "@/lib/mcpSetup";
+import { toggleAgentPause } from "@/lib/agentPause";
 import { useTabsStore } from "@/stores/tabs";
 import { useConsoleStore } from "@/stores/console";
 import { useWorkspacesStore } from "@/stores/workspaces";
@@ -122,7 +124,7 @@ function selectTab(pick: (ids: string[], current: number) => number): boolean {
   return true;
 }
 
-function openPanel(panel: "history" | "bookmarks" | "console") {
+function openPanel(panel: "history" | "bookmarks" | "console" | "agent") {
   useUIStore.getState().setActivePanel(panel);
   useUIStore.getState().setSidebarOpen(true);
 }
@@ -479,6 +481,20 @@ const COMMANDS: Command[] = [
       // The panel mounts on the next render; scroll once it's there.
       setTimeout(() => document.getElementById(AI_AGENTS_SECTION)?.scrollIntoView(), 50);
     },
+  },
+  {
+    id: "agent.pause",
+    title: "Pause or Resume the AI Agent (take over)",
+    keys: [],
+    icon: Pause,
+    run: () => toggleAgentPause(),
+  },
+  {
+    id: "panel.agent",
+    title: "Agent Activity Panel",
+    keys: [],
+    icon: Bot,
+    run: () => openPanel("agent"),
   },
   {
     id: "help.shortcuts",
