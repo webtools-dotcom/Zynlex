@@ -10,11 +10,15 @@ const hooks = vi.hoisted(() => ({
     | ((e: { tabId: string; open: boolean; type?: string; message?: string }) => void),
   cdp: [] as string[],
   writes: [] as { name: string; text: string }[],
+  status: null as null | ((s: { enabled: boolean; clients: string[] }) => void),
 }));
 vi.mock("@/services/browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getAgentStatus: () => Promise.resolve({ enabled: true, clients: [] }),
-  onAgentStatus: () => Promise.resolve(() => {}),
+  onAgentStatus: (cb: typeof hooks.status) => {
+    hooks.status = cb;
+    return Promise.resolve(() => {});
+  },
   onAgentRequest: () => Promise.resolve(() => {}),
   onDialog: (cb: typeof hooks.dialog) => {
     hooks.dialog = cb;
@@ -45,6 +49,9 @@ import {
   waitPending,
 } from "./agent";
 import { useConsoleStore } from "@/stores/console";
+import { useHeadersStore } from "@/stores/headers";
+import { type MockRule, useMocksStore } from "@/stores/mocks";
+import { withoutAgentRules } from "@/stores/workspaceRules";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useTabsStore } from "@/stores/tabs";
 import type { Tab } from "@/types";
@@ -104,7 +111,7 @@ describe("agent tools", () => {
         "cccccccc-3": tab("cccccccc-3", "https://mail.example.com/", 9),
       },
     });
-    useConsoleStore.setState({ entriesByTab: {}, countsByTab: {} });
+    useConsoleStore.setState({ entriesByTab: {}, logsByTab: {}, countsByTab: {} });
     useNetworkStore.setState({ entriesByTab: {} });
   });
 
@@ -258,6 +265,181 @@ describe("agent tools", () => {
 
     hooks.dialog?.({ tabId: "aaaaaaaa-1", open: false });
     await expect(runAgentTool("act", { action: "dismiss" })).rejects.toThrow("No dialog is open");
+  });
+});
+
+describe("console levels", () => {
+  beforeEach(() => {
+    useTabsStore.setState({ tabs: { "aaaaaaaa-1": tab("aaaaaaaa-1", "http://localhost:5173/") } });
+    useConsoleStore.setState({ entriesByTab: {}, logsByTab: {}, countsByTab: {} });
+    useNetworkStore.setState({ entriesByTab: {} });
+  });
+
+  const log = (level: "info" | "log" | "warning", text: string) =>
+    useConsoleStore.getState().add({
+      tabId: "aaaaaaaa-1",
+      level,
+      source: "console",
+      text,
+      url: "http://localhost:5173/app.js",
+      line: 1,
+    });
+
+  it("errors adds lower levels only when asked", async () => {
+    error("TypeError: boom");
+    log("warning", "deprecated");
+    log("info", "ready");
+    log("log", "cart = 3");
+    const plain = await runAgentTool("errors", {});
+    expect(plain).toContain("TypeError: boom");
+    expect(plain).not.toContain("deprecated");
+    expect(plain).not.toContain("ready");
+    expect(plain).toContain('pass level="warning"');
+
+    // The old flag still works.
+    expect(await runAgentTool("errors", { warnings: true })).toContain("deprecated");
+
+    const info = await runAgentTool("errors", { level: "info" });
+    expect(info).toContain("deprecated");
+    expect(info).toContain("info: ready");
+    expect(info).not.toContain("cart = 3");
+
+    const all = await runAgentTool("errors", { level: "log" });
+    expect(all).toContain("2 log/info messages:");
+    expect(all).toContain("cart = 3");
+
+    await expect(runAgentTool("errors", { level: "debug" })).rejects.toThrow(/level must be/);
+  });
+
+  it("says why there are no log messages", async () => {
+    expect(await runAgentTool("errors", { level: "log" })).toContain(
+      "recorded only while an agent is connected",
+    );
+  });
+});
+
+describe("mock tool", () => {
+  const devMock: MockRule = {
+    id: "dev00000-mock",
+    pattern: "localhost:5173/api/orders",
+    method: "",
+    status: 200,
+    contentType: "",
+    body: "[]",
+    delayMs: 0,
+    enabled: true,
+  };
+
+  beforeEach(() => {
+    useTabsStore.setState({
+      tabs: {
+        "aaaaaaaa-1": tab("aaaaaaaa-1", "http://localhost:5173/"),
+        "dddddddd-4": { ...tab("dddddddd-4", "http://localhost:4000/"), workspaceId: "other" },
+      },
+    });
+    useMocksStore.setState({ rulesByWs: { w: [devMock] } });
+    useHeadersStore.setState({ rulesByWs: {} });
+  });
+
+  const idOf = (out: string) => /(?:mock|rule) ([0-9a-f]{8})/.exec(out)?.[1] as string;
+
+  it("adds a mock ahead of the developer's, in the tab's workspace, marked as the agent's", async () => {
+    const out = await runAgentTool("mock", {
+      action: "add",
+      url: "localhost:5173/api/orders",
+      method: "post",
+      status: 500,
+      body: '{"error":"down"}',
+      delay: 300,
+    });
+    expect(out).toMatch(
+      /Added mock [0-9a-f]{8}: POST localhost:5173\/api\/orders now answers 500 after 300ms/,
+    );
+    const rules = useMocksStore.getState().rulesByWs.w;
+    expect(rules).toHaveLength(2);
+    expect(rules[0]).toMatchObject({ method: "POST", status: 500, delayMs: 300, agent: true });
+    expect(rules[1]).toBe(devMock);
+    expect(useMocksStore.getState().rulesByWs.other).toBeUndefined();
+  });
+
+  it("adds a header rule when given a header", async () => {
+    const out = await runAgentTool("mock", {
+      action: "add",
+      url: "localhost:5173/api",
+      header: "Authorization",
+      value: "Bearer test",
+    });
+    expect(out).toContain("Added header rule");
+    expect(useHeadersStore.getState().rulesByWs.w[0]).toMatchObject({
+      pattern: "localhost:5173/api",
+      name: "Authorization",
+      value: "Bearer test",
+      agent: true,
+    });
+  });
+
+  it("refuses catch-alls and bad statuses", async () => {
+    await expect(runAgentTool("mock", { action: "add", url: "*" })).rejects.toThrow(/catch-all/);
+    await expect(runAgentTool("mock", { action: "add" })).rejects.toThrow(/catch-all/);
+    await expect(
+      runAgentTool("mock", { action: "add", url: "localhost:5173/x", status: 99 }),
+    ).rejects.toThrow(/status/);
+    await expect(
+      runAgentTool("mock", { action: "add", url: "localhost:5173/x", header: "X-A" }),
+    ).rejects.toThrow(/value/);
+  });
+
+  it("lists both kinds, telling the agent's from the developer's", async () => {
+    await runAgentTool("mock", { action: "add", url: "localhost:5173/api/a", status: 404 });
+    await runAgentTool("mock", {
+      action: "add",
+      url: "localhost:5173/",
+      header: "X-A",
+      value: "1",
+    });
+    const out = await runAgentTool("mock", { action: "list" });
+    expect(out).toContain("ANY 404 localhost:5173/api/a (yours)");
+    expect(out).toContain("dev00000 ANY 200 localhost:5173/api/orders (developer's)");
+    expect(out).toContain("localhost:5173/ → X-A: 1 (yours)");
+    expect(await runAgentTool("mock", { action: "list", tab: "dddd" })).toContain(
+      "No mocks or header rules",
+    );
+  });
+
+  it("removes and clears only the agent's own rules", async () => {
+    const id = idOf(await runAgentTool("mock", { action: "add", url: "localhost:5173/a" }));
+    await runAgentTool("mock", { action: "add", url: "localhost:5173/b" });
+    await runAgentTool("mock", {
+      action: "add",
+      url: "localhost:5173/",
+      header: "X-A",
+      value: "1",
+    });
+    await expect(runAgentTool("mock", { action: "remove", id: "dev00000" })).rejects.toThrow(
+      /developer's/,
+    );
+    expect(await runAgentTool("mock", { action: "remove", id })).toContain(`Removed mock ${id}`);
+    expect(await runAgentTool("mock", { action: "clear" })).toContain("Removed your 2 rules");
+    expect(useMocksStore.getState().rulesByWs.w).toEqual([devMock]);
+    expect(useHeadersStore.getState().rulesByWs.w).toEqual([]);
+  });
+
+  it("never persists the agent's rules", async () => {
+    await runAgentTool("mock", { action: "add", url: "localhost:5173/a" });
+    // The persist middleware's partialize (no storage under Vitest, so called directly).
+    const saved = withoutAgentRules(useMocksStore.getState().rulesByWs);
+    expect(saved).toEqual({ w: [devMock] });
+  });
+
+  it("drops the agent's rules when the last agent disconnects", async () => {
+    listenForAgents();
+    // Let the initial getAgentStatus (no clients) land first.
+    await new Promise((r) => setTimeout(r, 0));
+    hooks.status?.({ enabled: true, clients: ["claude-code"] });
+    await runAgentTool("mock", { action: "add", url: "localhost:5173/a" });
+    await runAgentTool("mock", { action: "add", url: "localhost:4000/", tab: "dddd" });
+    hooks.status?.({ enabled: true, clients: [] });
+    expect(useMocksStore.getState().rulesByWs).toEqual({ w: [devMock], other: [] });
   });
 });
 

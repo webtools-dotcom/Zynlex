@@ -12,6 +12,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportPresets";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 import { clipRect, cutForInline, MAX_BODY, MAX_LINES, uploadPaths } from "@/lib/agentOutput";
+import { dropAgentRules, mockTool } from "@/lib/agentRules";
 import {
   type AXNode,
   diffSnapshot,
@@ -30,6 +31,7 @@ import {
 import { closeTab, openTab } from "@/lib/tabActions";
 import { isLoopbackUrl } from "@/lib/url";
 import {
+  type AgentStatus,
   agentReply,
   agentWriteTemp,
   captureScreenshot,
@@ -975,22 +977,41 @@ async function openTool(args: Args): Promise<string> {
   ].join("\n");
 }
 
+/** Severity order for `errors level=…`: each level includes the ones before it. */
+const LEVELS = ["error", "warning", "info", "log"] as const;
+
 function errorsTool(args: Args): string {
   const tab = resolveTab(args.tab);
-  const entries = useConsoleStore.getState().entriesByTab[tab.id] ?? [];
+  const level = args.level ?? (args.warnings ? "warning" : "error");
+  const rank = LEVELS.indexOf(level as (typeof LEVELS)[number]);
+  if (rank < 0) throw new Error(`level must be one of ${LEVELS.join(", ")}.`);
+  const { entriesByTab, logsByTab } = useConsoleStore.getState();
+  const entries = entriesByTab[tab.id] ?? [];
   const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
   const errors = entries.filter((e) => e.level === "error" && !isFailedRequest(e)).map(consoleLine);
   const warnings = entries.filter((e) => e.level === "warning");
+  const logs = (logsByTab[tab.id] ?? []).filter((e) => rank >= LEVELS.indexOf(e.level));
+  const older = logs.length - MAX_ROWS;
+  const logLines = logs
+    .slice(-MAX_ROWS)
+    .map((e) =>
+      e.level === "info" ? consoleLine(e).replace(/^ {2}/, "  info: ") : consoleLine(e),
+    );
   const body = [
     ...section("errors", errors),
     ...section("failed requests", failures(rows, entries.filter(isFailedRequest))),
-    ...(args.warnings ? section("warnings", warnings.map(consoleLine)) : []),
-  ];
+    ...(rank >= 1 ? section("warnings", warnings.map(consoleLine)) : []),
+    ...(rank >= 2 ? section(rank === 3 ? "log/info messages" : "info messages", logLines) : []),
+    older > 0 ? `(${older} older messages not shown)` : "",
+  ].filter(Boolean);
   return [
     header(tab),
     ...(body.length ? body : ["No errors or failed requests recorded."]),
-    !args.warnings && warnings.length
-      ? `(${warnings.length} warnings hidden; pass warnings=true)`
+    rank === 0 && warnings.length
+      ? `(${warnings.length} warnings hidden; pass level="warning")`
+      : "",
+    rank >= 2 && !logs.length
+      ? "(No log/info messages. They are recorded only while an agent is connected, so reload to see the page's startup output.)"
       : "",
   ]
     .filter(Boolean)
@@ -1349,18 +1370,31 @@ ${note}`;
       return evalTool(args);
     case "wait_for":
       return waitForTool(args);
+    case "mock":
+      return mockTool(resolveTab(args.tab), args);
     default:
       throw new Error(`Unknown tool "${tool}".`);
   }
 }
 
+/**
+ * Mirrors the status, and drops the agents' mocks and header rules once the
+ * last one disconnects: a mock left behind would keep answering the
+ * developer's app with canned data nobody remembers adding.
+ */
+function setStatus(s: AgentStatus): void {
+  const wasConnected = useAgentStore.getState().clients.length > 0;
+  useAgentStore.setState(s);
+  if (wasConnected && !s.clients.length) dropAgentRules();
+}
+
 /** Subscribes the dispatcher and the status mirror. */
 export function listenForAgents(): Promise<UnlistenFn>[] {
   getAgentStatus()
-    .then((s) => useAgentStore.setState(s))
+    .then(setStatus)
     .catch(() => {});
   return [
-    onAgentStatus((s) => useAgentStore.setState(s)),
+    onAgentStatus(setStatus),
     onDialog(({ tabId, open, type, message }) => {
       if (open) dialogs.set(tabId, { type: type ?? "alert", message: message ?? "" });
       else dialogs.delete(tabId);

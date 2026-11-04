@@ -14,6 +14,8 @@ export interface MockRule {
   body: string;
   delayMs: number;
   enabled: boolean;
+  /** Added by an AI agent; not persisted (see workspaceRules). Rust ignores it. */
+  agent?: boolean;
 }
 
 export const useMocksStore = createWorkspaceRulesStore<MockRule>("zynlex-mock-rules");

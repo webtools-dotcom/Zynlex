@@ -39,6 +39,14 @@ function RuleRow({
           <AlertTriangle size={11} />
         </span>
       )}
+      {rule.agent && (
+        <span
+          className="shrink-0 text-[var(--color-accent)]"
+          title="Added by an AI agent. Removed when the agent disconnects; not saved."
+        >
+          agent
+        </span>
+      )}
       <span className="truncate flex-1 min-w-0 text-[var(--color-text-muted)]" title={rule.pattern}>
         {rule.pattern}
       </span>

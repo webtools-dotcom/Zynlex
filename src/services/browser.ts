@@ -486,10 +486,10 @@ export function onNetworkEntry(
   return listen<NetworkEntryPayload>("browser://network-entry", (e) => callback(e.payload));
 }
 
-/** A console error/warning or failed request from a tab — see console.rs. */
+/** A console error/warning or failed request from a tab (log/info too while an agent is connected) — see console.rs. */
 export interface ConsoleEntryPayload {
   tabId: string;
-  level: "error" | "warning";
+  level: "error" | "warning" | "info" | "log";
   source: string;
   text: string;
   url: string;

@@ -73,10 +73,10 @@ fn tools() -> Value {
         },
         {
             "name": "errors",
-            "description": "All recorded console errors and failed requests in a tab, oldest first. Warnings too if `warnings` is true.",
+            "description": "All recorded console errors and failed requests in a tab, oldest first. `level` adds lower levels: warning, info, or log (console.log output too).",
             "inputSchema": { "type": "object", "properties": {
                 "tab": tab,
-                "warnings": { "type": "boolean" }
+                "level": { "type": "string", "enum": ["error", "warning", "info", "log"] }
             } }
         },
         {
@@ -127,6 +127,23 @@ fn tools() -> Value {
                 "url": { "type": "string", "description": "Text the URL must contain." },
                 "timeout": { "type": "number", "description": "Seconds, default 10, max 30." }
             } }
+        },
+        {
+            "name": "mock",
+            "description": "Canned responses and request headers for the tab's workspace, shown in the developer's Mocks/Headers panels. add: a mock (status, body…) or, with `header`, a header rule. list, remove (id, your own only), clear (all yours). Yours are dropped when you disconnect.",
+            "inputSchema": { "type": "object", "properties": {
+                "tab": tab,
+                "action": { "type": "string", "enum": ["add", "list", "remove", "clear"] },
+                "url": { "type": "string", "description": "add: URL prefix (localhost:5173/api/orders), or a pattern with *." },
+                "method": { "type": "string", "description": "Default: any." },
+                "status": { "type": "number", "description": "Default 200." },
+                "body": { "type": "string" },
+                "contentType": { "type": "string", "description": "Default application/json." },
+                "delay": { "type": "number", "description": "ms before answering." },
+                "header": { "type": "string", "description": "Add a request header rule instead of a mock; needs value." },
+                "value": { "type": "string" },
+                "id": { "type": "string", "description": "remove: id from list." }
+            }, "required": ["action"] }
         }
     ])
 }
@@ -288,7 +305,7 @@ mod tests {
         )
         .unwrap();
         let tools = list["result"]["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 12);
         assert_eq!(
             tools[0]["inputSchema"]["properties"]["close"]["type"],
             "string"
@@ -303,6 +320,8 @@ mod tests {
         assert_eq!(schema("act")["files"]["type"], "array");
         assert_eq!(schema("screenshot")["ref"]["type"], "string");
         assert_eq!(schema("screenshot")["full"]["type"], "boolean");
+        let mock = tools.iter().find(|t| t["name"] == "mock").unwrap();
+        assert_eq!(mock["inputSchema"]["required"], json!(["action"]));
 
         let unknown = handle(
             &json!({"jsonrpc": "2.0", "id": 3, "method": "resources/list"}),

@@ -6,6 +6,8 @@ export interface HeaderRule {
   name: string;
   value: string;
   enabled: boolean;
+  /** Added by an AI agent; not persisted (see workspaceRules). Rust ignores it. */
+  agent?: boolean;
 }
 
 export const useHeadersStore = createWorkspaceRulesStore<HeaderRule>("zynlex-header-rules");

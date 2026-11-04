@@ -129,6 +129,8 @@ async fn session(app: AppHandle, pipe: NamedPipeServer) {
     // Record full requests (headers, bodies) while an agent is connected, not
     // just while the Network panel is open.
     crate::commands::browser::browser_set_network_capture(true);
+    // And console.log/info, for `errors level=…`.
+    crate::commands::browser::set_console_verbose(true);
 
     loop {
         let line = tokio::select! {
@@ -169,6 +171,7 @@ async fn session(app: AppHandle, pipe: NamedPipeServer) {
     }
 
     crate::commands::browser::browser_set_network_capture(false);
+    crate::commands::browser::set_console_verbose(false);
     sessions()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
