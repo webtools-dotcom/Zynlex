@@ -19,6 +19,7 @@ import {
   Code2,
   Eraser,
   FileWarning,
+  Flag,
   Gauge,
   Keyboard,
   type LucideIcon,
@@ -46,6 +47,8 @@ import { getActiveTabId } from "@/hooks/useActiveScope";
 import { activeEnv, switchEnv, workspaceEnvs } from "@/lib/envActions";
 import { originOf } from "@/lib/url";
 import { copyBugReport } from "@/lib/bugReport";
+import { cancelFlag, startFlag } from "@/lib/agentFlags";
+import { useAgentFlagsStore } from "@/stores/agentFlags";
 import {
   clearSiteData,
   hardReload,
@@ -128,6 +131,9 @@ function openPanel(panel: "history" | "bookmarks" | "console") {
 }
 
 function stopOrCloseFind(): boolean {
+  // Escape in the page while picking an element to flag; the note input
+  // handles its own.
+  if (cancelFlag()) return true;
   if (isFindOpen()) {
     useUIStore.getState().closeFind();
     return true;
@@ -478,6 +484,23 @@ const COMMANDS: Command[] = [
       if (!ui.settingsPanelOpen) ui.toggleSettingsPanel();
       // The panel mounts on the next render; scroll once it's there.
       setTimeout(() => document.getElementById(AI_AGENTS_SECTION)?.scrollIntoView(), 50);
+    },
+  },
+  {
+    id: "agent.flag",
+    title: "Flag Element for Agent",
+    keys: ["ctrl+shift+e"],
+    icon: Flag,
+    run: startFlag,
+  },
+  {
+    id: "agent.flags.clear",
+    title: "Clear Agent Flags",
+    keys: [],
+    icon: Flag,
+    run: () => {
+      if (!useAgentFlagsStore.getState().flags.length) return false;
+      useAgentFlagsStore.getState().clear();
     },
   },
   {

@@ -20,7 +20,7 @@ export interface AXNode {
   crossOrigin?: boolean;
 }
 
-const INTERACTIVE = new Set([
+export const INTERACTIVE = new Set([
   "button",
   "link",
   "textbox",

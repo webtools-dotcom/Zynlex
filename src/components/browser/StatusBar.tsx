@@ -2,6 +2,7 @@ import { originOf } from "@/lib/url";
 import { useConsoleStore } from "@/stores/console";
 import { useUIStore } from "@/stores/ui";
 import { useAgentStore } from "@/stores/agent";
+import { useAgentFlagsStore } from "@/stores/agentFlags";
 import { setAgentEnabled } from "@/services/browser";
 import { Toast } from "@/components/Toast";
 
@@ -35,32 +36,63 @@ function ConsoleCounts({ tabId }: { tabId: string | null }) {
   );
 }
 
+/** Flags waiting for the agent's next call on their tab, with Clear. */
+function FlagCount() {
+  const flags = useAgentFlagsStore((s) => s.flags);
+  if (!flags.length) return null;
+  return (
+    <>
+      <span
+        style={{ color: "var(--color-text-muted)" }}
+        title="Each is delivered once, at the start of the agent's next reply on its tab"
+      >
+        {flags.length} {flags.length === 1 ? "flag" : "flags"} queued
+      </span>
+      <button
+        type="button"
+        onClick={() => useAgentFlagsStore.getState().clear()}
+        className="hover:underline"
+        style={{ color: "var(--color-text-muted)" }}
+        title="Drop the flags the agent hasn't seen yet"
+      >
+        Clear
+      </button>
+    </>
+  );
+}
+
 /**
  * Shown while an AI agent is connected over MCP, with Stop; or, after Stop,
- * a way to turn agent access back on. Hidden otherwise.
+ * a way to turn agent access back on; and while flags are queued. Hidden
+ * otherwise.
  */
 function AgentIndicator() {
   const { enabled, clients } = useAgentStore();
-  if (enabled && !clients.length) return null;
+  const flagged = useAgentFlagsStore((s) => s.flags.length > 0);
+  if (enabled && !clients.length && !flagged) return null;
   const toggle = () => setAgentEnabled(!enabled).catch(() => {});
+  const showAgent = !enabled || clients.length > 0;
   return (
     <span className="flex items-center gap-2">
-      {enabled ? (
+      <FlagCount />
+      {!showAgent ? null : enabled ? (
         <span style={{ color: "var(--color-accent)" }} title="An AI agent can read your localhost tabs">
           ● Agent: {clients.join(", ")}
         </span>
       ) : (
         <span style={{ color: "var(--color-text-muted)" }}>Agent access off</span>
       )}
-      <button
-        type="button"
-        onClick={toggle}
-        className="hover:underline"
-        style={{ color: "var(--color-text-muted)" }}
-        title={enabled ? "Disconnect agents and refuse new calls" : "Let agents connect again"}
-      >
-        {enabled ? "Stop" : "Turn on"}
-      </button>
+      {showAgent && (
+        <button
+          type="button"
+          onClick={toggle}
+          className="hover:underline"
+          style={{ color: "var(--color-text-muted)" }}
+          title={enabled ? "Disconnect agents and refuse new calls" : "Let agents connect again"}
+        >
+          {enabled ? "Stop" : "Turn on"}
+        </button>
+      )}
     </span>
   );
 }
