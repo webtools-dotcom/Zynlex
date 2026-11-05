@@ -12,7 +12,7 @@
  */
 import { getActiveTabId } from "@/hooks/useActiveScope";
 import { type AXNode, INTERACTIVE } from "@/lib/agentSnapshot";
-import { isLoopbackUrl } from "@/lib/url";
+import { agentCanUse } from "@/lib/agentScope";
 import { tabCdp } from "@/services/browser";
 import { type AgentFlag, type FlagTarget, useAgentFlagsStore } from "@/stores/agentFlags";
 import { useTabsStore } from "@/stores/tabs";
@@ -160,8 +160,11 @@ export function startFlag(): boolean {
   const tab = tabId ? useTabsStore.getState().tabs[tabId] : undefined;
   if (!tab) return false;
   const { pushToast } = useUIStore.getState();
-  if (!isLoopbackUrl(tab.url)) {
-    pushToast("Flag for agent works in localhost tabs, the ones an agent can see", "info");
+  if (!agentCanUse(tab.url, tab.workspaceId)) {
+    pushToast(
+      "Flag for agent works in tabs an agent can see: localhost, or an environment you let agents use",
+      "info",
+    );
     return true;
   }
   cancelFlag();

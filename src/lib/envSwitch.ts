@@ -11,6 +11,8 @@ export interface Environment {
   origin: string;
   /** Marked in red, and switching into it takes a second click. */
   isProd: boolean;
+  /** The developer lets AI agents use it (never while isProd): src/lib/agentScope.ts. */
+  agent?: boolean;
 }
 
 const DEFAULT_PORTS: Record<string, string> = { "http:": "80", "https:": "443" };

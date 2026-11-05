@@ -22,7 +22,7 @@ import {
   toStep,
 } from "@/lib/agentRecord";
 import type { AXNode } from "@/lib/agentSnapshot";
-import { isLoopbackUrl } from "@/lib/url";
+import { agentCanUse } from "@/lib/agentScope";
 import { setNetworkCapture, tabCdp } from "@/services/browser";
 import { isFailedRequest, useConsoleStore } from "@/stores/console";
 import { useNetworkStore } from "@/stores/network";
@@ -189,8 +189,8 @@ function watchStores(s: Session): (() => void)[] {
   });
   const onTabs = useTabsStore.subscribe((st) => {
     const tab = st.tabs[tabId];
-    // Closed, or gone off localhost, where an agent may not look.
-    if (!tab || !isLoopbackUrl(tab.url)) {
+    // Closed, or gone somewhere an agent may not look.
+    if (!tab || !agentCanUse(tab.url, tab.workspaceId)) {
       stopRecording().catch(() => {});
       return;
     }
@@ -204,12 +204,12 @@ function watchStores(s: Session): (() => void)[] {
   return [onConsole, onNetwork, onTabs];
 }
 
-/** Starts recording a localhost tab, replacing the last recording. */
+/** Starts recording a tab an agent can see, replacing the last recording. */
 export async function startRecording(tabId: string): Promise<void> {
   if (session) await stopRecording();
   const tab = useTabsStore.getState().tabs[tabId];
-  if (!tab || !isLoopbackUrl(tab.url)) {
-    throw new Error("Recording works on localhost tabs only.");
+  if (!tab || !agentCanUse(tab.url, tab.workspaceId)) {
+    throw new Error("Recording works on tabs an agent can see: localhost, or a granted environment.");
   }
   // Inject first, so a tab that isn't loaded fails before anything is set up.
   await tabCdp(tabId, "Runtime.evaluate", { expression: RECORDER_SCRIPT });
@@ -233,7 +233,7 @@ export async function startRecording(tabId: string): Promise<void> {
   try {
     origin = new URL(tab.url).origin;
   } catch {
-    // isLoopbackUrl parsed it already; unreachable in practice.
+    // agentCanUse parsed it already; unreachable in practice.
   }
   const s: Session = {
     rec,
