@@ -15,7 +15,7 @@ const PIPE: &str = r"\\.\pipe\zynlex-agent";
 const ERROR_PIPE_BUSY: i32 = 231;
 
 const INSTRUCTIONS: &str = "ZYNLEX is the developer's browser, and these tools work on the \
-localhost tabs they have open, in front of them. Every page tool takes an optional `tab` (an id from `tabs`; default: the active tab). After changing code, call `check` (with \
+tabs they have open, in front of them: localhost, plus any staging environments they let agents use. Every page tool takes an optional `tab` (an id from `tabs`; default: the active tab). After changing code, call `check` (with \
 reload=true if hot reload doesn't cover the change). To use the app, call `snapshot` once, then \
 `act` on its refs; each `act` returns what changed on the page and any new errors, so you rarely \
 need another snapshot. When a reply says an alert/confirm/prompt dialog is open, answer it with \
@@ -38,7 +38,7 @@ fn tools() -> Value {
     json!([
         {
             "name": "tabs",
-            "description": "The developer's localhost tabs (id, URL, title, errors) and dev servers with no tab. `close`: a tab you opened.",
+            "description": "The tabs you can use (id, URL, title, errors) and dev servers with no tab. `close`: a tab you opened.",
             "inputSchema": { "type": "object", "properties": { "close": s } }
         },
         {
@@ -51,7 +51,7 @@ fn tools() -> Value {
         },
         {
             "name": "open",
-            "description": "Open (or switch to) a localhost URL; returns the page and errors.",
+            "description": "Open (or switch to) a localhost or granted-environment URL; returns the page and errors.",
             "inputSchema": { "type": "object", "properties": { "url": s }, "required": ["url"] }
         },
         {

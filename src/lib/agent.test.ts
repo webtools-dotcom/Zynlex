@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { isLoopbackUrl } from "@/lib/url";
 
 vi.mock("@/hooks/useActiveScope", () => ({ getActiveTabId: () => null }));
 
@@ -131,7 +132,7 @@ describe("agent tools", () => {
     expect(resolveTab("bbbb").id).toBe("bbbbbbbb-2");
     // Most recently used localhost tab, even though a non-local one is newer.
     expect(resolveTab(undefined).id).toBe("aaaaaaaa-1");
-    expect(() => resolveTab("cccc")).toThrow(/No localhost tab/);
+    expect(() => resolveTab("cccc")).toThrow(/No tab "cccc" you can use/);
   });
 
   it("lists localhost tabs and only counts the rest", async () => {
@@ -353,7 +354,7 @@ describe("agent tools", () => {
     flags.add({ tabId: "bbbbbbbb-2", ref: "e3", role: "link", name: "Docs", note: "404s" });
     const out = await runAgentTool("tabs", {});
     expect(out.split("\n")[0]).toBe('Developer flagged e3 link "Docs" in [bbbbbbbb]: 404s');
-    expect(out).toContain("Localhost tabs");
+    expect(out).toContain("Tabs you can use");
     expect(await runAgentTool("tabs", {})).not.toContain("Developer flagged");
   });
 });
@@ -598,16 +599,16 @@ describe("back/forward", () => {
   };
 
   it("picks the neighbouring entry", () => {
-    expect(historyTarget(h, "back").id).toBe(10);
-    expect(historyTarget({ ...h, currentIndex: 0 }, "forward").id).toBe(11);
+    expect(historyTarget(h, "back", isLoopbackUrl).id).toBe(10);
+    expect(historyTarget({ ...h, currentIndex: 0 }, "forward", isLoopbackUrl).id).toBe(11);
   });
 
   it("refuses to run off the history or off localhost", () => {
-    expect(() => historyTarget({ ...h, currentIndex: 0 }, "back")).toThrow("Nothing to go back");
-    expect(() => historyTarget({ ...h, currentIndex: 2 }, "forward")).toThrow(
+    expect(() => historyTarget({ ...h, currentIndex: 0 }, "back", isLoopbackUrl)).toThrow("Nothing to go back");
+    expect(() => historyTarget({ ...h, currentIndex: 2 }, "forward", isLoopbackUrl)).toThrow(
       "Nothing to go forward",
     );
-    expect(() => historyTarget(h, "forward")).toThrow("would leave localhost");
+    expect(() => historyTarget(h, "forward", isLoopbackUrl)).toThrow("would leave your scope");
   });
 });
 
@@ -748,7 +749,7 @@ describe("take over (pause) and activity", () => {
     expect(bad.ok).toBe(false);
     const calls = useAgentActivityStore.getState().calls;
     expect(calls.map((c) => c.tool)).toEqual(["act", "mock", "errors"]);
-    expect(calls[0]).toMatchObject({ tabId: null, error: 'No localhost tab "zz". Call tabs.' });
+    expect(calls[0]).toMatchObject({ tabId: null, error: 'No tab "zz" you can use. Call tabs.' });
     expect(calls[0].summary).toBe("action=click ref=e1");
     expect(calls[1]).toMatchObject({
       tabId: "aaaaaaaa-1",
