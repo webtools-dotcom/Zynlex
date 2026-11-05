@@ -1,0 +1,6 @@
+body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 40rem; background: #fff; color: #111; }
+body.dark { background: #161616; color: #eee; }
+header { display: flex; justify-content: space-between; align-items: center; }
+section { margin-bottom: 2rem; }
+li { margin: .25rem 0; }
+iframe { border: 1px solid #ccc; }

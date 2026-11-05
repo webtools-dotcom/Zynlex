@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Taskboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Taskboard</h1>
+    <label><input type="checkbox" id="dark"> Dark mode</label>
+  </header>
+  <main>
+    <section aria-label="My tasks">
+      <h2>My tasks</h2>
+      <label>New task <input id="new-task" placeholder="What needs doing?"></label>
+      <button type="button" id="add">Add</button>
+      <ul id="mine"></ul>
+    </section>
+    <section aria-label="Team tasks">
+      <h2>Team tasks</h2>
+      <ul id="team"></ul>
+      <button type="button" id="more">Load more</button>
+    </section>
+    <section aria-label="Feedback">
+      <h2>Feedback</h2>
+      <iframe id="feedback" src="feedback.html" title="Feedback form" width="400" height="160"></iframe>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

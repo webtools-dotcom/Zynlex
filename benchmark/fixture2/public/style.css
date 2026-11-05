@@ -1,0 +1,14 @@
+body { font-family: system-ui, sans-serif; margin: 2rem 2rem 8rem; max-width: 40rem; }
+section { margin-bottom: 2rem; }
+li { margin: .25rem 0; }
+#checkout-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 4rem;
+  display: flex; align-items: center; gap: 1rem; padding: 0 2rem;
+  background: #f4f4f4; border-top: 1px solid #ddd;
+}
+#promo {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 6rem; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 2rem;
+  background: #ffe9a8; transition: opacity .2s;
+}
+#promo.closed { opacity: 0; }
