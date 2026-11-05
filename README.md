@@ -6,7 +6,7 @@
 
 **The minimal browser for web developers. 3.6 MB, built in Rust and Tauri, not Electron.**
 
-ZYNLEX is a lightweight browser for local web development on Windows: the browser for `localhost`. It finds the dev servers running on your machine, and puts a network log, API response mocking, device viewports, request header rules and an API client in the sidebar. Those are the things you'd otherwise open DevTools, Postman, Charles and a responsive tester for.
+ZYNLEX is a lightweight browser for local web development on Windows: the browser for `localhost`. It finds the dev servers running on your machine, and puts a network log, API response mocking, device viewports, request header rules and an API client in the sidebar. Those are the things you'd otherwise open DevTools, Postman, Charles and a responsive tester for. And AI coding agents like Claude Code can test your app in it over MCP, at [about a third less cost](#for-ai-coding-agents) than with Playwright MCP.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![CI](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml/badge.svg)](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml)
@@ -73,6 +73,35 @@ The things you'd otherwise switch apps for, each one a command you can run from 
 <img src=".github/assets/snippets.png" alt="A Show layout grid snippet run from its pinned toolbar button, outlining every element of the dashboard; the button's tooltip shows its Ctrl+Alt+G shortcut" width="820" />
 
 **The slow and broken network.** **Throttle Network: Slow 3G**, **Fast 3G** or **Offline** applies to the current tab and survives reloads, so you can see your loading and offline states. **Clear Site Data and Reload** wipes the site's cookies and storage for a first-visit test.
+
+## For AI coding agents
+
+ZYNLEX has an MCP server, so Claude Code, Codex, Cursor and other MCP clients can check your app in the browser you already have open: read the page, click and type, read its console errors and network requests, mock an API, emulate a phone. After installing, open a new terminal and connect it with one line:
+
+```bash
+claude mcp add zynlex zynlex-mcp
+```
+
+**Settings → AI agents** has the snippet for each agent.
+
+**It costs the agent less.** Claude Code fixing the same five bugs, same model, same day, five runs each ([benchmark, data and harness](benchmark/README.md)):
+
+| | ZYNLEX | Playwright MCP |
+|---|---|---|
+| Bugs fixed | 25/25 | 25/25 |
+| Input tokens per bug (median) | **173k** | 240k |
+| Cost per bug (median) | **$0.119** | $0.187 |
+
+That's 28% fewer tokens and 36% lower cost. Each action's reply already says what changed on the page and any new errors, so the agent rarely needs a second look, and a known sequence (type, press Enter; click Delete, accept the confirm) goes in one call.
+
+**It's your browser, not a headless one**, so the agent works alongside you:
+
+- **Flag for agent** (`Ctrl+Shift+E`): click an element and type a note; the agent's next reply starts with it, and with the element's ref so it can act on it.
+- **Record steps**: record yourself reproducing a bug; the agent reads your clicks and typing, and the errors each one caused. Password values are never recorded.
+- **Take over**: **Pause** in the status bar holds the agent's page actions while you use the page; on **Resume** it's told what changed.
+- **What happened before it arrived**: errors and failed requests from before the agent connected come first, grouped, so it doesn't have to reproduce what you already saw.
+
+**What it can reach.** `localhost` only, plus any staging environment you tick **agent** on in **Settings → Environments**. Production never, even if ticked. Page text, console messages and response bodies are passed to the agent as data, not instructions. The status bar shows when an agent is connected, with **Stop**.
 
 ## Who it's for
 
@@ -215,6 +244,9 @@ Hidden tabs are suspended after 5 minutes and discarded after 10, to keep memory
 **Does it work on macOS or Linux?**
 Not yet. Every developer feature is built on WebView2 APIs that only exist on Windows. See [ROADMAP.md](ROADMAP.md).
 
+**Can AI coding agents use it?**
+Yes, over MCP: `claude mcp add zynlex zynlex-mcp` after installing. See [For AI coding agents](#for-ai-coding-agents). Agents only see your `localhost` tabs and staging environments you allow, never production.
+
 **Is it free? Does it collect any data?**
 Free and open source under Apache-2.0. No account, no telemetry, and it makes no network calls of its own apart from checking GitHub for updates.
 
@@ -222,6 +254,8 @@ Free and open source under Apache-2.0. No account, no telemetry, and it makes no
 
 - [docs/architecture.md](docs/architecture.md): process model, bounds and resize, viewport emulation, security boundary
 - [docs/design-system.md](docs/design-system.md): tokens, typography, layout rules
+- [docs/agent-interface.md](docs/agent-interface.md): the MCP server, every agent tool, safety model
+- [benchmark/README.md](benchmark/README.md): the agent benchmark, with its data and harness
 - [CONTRIBUTING.md](CONTRIBUTING.md): build commands and the checks CI runs
 - [ROADMAP.md](ROADMAP.md): what's open
 

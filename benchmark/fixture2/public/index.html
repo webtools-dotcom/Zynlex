@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Shopfront</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><h1>Shopfront</h1></header>
+  <main>
+    <section aria-label="Products">
+      <h2>Products</h2>
+      <ul id="products"></ul>
+    </section>
+    <section aria-label="Deals">
+      <h2>Deals</h2>
+      <ul id="deals"></ul>
+    </section>
+    <section aria-label="Cart">
+      <h2>Cart</h2>
+      <ul id="cart"></ul>
+      <p>Total: <strong id="total">$0.00</strong></p>
+      <form id="coupon-form">
+        <label>Coupon <input id="coupon"></label>
+        <button type="submit">Apply coupon</button>
+      </form>
+      <p id="notice" role="status"></p>
+      <button type="button" id="stock">Check stock</button>
+      <p id="stock-status" role="status"></p>
+    </section>
+    <section aria-label="Sign up">
+      <h2>Sign up</h2>
+      <form id="signup">
+        <label>Email <input id="signup-email" type="text"></label>
+        <label>Password <input id="signup-password" type="password"></label>
+        <button type="submit">Create account</button>
+      </form>
+      <p id="signup-status" role="status"></p>
+    </section>
+    <section aria-label="Account">
+      <h2>My account</h2>
+      <form id="login">
+        <label>Email <input id="login-email" type="text"></label>
+        <label>Password <input id="login-password" type="password"></label>
+        <button type="submit">Log in</button>
+      </form>
+      <p id="account">Please log in</p>
+    </section>
+  </main>
+  <div id="checkout-bar">
+    <button type="button" id="checkout">Checkout</button>
+    <span id="checkout-status" role="status"></span>
+  </div>
+  <div id="promo" role="region" aria-label="Promo">
+    <p>Free shipping this week only!</p>
+    <button type="button" id="close-promo">Close promo</button>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

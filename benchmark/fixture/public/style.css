@@ -1,0 +1,4 @@
+body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 40rem; }
+section { margin-bottom: 2rem; }
+li { margin: .25rem 0; }
+#notice { min-height: 1.5em; }

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Shopfront</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><h1>Shopfront</h1></header>
+  <main>
+    <section aria-label="Search">
+      <h2>Products</h2>
+      <form id="search">
+        <label>Search <input id="q" type="search"></label>
+        <button type="submit">Search</button>
+      </form>
+      <ul id="results"></ul>
+    </section>
+    <section aria-label="Cart">
+      <h2>Cart</h2>
+      <ul id="cart"></ul>
+      <p>Total: <strong id="total">$0.00</strong></p>
+      <form id="coupon-form">
+        <label>Coupon <input id="coupon"></label>
+        <button type="submit">Apply coupon</button>
+      </form>
+      <p id="notice" role="status"></p>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
