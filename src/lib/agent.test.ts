@@ -11,6 +11,8 @@ const hooks = vi.hoisted(() => ({
   cdp: [] as string[],
   writes: [] as { name: string; text: string }[],
   status: null as null | ((s: { enabled: boolean; clients: string[] }) => void),
+  /** When set, the page's accessibility tree; otherwise every CDP call fails (tab not loaded). */
+  ax: null as null | object[],
 }));
 vi.mock("@/services/browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -32,6 +34,9 @@ vi.mock("@/services/browser", async (importOriginal) => ({
   },
   tabCdp: (_tab: string, method: string) => {
     hooks.cdp.push(method);
+    if (hooks.ax && method === "Accessibility.getFullAXTree") {
+      return Promise.resolve({ nodes: hooks.ax });
+    }
     return Promise.reject(new Error("tab not loaded"));
   },
 }));
@@ -42,6 +47,7 @@ import {
   evalSource,
   findDevice,
   formatEvalValue,
+  handleAgentCall,
   historyTarget,
   listenForAgents,
   parseWaitFor,
@@ -59,6 +65,9 @@ import { useTabsStore } from "@/stores/tabs";
 import type { Tab } from "@/types";
 import { notePopup, popupMark, takePopups } from "./agentTabs";
 import { forgetTab, notePageLoad } from "./errorGroups";
+import { cancelPause, PAUSE_HOLD_MS, PAUSED_REPLY, pauseAgent, resumeAgent } from "./agentPause";
+import { useAgentStore } from "@/stores/agent";
+import { useAgentActivityStore } from "@/stores/agentActivity";
 
 const tab = (id: string, url: string, lastActiveAt = 0): Tab => ({
   id,
@@ -635,5 +644,136 @@ describe("wait_for", () => {
       'URL to contain "/done"',
     ]);
     expect(waitPending(spec, "Saved!", "http://localhost:5173/done")).toEqual([]);
+  });
+});
+
+describe("take over (pause) and activity", () => {
+  beforeEach(() => {
+    useTabsStore.setState({ tabs: { "aaaaaaaa-1": tab("aaaaaaaa-1", "http://localhost:5173/") } });
+    useMocksStore.setState({ rulesByWs: {} });
+    useHeadersStore.setState({ rulesByWs: {} });
+    useConsoleStore.setState({ entriesByTab: {}, logsByTab: {}, countsByTab: {} });
+    useAgentStore.setState({ enabled: true, clients: ["claude-code"], pausedAt: null, waiting: 0 });
+    useAgentActivityStore.getState().clear();
+  });
+
+  it("holds a page action while paused, answers reads, and runs it on Resume with the takeover line", async () => {
+    pauseAgent(Date.now() - 42_000);
+    let out: string | null = null;
+    const held = runAgentTool("mock", {
+      action: "add",
+      url: "localhost:5173/api/a",
+      status: 500,
+    }).then((t) => {
+      out = t;
+    });
+    // Reads still answer.
+    expect(await runAgentTool("mock", { action: "list" })).toContain("No mocks or header rules");
+    expect(await runAgentTool("errors", {})).toContain("localhost:5173");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(out).toBeNull();
+    expect(useMocksStore.getState().rulesByWs.w ?? []).toHaveLength(0);
+
+    resumeAgent();
+    await held;
+    const lines = (out as unknown as string).split("\n");
+    expect(lines[0]).toBe(
+      "The developer took over for 42 s and resumed; the page may have changed.",
+    );
+    expect(out).toContain("Added mock");
+    expect(useMocksStore.getState().rulesByWs.w).toHaveLength(1);
+  });
+
+  it("after a takeover, shows what the developer changed since the agent's last snapshot", async () => {
+    // Enough unchanged buttons that a diff is shorter than the page.
+    const names = ["One", "Two", "Three", "Four", "Five", "Six"];
+    const page = (button: string) => [
+      {
+        nodeId: "1",
+        role: { value: "RootWebArea" },
+        name: { value: "App" },
+        childIds: ["2", ...names],
+      },
+      ...[["2", button], ...names.map((n) => [n, n])].map(([id, name], i) => ({
+        nodeId: id,
+        role: { value: "button" },
+        name: { value: name },
+        childIds: [],
+        backendDOMNodeId: 12 + i,
+      })),
+    ];
+    hooks.ax = page("Save");
+    try {
+      expect(await runAgentTool("snapshot", {})).toContain('button "Save"');
+      pauseAgent(Date.now() - 7_000);
+      const p = runAgentTool("mock", { action: "add", url: "localhost:5173/api/a" });
+      hooks.ax = page("Saved!");
+      resumeAgent();
+      const lines = (await p).split("\n");
+      expect(lines[0]).toMatch(/^The developer took over for 7 s and resumed/);
+      expect(lines[1]).toBe("Page changes since your last look:");
+      expect(lines.join("\n")).toContain('button "Saved!"');
+      expect(lines[lines.length - 1]).toMatch(/Added mock/);
+    } finally {
+      hooks.ax = null;
+    }
+  });
+
+  it("answers 'call again later' and doesn't run the call when the pause outlasts the hold", async () => {
+    vi.useFakeTimers();
+    try {
+      pauseAgent();
+      const p = runAgentTool("mock", { action: "add", url: "localhost:5173/api/a" });
+      await vi.advanceTimersByTimeAsync(PAUSE_HOLD_MS);
+      expect(await p).toBe(PAUSED_REPLY);
+      cancelPause();
+      expect(useMocksStore.getState().rulesByWs.w ?? []).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refuses held calls when the developer presses Stop", async () => {
+    listenForAgents();
+    pauseAgent();
+    const p = runAgentTool("tabs", { close: "aaaaaaaa" });
+    hooks.status?.({ enabled: false, clients: [] });
+    await expect(p).rejects.toThrow(/stopped the agent/);
+    expect(useAgentStore.getState().pausedAt).toBeNull();
+  });
+
+  it("records each call: tool, tab, summary, errors, and marks tabs it acted on", async () => {
+    await handleAgentCall("errors", {});
+    await handleAgentCall("mock", { action: "add", url: "localhost:5173/api/a", status: 404 });
+    const bad = await handleAgentCall("act", { action: "click", ref: "e1", tab: "zz" });
+    expect(bad.ok).toBe(false);
+    const calls = useAgentActivityStore.getState().calls;
+    expect(calls.map((c) => c.tool)).toEqual(["act", "mock", "errors"]);
+    expect(calls[0]).toMatchObject({ tabId: null, error: 'No localhost tab "zz". Call tabs.' });
+    expect(calls[0].summary).toBe("action=click ref=e1");
+    expect(calls[1]).toMatchObject({
+      tabId: "aaaaaaaa-1",
+      tabLabel: "[aaaaaaaa] http://localhost:5173/",
+      error: null,
+      summary: "action=add url=localhost:5173/api/a status=404",
+    });
+    // A read doesn't mark the tab; the mock did.
+    expect(useAgentActivityStore.getState().touched).toEqual({ "aaaaaaaa-1": calls[1].at });
+  });
+
+  it("records a held call that timed out as not run, without marking the tab", async () => {
+    vi.useFakeTimers();
+    try {
+      pauseAgent();
+      const p = handleAgentCall("mock", { action: "add", url: "localhost:5173/api/a" });
+      await vi.advanceTimersByTimeAsync(PAUSE_HOLD_MS);
+      expect((await p).text).toBe(PAUSED_REPLY);
+      cancelPause();
+    } finally {
+      vi.useRealTimers();
+    }
+    const [c] = useAgentActivityStore.getState().calls;
+    expect(c.note).toBe("paused, not run");
+    expect(useAgentActivityStore.getState().touched).toEqual({});
   });
 });

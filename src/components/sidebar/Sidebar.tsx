@@ -15,6 +15,7 @@ import {
   Download,
   Ghost,
   TerminalSquare,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui";
@@ -56,6 +57,11 @@ const HeadersPanel = lazy(() =>
 const MocksPanel = lazy(() =>
   import("@/components/panels/MocksPanel").then((m) => ({ default: m.MocksPanel })),
 );
+const AgentActivityPanel = lazy(() =>
+  import("@/components/panels/AgentActivityPanel").then((m) => ({
+    default: m.AgentActivityPanel,
+  })),
+);
 const DownloadsPanel = lazy(() =>
   import("@/components/sidebar/DownloadsPanel").then((m) => ({ default: m.DownloadsPanel })),
 );
@@ -74,6 +80,7 @@ const PANELS: { id: PanelId; Icon: React.ElementType; label: string }[] = [
   { id: "bookmarks", Icon: Bookmark, label: "Bookmarks" },
   { id: "history", Icon: Clock, label: "History" },
   { id: "downloads", Icon: Download, label: "Downloads" },
+  { id: "agent", Icon: Bot, label: "Agent Activity" },
 ];
 
 function LiveServersPanel() {
@@ -327,6 +334,7 @@ export function Sidebar() {
           {activePanel === "headers" && <HeadersPanel />}
           {activePanel === "mocks" && <MocksPanel />}
           {activePanel === "viewport" && <ViewportControlsPanel />}
+          {activePanel === "agent" && <AgentActivityPanel />}
         </Suspense>
       </div>
 

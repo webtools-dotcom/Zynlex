@@ -343,16 +343,68 @@ The agent is untrusted by default, and page content is untrusted always.
   `first_pipe_instance` stops a second ZYNLEX from joining the pipe.
   Known ceiling: another local user who starts first could squat the name.
 - **Visible.** While an agent is connected, the status bar names the client
-  (`● Agent: claude-code`) with a **Stop** button. Stop disconnects every agent
-  and refuses further calls ("the user turned off agent access") until the user
-  clicks **Turn on**; it lasts until restart. Later: a per-tab marker and an
-  activity list (nothing may float over the tab, so not a popover).
+  (`● Agent: claude-code`) with **Pause** and **Stop**. Stop disconnects every
+  agent and refuses further calls ("the user turned off agent access") until
+  the user clicks **Turn on**; it lasts until restart. Pause is a take-over,
+  see [Shared control](#shared-control-take-over-and-activity). Tabs an agent
+  acted on carry a marker, and every call is listed in the Agent Activity panel.
 - **Page text is data.** Snapshot names, console messages and response bodies
   come from the page and may carry prompt-injection attempts. The MCP server's
   instructions tell the agent to treat them as data; fencing them in the
   output is not done yet.
 - **Tab suspension.** Every in-scope tab is localhost, and localhost tabs are
   never suspended.
+
+## Shared control: take over and activity
+
+Built (roadmap M5, S6), untested on Windows. Pause state, the hold and the
+activity list are all frontend:
+[agentPause.ts](../src/lib/agentPause.ts),
+[agentActivity.ts](../src/stores/agentActivity.ts), wired into the
+dispatcher's `runAgentTool`/`handleAgentCall` in [agent.ts](../src/lib/agent.ts).
+
+**Take over.** **Pause** in the status bar's agent indicator (or the Agent
+Activity panel, or the palette's "Pause or Resume the AI Agent") pauses the
+agent; the indicator then shows `❚❚ Agent paused 12 s · 1 waiting` and
+**Resume**. While paused:
+
+- Calls that act on a page **wait**: `act` (every action, dialog answers
+  included), `open`, `check reload=true`, `eval`, `wait_for`, `viewport`,
+  `mock` (all but `action=list`) and `tabs close=…`.
+- Reads **still answer**: `tabs` (list), `check` (no reload), `snapshot`,
+  `errors`, `network`, `screenshot`, `mock action=list`.
+- On **Resume** each waiting call runs, and its reply starts with
+  `The developer took over for 42 s and resumed; the page may have changed.`
+  (counted from Pause), then the page's diff against the agent's last snapshot
+  of that tab (`Page changes since your last look:`, the whole page when the
+  diff would be longer, or `Page unchanged since your last look.`), then the
+  call's own reply. No diff for `open`, `tabs close`, a tab the agent never
+  looked at, or a tab paused by a dialog. Refs stay valid: they're backend node
+  ids, and the stored snapshot is replaced by the fresh one.
+- A call waits **at most 45 s** (`PAUSE_HOLD_MS`), then gets
+  `Paused by the developer; call again later.` and is **never run**. Clients
+  give up on a tool call long before a 10-minute pause ends (Codex's default
+  is reported as 60 s), and a call the client abandoned must not run later
+  behind the agent's back. So the hold sits under 60 s, and the agent retries.
+  Rust's bridge timeout (`REPLY_TIMEOUT` in agent.rs) went from 30 s to 90 s
+  so it can't cut a held call short: a call timed out in Rust still runs in the
+  frontend. Known edge: a call released near the end of its 45 s hold that
+  then runs a long `wait_for` can go past a 60 s client limit.
+- **Stop** while paused, or the last agent disconnecting, ends the pause; the
+  waiting calls fail with "The developer stopped the agent while it was
+  paused." and don't run. Pause needs a connected agent (the indicator that
+  shows it hides otherwise).
+
+**Activity.** Every call the dispatcher answers is recorded, newest first, last
+50 (`MAX_CALLS`): time, tool, tab (`[short id] url`, a link while the tab is
+open), the arguments on one line (`action=click ref=e12`), duration, the first
+line of any error, and `ran after takeover` / `paused, not run`. It's the
+**Agent Activity** sidebar panel (robot icon), opened from the indicator's
+agent name, from a tab's marker, or from the palette; not a popover, because
+nothing may float over the tab. **Agent was here**: a small robot glyph in the
+tab strip, before the error badge, on every tab a page-acting call named
+(reads don't mark), titled with the last time. Clear in the panel empties the
+list and the markers. Neither is persisted.
 
 ## Human → agent handoff
 
@@ -671,7 +723,7 @@ another client" checks, not benchmark runs.
 
 1. **Read-only. Built.** Pipe, MCP server, frontend dispatcher
    ([src/lib/agent.ts](../src/lib/agent.ts)), localhost-only scope, status-bar
-   indicator + Stop. Tools: `tabs`, `check` (no reload), `errors`, `network`,
+   indicator + Stop (later Pause/take-over and the activity panel). Tools: `tabs`, `check` (no reload), `errors`, `network`,
    `screenshot`. Useful on its own and can't change anything.
 2. **Driving. Built.** `snapshot`, `act`, `open`, `check` with `reload`, settle
    rule ([agentSnapshot.ts](../src/lib/agentSnapshot.ts)).

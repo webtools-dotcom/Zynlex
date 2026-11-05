@@ -40,7 +40,7 @@ developer's own browser.
 | S3 | Signed release (code-signing certificate; stops antivirus quarantining the build) and the updater signing key in CI | todo (needs a certificate purchase) |
 | S4 | Public, reproducible benchmark (harness, apps, graders, raw results in a repo) | todo |
 | S5 | Benchmark with a second model family (e.g. GPT or Gemini through Codex/Antigravity, or Haiku) | todo |
-| S6 | Per-tab "agent was here" marker and an agent activity list (in the chrome, never over the tab) | todo |
+| S6 | Per-tab "agent was here" marker and an agent activity list (in the chrome, never over the tab) | done, untested on Windows |
 
 ## 3. The moat: what a headless tool can't copy
 
@@ -56,7 +56,7 @@ Each item below leans on that.
 | M2 | **Show the agent what I did**: record the developer's own clicks and typing in a tab as `act` steps plus the errors and requests each caused; the agent replays or reads them | Bug reproduction straight from a human session, no "steps to reproduce" typed out. | todo |
 | M3 | **Evidence from before the agent arrived**: errors and failed requests the page logged while the developer was using it, kept per tab across page loads and offered, grouped, under `Before you connected:` in the first `check`/`open`/`errors` | A browser the agent launches only sees from launch onward. | done, untested on Windows |
 | M4 | **Dev state the agent can use**: workspaces, environments (local/staging), mocks, header rules, saved API requests, all one tool call away | Lives in the developer's ZYNLEX, not in a fresh profile. | partly done (P10 mocks and header rules) |
-| M5 | **Shared control**: the developer sees every agent action live, can take over mid-flow (agent pauses, resumes after) and stop it | Headless runs are invisible. | partly done (Stop) |
+| M5 | **Shared control**: the developer sees every agent action live, can take over mid-flow (agent pauses, resumes after) and stop it | Headless runs are invisible. | done, untested on Windows |
 | M6 | **Agent-aware error grouping**: identical errors collapsed across reloads with counts and first-seen time, so every reply stays short as a session gets long; one already shown repeats only as `(+N)` | Built on ZYNLEX's always-on capture. | done, untested on Windows |
 
 The benchmark is the proof, and publishing it (S4) is the marketing: the

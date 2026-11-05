@@ -28,7 +28,10 @@ use crate::zynlex_log;
 const PIPE_NAME: &str = r"\\.\pipe\zynlex-agent";
 
 /// How long a tool call may take in the frontend before the agent gets an error.
-const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+/// Must exceed `PAUSE_HOLD_MS` in src/lib/agentPause.ts (a call held by the
+/// developer's Pause, 45 s) plus the slowest tool (`wait_for`, 30 s, then
+/// settling): a call timed out here would still run in the frontend later.
+const REPLY_TIMEOUT: Duration = Duration::from_secs(90);
 
 type Reply = Result<String, String>;
 
@@ -198,7 +201,10 @@ async fn forward(app: &AppHandle, tool: &str, args: Value) -> Reply {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .remove(&id);
-            Err("ZYNLEX didn't answer within 30s".into())
+            Err(format!(
+                "ZYNLEX didn't answer within {}s",
+                REPLY_TIMEOUT.as_secs()
+            ))
         }
     }
 }

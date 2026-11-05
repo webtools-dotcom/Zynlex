@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { X, Pin } from "lucide-react";
+import { X, Pin, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Tab } from "@/types";
 import { useConsoleStore } from "@/stores/console";
 import { useUIStore } from "@/stores/ui";
+import { useAgentActivityStore } from "@/stores/agentActivity";
 
 /** JS errors + failed requests on the tab's current page; opens the Console panel. */
 function ErrorBadge({ tabId, onActivate }: { tabId: string; onActivate: () => void }) {
@@ -29,6 +30,29 @@ function ErrorBadge({ tabId, onActivate }: { tabId: string; onActivate: () => vo
       style={{ color: "var(--color-console-error)" }}
     >
       {total > 99 ? "99+" : total}
+    </button>
+  );
+}
+
+/** "Agent was here": an AI agent acted on this tab. Opens the Agent Activity panel. */
+function AgentMark({ tabId }: { tabId: string }) {
+  const at = useAgentActivityStore((s) => s.touched[tabId]);
+  if (at == null) return null;
+  const when = new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const label = `An AI agent acted on this tab (last at ${when}) — show agent activity`;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        useUIStore.getState().setActivePanel("agent");
+        useUIStore.getState().setSidebarOpen(true);
+      }}
+      title={label}
+      aria-label={label}
+      className="flex-shrink-0 w-4 h-4 rounded-[2px] flex items-center justify-center text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-active)]"
+    >
+      <Bot size={11} strokeWidth={2} />
     </button>
   );
 }
@@ -150,6 +174,7 @@ export function TabItem({
         {tab.isLoading ? "Loading…" : tab.title || "New Tab"}
       </span>
 
+      <AgentMark tabId={tab.id} />
       <ErrorBadge tabId={tab.id} onActivate={onActivate} />
 
       {/* Close button OR pin indicator */}
