@@ -10,25 +10,28 @@
  */
 import {
   addStep,
+  errorText,
   fallbackTarget,
   formatRecording,
   type Happening,
-  RECORDER_SCRIPT,
   type RawEvent,
+  RECORDER_SCRIPT,
   type Recording,
   shortUrl,
   type Target,
-  errorText,
   toStep,
 } from "@/lib/agentRecord";
-import type { AXNode } from "@/lib/agentSnapshot";
 import { agentCanUse } from "@/lib/agentScope";
+import type { AXNode } from "@/lib/agentSnapshot";
+import { toPlaywrightTest } from "@/lib/playwrightExport";
 import { setNetworkCapture, tabCdp } from "@/services/browser";
 import { isFailedRequest, useConsoleStore } from "@/stores/console";
+import { useHeadersStore } from "@/stores/headers";
+import { useMocksStore } from "@/stores/mocks";
 import { useNetworkStore } from "@/stores/network";
-import { useUIStore } from "@/stores/ui";
 import { useRecordingStore } from "@/stores/recording";
 import { useTabsStore } from "@/stores/tabs";
+import { useUIStore } from "@/stores/ui";
 
 const POLL_MS = 300;
 const DRAIN_WAIT = 2000;
@@ -209,7 +212,9 @@ export async function startRecording(tabId: string): Promise<void> {
   if (session) await stopRecording();
   const tab = useTabsStore.getState().tabs[tabId];
   if (!tab || !agentCanUse(tab.url, tab.workspaceId)) {
-    throw new Error("Recording works on tabs an agent can see: localhost, or a granted environment.");
+    throw new Error(
+      "Recording works on tabs an agent can see: localhost, or a granted environment.",
+    );
   }
   // Inject first, so a tab that isn't loaded fails before anything is set up.
   await tabCdp(tabId, "Runtime.evaluate", { expression: RECORDER_SCRIPT });
@@ -222,6 +227,7 @@ export async function startRecording(tabId: string): Promise<void> {
   setNetworkCapture(true).catch(() => {});
   const rec: Recording = {
     tabId,
+    workspaceId: tab.workspaceId,
     url: tab.url,
     title: tab.title,
     startedAt: Date.now(),
@@ -271,14 +277,26 @@ export async function stopRecording(): Promise<Recording | null> {
   return rec;
 }
 
-/** The `recording` agent tool: the latest recording, drained first if still running. */
-export async function recordingTool(): Promise<string> {
+/**
+ * The `recording` agent tool: the latest recording, drained first if still
+ * running; with `playwright`, as a Playwright test.
+ */
+export async function recordingTool(playwright = false): Promise<string> {
   if (session) await drainBriefly(session);
   const rec = session?.rec ?? useRecordingStore.getState().rec;
   if (!rec) {
     return 'No recording yet. Ask the developer to record their steps: "Record Steps for Agent" in the command palette (Ctrl+K), or Record in the status bar.';
   }
-  return formatRecording(rec);
+  if (!playwright) return formatRecording(rec);
+  const ws = rec.workspaceId;
+  const test = toPlaywrightTest(
+    rec,
+    useMocksStore.getState().rulesByWs[ws],
+    useHeadersStore.getState().rulesByWs[ws],
+  );
+  return `A Playwright test of the recording. Save it with the project's tests (e.g. tests/recorded.spec.ts), replace the TODO with an expect for the fixed behaviour, and run it with npx playwright test (ZYNLEX doesn't run it). The app must be serving at ${rec.url}.
+
+${test}`;
 }
 
 /** Palette command and status-bar button: start on `tabId`, or stop, with a toast either way. */

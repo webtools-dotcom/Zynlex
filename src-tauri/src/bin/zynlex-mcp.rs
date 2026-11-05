@@ -149,7 +149,9 @@ fn tools() -> Value {
         {
             "name": "recording",
             "description": "Steps the developer recorded in ZYNLEX (clicks, typing, keys) as act-style lines with refs, each with the errors and requests it caused. To reproduce a bug they showed you.",
-            "inputSchema": { "type": "object", "properties": {} }
+            "inputSchema": { "type": "object", "properties": {
+                "playwright": { "type": "boolean", "description": "As a Playwright test file instead, to keep as a regression test after the fix." }
+            } }
         }
     ])
 }
@@ -326,7 +328,7 @@ mod tests {
         assert_eq!(schema("act")["files"]["type"], "array");
         assert_eq!(schema("screenshot")["ref"]["type"], "string");
         assert_eq!(schema("screenshot")["full"]["type"], "boolean");
-        assert!(schema("recording").as_object().unwrap().is_empty());
+        assert_eq!(schema("recording")["playwright"]["type"], "boolean");
         let mock = tools.iter().find(|t| t["name"] == "mock").unwrap();
         assert_eq!(mock["inputSchema"]["required"], json!(["action"]));
 

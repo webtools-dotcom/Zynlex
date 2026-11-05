@@ -57,6 +57,7 @@ Each item below leans on that.
 | M3 | **Evidence from before the agent arrived**: errors and failed requests the page logged while the developer was using it, kept per tab across page loads and offered, grouped, under `Before you connected:` in the first `check`/`open`/`errors` | A browser the agent launches only sees from launch onward. | done, tested on Windows |
 | M4 | **Dev state the agent can use**: workspaces, environments (local/staging), mocks, header rules, saved API requests, all one tool call away | Lives in the developer's ZYNLEX, not in a fresh profile. | partly done (P10 mocks and header rules) |
 | M5 | **Shared control**: the developer sees every agent action live, can take over mid-flow (agent pauses, resumes after) and stop it | Headless runs are invisible. | done, tested on Windows |
+| M7 | **Recording → Playwright test**: `recording` with `playwright: true` turns the developer's recording into a `@playwright/test` file (test ids and role locators, the active mocks and header rules as routes, no secrets, fails on uncaught errors) | ZYNLEX finds and fixes the bug; Playwright keeps it fixed in CI. | done, tested on Windows |
 | M6 | **Agent-aware error grouping**: identical errors collapsed across reloads with counts and first-seen time, so every reply stays short as a session gets long; one already shown repeats only as `(+N)` | Built on ZYNLEX's always-on capture. | done, tested on Windows |
 
 The benchmark is the proof, and publishing it (S4) is the marketing: the

@@ -26,6 +26,8 @@ export interface RawEvent {
   /** Fallbacks for when CDP can't describe the element: tag name, `input:<type>` for inputs. */
   tag: string;
   label: string;
+  /** The element's data-testid, for Playwright's getByTestId. */
+  testid?: string;
 }
 
 /** The element a step acted on, in the snapshot's words. */
@@ -34,6 +36,7 @@ export interface Target {
   name: string;
   /** backendDOMNodeId, printed as e<ref>; null when it couldn't be resolved. */
   ref: number | null;
+  testid?: string;
 }
 
 const TAG_ROLES: Record<string, string> = {
@@ -85,6 +88,8 @@ export interface Happening {
 
 export interface Recording {
   tabId: string;
+  /** Whose mocks and header rules the Playwright export carries. */
+  workspaceId: string;
   url: string;
   title: string;
   startedAt: number;
@@ -137,7 +142,11 @@ export function isSecretNode(attributes: string[] | undefined): boolean {
 /** A buffered event as a step. Values of secret fields are dropped here too. */
 export function toStep(raw: RawEvent, target: Target | null, attributes?: string[]): Step {
   const secret = raw.kind === "type" && (raw.sensitive === true || isSecretNode(attributes));
-  const step: Step = { t: raw.t, action: raw.kind, target };
+  const step: Step = {
+    t: raw.t,
+    action: raw.kind,
+    target: target && raw.testid ? { ...target, testid: raw.testid } : target,
+  };
   if (raw.key) step.key = raw.key;
   if (secret) step.secret = true;
   else if (raw.value != null) step.value = raw.value;
@@ -230,7 +239,11 @@ function stepLine(s: Step, origin: string): string {
  * happening to the last step before it. What came before the first step is
  * returned apart.
  */
-function attribute(rec: Recording): { steps: Step[]; caused: Happening[][]; before: Happening[] } {
+export function attribute(rec: Recording): {
+  steps: Step[];
+  caused: Happening[][];
+  before: Happening[];
+} {
   const steps = [...rec.steps];
   const rest: Happening[] = [];
   for (const h of [...rec.happenings].sort((a, b) => a.t - b.t)) {
@@ -254,7 +267,7 @@ function attribute(rec: Recording): { steps: Step[]; caused: Happening[][]; befo
   return { steps, caused, before };
 }
 
-function causedText(list: Happening[], origin: string): string {
+export function causedText(list: Happening[], origin: string): string {
   const order = { nav: 0, failed: 1, error: 2 };
   const rows = new Set(list.filter((h) => h.kind === "failed" && !h.console).map((h) => h.url));
   const texts = [
@@ -326,7 +339,8 @@ export const RECORDER_SCRIPT = `(() => {
     const s = ++seq;
     els.set(s, el);
     const tag = el.tagName.toLowerCase() + (el.tagName === "INPUT" ? ":" + el.type : "");
-    buf.push(Object.assign({ seq: s, t: Date.now(), kind, tag, label: label(el) }, extra));
+    const testid = el.getAttribute("data-testid") || undefined;
+    buf.push(Object.assign({ seq: s, t: Date.now(), kind, tag, label: label(el), testid }, extra));
   };
   const target = (e) => {
     const t = e.composedPath ? e.composedPath()[0] : e.target;
