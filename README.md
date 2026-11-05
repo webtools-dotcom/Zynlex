@@ -258,6 +258,7 @@ Free and open source under Apache-2.0. No account, no telemetry, and it makes no
 - [benchmark/README.md](benchmark/README.md): the agent benchmark, with its data and harness
 - [CONTRIBUTING.md](CONTRIBUTING.md): build commands and the checks CI runs
 - [ROADMAP.md](ROADMAP.md): what's open
+- [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md): how releases are signed. Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
 
 ## Contributing
 
