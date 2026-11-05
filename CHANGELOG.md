@@ -7,18 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-05
+
+AI coding agents can now use ZYNLEX: Claude Code, Codex and other MCP
+clients test your localhost app in the browser you have open, with you
+watching. In our benchmark, Claude Code fixed the same bugs as with Playwright
+MCP for about a third less (see benchmark/README.md).
+
 ### Added
 
-- AI agents can turn the steps you recorded into a Playwright test: the
-  `recording` tool with `playwright: true` returns a test file with
-  Playwright's own locators, your active mocks and header rules as routes, and
-  a check that the page threw no errors. Passwords and credential headers are
-  read from environment variables, never written into the file.
+- **An MCP server for AI coding agents**, `zynlex-mcp`, installed with
+  ZYNLEX and put on your PATH, so setup is `claude mcp add zynlex zynlex-mcp`
+  (Settings → AI agents has the line for each agent). Agents open and read
+  your localhost tabs, click and type with real input, check for new errors
+  and failed requests after each code change, read the network log and
+  console, take screenshots, emulate devices, wait for slow flows, run
+  JavaScript, mock API responses, and do several actions in one call.
+- **Agents only reach localhost**, plus staging environments you tick
+  "agent" on in Settings → Environments. Never production.
+- **Flag for agent** (`Ctrl+Shift+E`): click an element and type a note; the
+  agent's next reply starts with it.
+- **Record steps for an agent**: record yourself reproducing a bug; the agent
+  reads each click and key with the errors it caused, and can turn the
+  recording into a Playwright test, with your mocks, once the bug is fixed.
+  Password values are never recorded.
+- **Take over**: Pause in the status bar holds the agent while you use the
+  page. The Agent Activity panel lists every call it made.
+- Errors from before the agent connected come first in its first reply,
+  grouped, so it doesn't have to reproduce what you already saw.
+- Screenshot Full Page, Screenshot Visible Area and Pick Colour commands, and
+  toolbar buttons for Screenshot Full Page, Copy Bug Report and Pick Colour.
 
 ### Fixed
 
-- An agent's first call while ZYNLEX was starting got no answer and failed
-  after 90 seconds. It now waits for the window to be ready and goes through.
+- ZYNLEX leaked memory on every request: WebView2 strings (each URL, method,
+  header) were copied and never freed.
+- A tab's saved scroll and form state could be written into another page's
+  inputs after a failed restore.
+- An open empty tab navigated to the first character typed into the home page
+  setting.
+- The API Tester showed the capped size for responses over 10 MB instead of
+  their real size.
+- "Copied!" showed even when a copy failed.
 
 ## [0.16.1] - 2026-10-28
 
@@ -357,7 +387,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.16.1...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.17.0
 [0.16.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.16.1
 [0.16.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.16.0
 [0.15.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.15.0
