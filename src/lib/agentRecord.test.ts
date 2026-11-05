@@ -5,8 +5,8 @@ import {
   fallbackTarget,
   formatRecording,
   isSecretNode,
-  RECORDER_SCRIPT,
   type RawEvent,
+  RECORDER_SCRIPT,
   type Recording,
   type Step,
   type Target,
@@ -26,6 +26,7 @@ const raw = (r: Partial<RawEvent>): RawEvent => ({
 
 const rec = (steps: Step[], happenings: Recording["happenings"] = []): Recording => ({
   tabId: "abcdef12-3456",
+  workspaceId: "ws1",
   url: "http://localhost:5173/cart",
   title: "Shop",
   startedAt: 0,
@@ -57,6 +58,14 @@ describe("password rule", () => {
       'type textbox "Password" [e52] (password, not recorded)',
     );
     expect(formatRecording(rec([s]))).not.toContain("hunter2");
+  });
+
+  it("carries the element's test id onto its target", () => {
+    expect(toStep(raw({ testid: "add-btn" }), btn("Add")).target).toMatchObject({
+      name: "Add",
+      testid: "add-btn",
+    });
+    expect(toStep(raw({}), btn("Add")).target?.testid).toBeUndefined();
   });
 
   it("keeps the value of an ordinary field", () => {
@@ -268,7 +277,7 @@ describe("RECORDER_SCRIPT", () => {
 
   it("records clicks, choices and keys, skipping the click an Enter causes", () => {
     const { api, fire } = fakePage();
-    const pay = el("button", {}, { textContent: " Pay " });
+    const pay = el("button", { "data-testid": "pay" }, { textContent: " Pay " });
     const field = el("input", { "aria-label": "Card" }, { value: "" });
     const select = el("select", {});
     Object.assign(select, { selectedOptions: [{ label: "India " }] });
@@ -285,6 +294,8 @@ describe("RECORDER_SCRIPT", () => {
       ["select", "India"],
       ["press", "Enter"],
     ]);
+    expect(out[0].testid).toBe("pay");
+    expect(out[1].testid).toBeUndefined();
   });
 
   it("listens once per page and stops cleanly", () => {

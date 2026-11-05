@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- AI agents can turn the steps you recorded into a Playwright test: the
+  `recording` tool with `playwright: true` returns a test file with
+  Playwright's own locators, your active mocks and header rules as routes, and
+  a check that the page threw no errors. Passwords and credential headers are
+  read from environment variables, never written into the file.
+
 ## [0.16.1] - 2026-10-28
 
 ### Fixed

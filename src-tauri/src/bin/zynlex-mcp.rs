@@ -149,7 +149,9 @@ fn tools() -> Value {
         {
             "name": "recording",
             "description": "Steps the developer recorded in ZYNLEX (clicks, typing, keys) as act-style lines with refs, each with the errors and requests it caused. To reproduce a bug they showed you.",
-            "inputSchema": { "type": "object", "properties": {} }
+            "inputSchema": { "type": "object", "properties": {
+                "playwright": { "type": "boolean", "description": "As a Playwright test file instead, to keep as a regression test after the fix." }
+            } }
         }
     ])
 }
