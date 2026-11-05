@@ -14,7 +14,7 @@ const msg = (
 });
 
 describe("console store", () => {
-  beforeEach(() => useConsoleStore.setState({ entriesByTab: {}, countsByTab: {} }));
+  beforeEach(() => useConsoleStore.setState({ entriesByTab: {}, logsByTab: {}, countsByTab: {} }));
 
   it("counts errors, warnings and failed requests apart", () => {
     const { add } = useConsoleStore.getState();
@@ -53,5 +53,20 @@ describe("console store", () => {
     const s = useConsoleStore.getState();
     expect(s.countsByTab.t1).toBeUndefined();
     expect(s.countsByTab.t2.errors).toBe(1);
+  });
+
+  it("keeps log/info apart: capped on their own and never counted", () => {
+    const { add } = useConsoleStore.getState();
+    add(msg());
+    for (let i = 0; i < 250; i++) add(msg({ level: "log", source: "console", text: `l${i}` }));
+    add(msg({ level: "info", source: "console", text: "ready" }));
+    const s = useConsoleStore.getState();
+    expect(s.countsByTab.t1).toEqual({ errors: 1, warnings: 0, failed: 0 });
+    // The error survives however chatty the page is.
+    expect(s.entriesByTab.t1).toHaveLength(1);
+    expect(s.logsByTab.t1).toHaveLength(200);
+    expect(s.logsByTab.t1[199].level).toBe("info");
+    useConsoleStore.getState().clearTab("t1");
+    expect(useConsoleStore.getState().logsByTab.t1).toBeUndefined();
   });
 });

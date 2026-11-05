@@ -96,9 +96,18 @@ export async function clearSiteData(tabId: string, origin: string): Promise<void
 /** PNG of the tab saved to Downloads: the visible area ("bug", "visible") or the whole page ("full"). "agent" is the visible area saved to %TEMP%\zynlex-agent. Resolves to its path. */
 export async function captureScreenshot(
   tabId: string,
-  kind: "bug" | "visible" | "full" | "agent",
+  kind: "bug" | "visible" | "full" | "agent" | "agent-full",
+  clip?: ClipRect,
 ): Promise<string> {
-  return invoke<string>("browser_capture_screenshot", { tabId, kind });
+  return invoke<string>("browser_capture_screenshot", { tabId, kind, clip: clip ?? null });
+}
+
+/** A screenshot area in page (document) CSS pixels. */
+export interface ClipRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /** Works when the app's document isn't focused, unlike navigator.clipboard. */
@@ -250,8 +259,13 @@ export function onHoveredUrlChanged(
   );
 }
 
-export function onNewTabRequested(callback: (url: string) => void): Promise<UnlistenFn> {
-  return listen<{ url: string }>("browser://open-new-tab", (e) => callback(e.payload.url));
+/** A page asked for a new window (`target=_blank`, `window.open`); `openerTabId` is the tab it came from. */
+export function onNewTabRequested(
+  callback: (url: string, openerTabId: string | null) => void,
+): Promise<UnlistenFn> {
+  return listen<{ url: string; tabId?: string }>("browser://open-new-tab", (e) =>
+    callback(e.payload.url, e.payload.tabId ?? null),
+  );
 }
 
 // ─── Downloads ──────────────────────────────────────────────────────
@@ -472,10 +486,10 @@ export function onNetworkEntry(
   return listen<NetworkEntryPayload>("browser://network-entry", (e) => callback(e.payload));
 }
 
-/** A console error/warning or failed request from a tab — see console.rs. */
+/** A console error/warning or failed request from a tab (log/info too while an agent is connected) — see console.rs. */
 export interface ConsoleEntryPayload {
   tabId: string;
-  level: "error" | "warning";
+  level: "error" | "warning" | "info" | "log";
   source: string;
   text: string;
   url: string;
@@ -579,6 +593,16 @@ export async function revealWindow(): Promise<void> {
   await invoke<void>("agent_reveal_window");
 }
 
+/** Writes text too long for an agent reply to %TEMP%\zynlex-agent and returns the file's path. */
+export async function agentWriteTemp(name: string, text: string): Promise<string> {
+  return invoke<string>("agent_write_temp", { name, text });
+}
+
+/** Path of zynlex-mcp.exe next to the app, or null if it isn't there (see `agent_mcp_path`). */
+export async function getMcpPath(): Promise<string | null> {
+  return invoke<string | null>("agent_mcp_path");
+}
+
 /** alert/confirm/prompt/beforeunload opened (or closed) in a tab — see console.rs. */
 export interface DialogEvent {
   tabId: string;
@@ -591,6 +615,7 @@ export interface DialogEvent {
 export function onDialog(callback: (e: DialogEvent) => void): Promise<UnlistenFn> {
   return listen<DialogEvent>("browser://dialog", (e) => callback(e.payload));
 }
+
 
 export async function getAgentStatus(): Promise<AgentStatus> {
   return invoke<AgentStatus>("agent_status");

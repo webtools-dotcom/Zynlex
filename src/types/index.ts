@@ -70,7 +70,8 @@ export type PanelId =
   | "inspector"
   | "ua"
   | "viewport"
-  | "console";
+  | "console"
+  | "agent";
 
 export interface AppSettings {
   theme: ThemeMode;

@@ -6,7 +6,23 @@
 // like everything else that reads from a tab — no page-originated IPC.
 
 use serde_json::{json, Value};
+use std::sync::atomic::{AtomicI32, Ordering};
 use tauri::{AppHandle, Emitter};
+
+/// While above zero, console.log/info (and Chromium's info log) are forwarded
+/// too, for an agent's `errors level=…`. Raised for each connected agent
+/// (src/agent.rs), like network capture: a ref-count, so two agents connecting
+/// and disconnecting in any order can't leave it stuck. Never counted in the
+/// badges (src/stores/console.ts keeps them apart).
+static CONSOLE_VERBOSE: AtomicI32 = AtomicI32::new(0);
+
+pub fn set_console_verbose(active: bool) {
+    if active {
+        CONSOLE_VERBOSE.fetch_add(1, Ordering::Relaxed);
+    } else {
+        CONSOLE_VERBOSE.fetch_sub(1, Ordering::Relaxed);
+    }
+}
 
 /// Longest message forwarded. A minified bundle's error can carry a huge
 /// one-line stack; the panel only needs enough to recognise it.
@@ -20,12 +36,12 @@ fn truncate(s: &str) -> String {
 }
 
 /// Turns one CDP event into a console entry, or None for what the badge and
-/// panel don't show (info/debug logs, verbose violations).
+/// panel don't show (verbose violations; log/info/debug unless `verbose`).
 ///
 /// `source` is "exception", "console" or Chromium's Log source ("network",
 /// "security", "javascript", …). The frontend counts level "error" with source
 /// "network" as a failed request.
-fn console_entry(event: &str, p: &Value) -> Option<Value> {
+fn console_entry(event: &str, p: &Value, verbose: bool) -> Option<Value> {
     let (level, source, text, url, line) = match event {
         "Runtime.exceptionThrown" => {
             let d = &p["exceptionDetails"];
@@ -47,6 +63,8 @@ fn console_entry(event: &str, p: &Value) -> Option<Value> {
             let level = match p["type"].as_str()? {
                 "error" | "assert" => "error",
                 "warning" => "warning",
+                "info" if verbose => "info",
+                "log" | "debug" | "dir" | "table" | "trace" if verbose => "log",
                 _ => return None,
             };
             let text = p["args"]
@@ -72,6 +90,7 @@ fn console_entry(event: &str, p: &Value) -> Option<Value> {
             let level = match e["level"].as_str()? {
                 "error" => "error",
                 "warning" => "warning",
+                "info" if verbose => "info",
                 _ => return None,
             };
             let source = e["source"].as_str().unwrap_or("other");
@@ -150,7 +169,8 @@ pub fn register_webview_console_capture(wv: &tauri::Webview, app: &AppHandle, ta
                     let Ok(params) = serde_json::from_str::<Value>(&raw) else {
                         return Ok(());
                     };
-                    if let Some(mut entry) = console_entry(event, &params) {
+                    let verbose = CONSOLE_VERBOSE.load(Ordering::Relaxed) > 0;
+                    if let Some(mut entry) = console_entry(event, &params, verbose) {
                         entry["tabId"] = json!(tab_id);
                         let _ = app.emit("browser://console", entry);
                     } else if let Some(mut dialog) = dialog_event(event, &params) {
@@ -198,6 +218,7 @@ mod tests {
             "Runtime.exceptionThrown",
             &json!({"exceptionDetails": {"text": "Uncaught", "url": "http://x/a.js", "lineNumber": 9,
                 "exception": {"description": "TypeError: x is undefined\n    at f (a.js:10)"}}}),
+            false,
         )
         .unwrap();
         assert_eq!(e["level"], "error");
@@ -212,6 +233,7 @@ mod tests {
             console_entry(
                 "Runtime.consoleAPICalled",
                 &json!({"type": t, "args": [{"type": "string", "value": "boom"}, {"type": "number", "value": 2}]}),
+                false,
             )
         };
         assert_eq!(call("error").unwrap()["text"], "boom 2");
@@ -221,17 +243,46 @@ mod tests {
     }
 
     #[test]
+    fn verbose_adds_log_and_info() {
+        let call = |t: &str| {
+            console_entry(
+                "Runtime.consoleAPICalled",
+                &json!({"type": t, "args": [{"type": "string", "value": "hi"}]}),
+                true,
+            )
+        };
+        assert_eq!(call("log").unwrap()["level"], "log");
+        assert_eq!(call("debug").unwrap()["level"], "log");
+        assert_eq!(call("info").unwrap()["level"], "info");
+        assert_eq!(call("error").unwrap()["level"], "error");
+        let info = console_entry(
+            "Log.entryAdded",
+            &json!({"entry": {"source": "other", "level": "info", "text": "x"}}),
+            true,
+        );
+        assert_eq!(info.unwrap()["level"], "info");
+        let verbose = json!({"entry": {"level": "verbose", "text": "x"}});
+        assert!(console_entry("Log.entryAdded", &verbose, true).is_none());
+    }
+
+    #[test]
     fn network_log_entries_pass_through() {
         let e = console_entry(
             "Log.entryAdded",
             &json!({"entry": {"source": "network", "level": "error",
                 "text": "Failed to load resource: the server responded with a status of 500 ()",
                 "url": "http://localhost:3000/api/orders"}}),
+            false,
         )
         .unwrap();
         assert_eq!(e["source"], "network");
         assert_eq!(e["url"], "http://localhost:3000/api/orders");
-        assert!(console_entry("Log.entryAdded", &json!({"entry": {"level": "verbose"}})).is_none());
+        assert!(console_entry(
+            "Log.entryAdded",
+            &json!({"entry": {"level": "verbose"}}),
+            false
+        )
+        .is_none());
     }
 
     #[test]
@@ -240,6 +291,7 @@ mod tests {
             console_entry(
                 "Log.entryAdded",
                 &json!({"entry": {"source": "network", "level": "error", "text": "404", "url": url}}),
+                false,
             )
         };
         assert!(miss("http://localhost:5173/favicon.ico").is_none());
@@ -253,6 +305,7 @@ mod tests {
         let e = console_entry(
             "Runtime.consoleAPICalled",
             &json!({"type": "error", "args": [{"type": "string", "value": long}]}),
+            false,
         )
         .unwrap();
         assert_eq!(e["text"].as_str().unwrap().chars().count(), 2001);
