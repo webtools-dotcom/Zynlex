@@ -98,6 +98,7 @@ That's 28% fewer tokens and 36% lower cost. Each action's reply already says wha
 
 - **Flag for agent** (`Ctrl+Shift+E`): click an element and type a note; the agent's next reply starts with it, and with the element's ref so it can act on it.
 - **Record steps**: record yourself reproducing a bug; the agent reads your clicks and typing, and the errors each one caused. Password values are never recorded.
+- **Keep it fixed**: the agent can turn your recording into a Playwright test, with your mocks included, and add it to your test suite once the bug is fixed.
 - **Take over**: **Pause** in the status bar holds the agent's page actions while you use the page; on **Resume** it's told what changed.
 - **What happened before it arrived**: errors and failed requests from before the agent connected come first, grouped, so it doesn't have to reproduce what you already saw.
 

@@ -121,7 +121,7 @@ call to find out.
 | `eval` | `Runtime.evaluate` (`awaitPromise`, `returnByValue`, `replMode`): an expression, or a function body when the code has `return`; value as compact JSON cut at 4 KB, exceptions as `Threw: …`, gives up after 10 s | Built, untested on Windows |
 | `wait_for` | Polls every 250 ms until all given conditions hold: `text` appears, `gone` disappears (full snapshot + `body.innerText`), `url` contains; `timeout` s (default 10, max 30); says what matched or what's pending, then the consequences | Built, untested on Windows |
 | `mock` | `add` a canned response (or, with `header`+`value`, a request-header rule), `list`, `remove` by id, `clear`, through the panels' stores | Built |
-| `recording` | The developer's latest recorded steps (click/type/select/press/upload, with refs) and what each caused; see [Recorded steps](#recorded-steps) | Built, untested on Windows |
+| `recording` | The developer's latest recorded steps (click/type/select/press/upload, with refs) and what each caused; `playwright: true` gives them as a Playwright test instead. See [Recorded steps](#recorded-steps) | Done, tested on Windows |
 
 ### Recorded steps
 
@@ -178,6 +178,34 @@ schema costs fewer tokens than explaining a mode switch.
   step's result or an `open` step). Steps in iframes aren't recorded. The page
   can read or forge its own buffer: a recording is page data, like console
   text. Input an agent sends while recording is recorded too.
+
+#### As a Playwright test
+
+`recording` with `playwright: true` returns the same recording as a
+`@playwright/test` file ([playwrightExport.ts](../src/lib/playwrightExport.ts)),
+so the bug the developer showed the agent becomes a regression test once it's
+fixed. ZYNLEX only writes the code; the agent saves it with the project's tests
+and runs it with `npx playwright test`.
+
+- **Locators.** `getByTestId` when the element had a `data-testid` (the
+  recorder captures it), else `getByRole` with the accessibility name (exact,
+  unless the name came from the page script and may be clipped), else
+  `getByText`. A step on an element with none of these throws with the step
+  number instead of being skipped. Uniqueness isn't checked: Playwright's
+  strict mode reports duplicates when the test runs.
+- **Mocks and header rules** on in the recording's workspace at export time
+  become `page.route` calls with the same matching as ZYNLEX (case-insensitive,
+  scheme ignored, prefix without `*`, anchored glob with it), added in reverse
+  so ZYNLEX's first match still wins. Header rules use `route.fallback` with
+  the header added.
+- **Secrets stay out of the file.** A password step fills
+  `process.env.TEST_PASSWORD`; a header whose name looks like a credential
+  (authorization, cookie, token, key, secret, session, auth) reads
+  `ZYNLEX_HEADER_<NAME>` from the environment.
+- **No assertions from the recording.** What ZYNLEX saw each step cause goes
+  in as `// ZYNLEX saw:` comments: a recording usually shows the bug, so its
+  behaviour isn't what the test should expect. The file ends with a TODO for
+  the agent's `expect` and fails on any uncaught page error.
 
 ### Mocks and header rules
 

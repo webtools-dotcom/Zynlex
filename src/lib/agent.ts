@@ -1556,7 +1556,7 @@ ${note}`;
     case "mock":
       return mockTool(resolveTab(args.tab), args);
     case "recording":
-      return recordingTool();
+      return recordingTool(args.playwright === true);
     default:
       throw new Error(`Unknown tool "${tool}".`);
   }
