@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { toggleAgentPause } from "@/lib/agentPause";
 import { toggleRecording } from "@/lib/recorder";
-import { isLoopbackUrl, originOf } from "@/lib/url";
+import { agentCanUse } from "@/lib/agentScope";
+import { originOf } from "@/lib/url";
 import { useRecordingStore } from "@/stores/recording";
 import { useConsoleStore } from "@/stores/console";
+import { useTabsStore } from "@/stores/tabs";
 import { useUIStore } from "@/stores/ui";
 import { useAgentStore } from "@/stores/agent";
 import { useAgentFlagsStore } from "@/stores/agentFlags";
@@ -161,6 +163,7 @@ function AgentIndicator() {
 function RecordControl({ tabId, url }: { tabId: string | null; url: string }) {
   const { active, rec } = useRecordingStore();
   const connected = useAgentStore((s) => s.enabled && s.clients.length > 0);
+  const ws = useTabsStore((s) => (tabId ? s.tabs[tabId]?.workspaceId : undefined));
   if (active && rec) {
     const n = rec.steps.length;
     return (
@@ -183,7 +186,7 @@ function RecordControl({ tabId, url }: { tabId: string | null; url: string }) {
       </span>
     );
   }
-  if (!connected || !tabId || !isLoopbackUrl(url)) return null;
+  if (!connected || !tabId || !ws || !agentCanUse(url, ws)) return null;
   return (
     <button
       type="button"

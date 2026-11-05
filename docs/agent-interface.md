@@ -387,13 +387,17 @@ without `reload` waits for the update to finish applying.
 
 The agent is untrusted by default, and page content is untrusted always.
 
-- **Scope.** By default only tabs on loopback hosts (`localhost`, `127.0.0.1`,
-  `[::1]`, `*.localhost`) plus hosts the active workspace lists as its own
-  (staging etc.). Other tabs don't appear in `tabs` and every command refuses
-  them.
-- **Widening scope** is a per-host grant the developer approves in the ZYNLEX UI
-  — an in-app bar, never `window.confirm()` (it renders behind the child
-  webview). Grants last for the agent session.
+- **Scope.** Tabs on loopback hosts (`localhost`, `127.0.0.1`, `[::1]`,
+  `*.localhost`), plus the environments of the tab's own workspace that the
+  developer ticked **agent** on in Settings → Environments (staging, QA…).
+  Other tabs don't appear in `tabs` and every command refuses them, as do
+  `open`, `back`/`forward`, popups, Flag for agent and recording
+  ([agentScope.ts](../src/lib/agentScope.ts)). Matching is by origin (scheme,
+  host, port), so a lookalike host or another port isn't covered.
+- **Widening scope** is the developer's alone: the checkbox lives in the ZYNLEX
+  UI, and no tool can set it. It persists with the environment. An
+  environment marked **prod** can't be granted; marking a granted one prod
+  takes it away at once.
 - **Pipe access.** Remote clients are rejected (`reject_remote_clients`). The
   default named-pipe DACL gives write access only to the creating user, SYSTEM
   and Administrators (everyone else gets read, which can't send a request).

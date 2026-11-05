@@ -25,7 +25,7 @@ Status: **todo** · **doing** · **done**.
 | P9 | **Large output to a file** (snapshot over 300 lines, bodies over 8 KB written to `%TEMP%`, path returned) | Big pages and payloads without blowing the context. | done, untested on Windows |
 | P10 | **Network mocking and header rules for agents** (`mock` add/list/clear through the existing stores) | Test error states and auth without a backend change. ZYNLEX already has both for people. | done, tested on Windows |
 | P11 | **Console at all levels** (`errors` can include log/info on request) | Debug-print driven debugging. | done, tested on Windows |
-| P12 | **Staging hosts** (per-workspace list of non-localhost hosts the agent may use, granted in the UI) | Test what's deployed, not only localhost. | todo |
+| P12 | **Staging hosts** (per-workspace list of non-localhost hosts the agent may use, granted in the UI): an **agent** checkbox on each environment in Settings → Environments; never production | Test what's deployed, not only localhost. | done, tested on Windows |
 
 Not planned: headless mode, parallel browsers, CI runs, cross-browser
 (Firefox/WebKit). Those are Playwright's and Cloudflare's job; ZYNLEX is the
@@ -68,4 +68,4 @@ claim is checkable.
 2. P5–P9, P11.
 3. M2, M5, M6, S6.
 4. S2, S4, S5, then S3 when there's a certificate.
-5. P12 and staging, once the agent permission model for non-localhost is designed.
+5. ~~P12 and staging~~ done.

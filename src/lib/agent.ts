@@ -4,7 +4,8 @@
  * `agent_reply`. Everything is read from the stores the panels already use.
  *
  * Output is terse plain text: it lands in a model's context, so every line
- * costs tokens. Only localhost tabs are visible to an agent. Every call that
+ * costs tokens. Only localhost tabs, and environments the developer granted
+ * (agentScope.ts), are visible to an agent. Every call that
  * acts on a page returns what the action caused, so the agent never needs a
  * second call to find out.
  */
@@ -21,6 +22,7 @@ import {
   tookOverLine,
 } from "@/lib/agentPause";
 import { dropAgentRules, mockTool } from "@/lib/agentRules";
+import { agentCanUse, SCOPE } from "@/lib/agentScope";
 import {
   type AXNode,
   diffSnapshot,
@@ -39,7 +41,6 @@ import {
 import { forgetReported, isFailedRow, report, tabProblems } from "@/lib/errorGroups";
 import { recordingTool } from "@/lib/recorder";
 import { closeTab, openTab } from "@/lib/tabActions";
-import { isLoopbackUrl } from "@/lib/url";
 import {
   type AgentStatus,
   agentReply,
@@ -75,17 +76,17 @@ const MAX_ROWS = 50;
 const ASSET_TYPES = new Set(["script", "stylesheet", "image", "font", "media", "manifest"]);
 
 function scopedTabs(): Tab[] {
-  return Object.values(useTabsStore.getState().tabs).filter((t) => isLoopbackUrl(t.url));
+  return Object.values(useTabsStore.getState().tabs).filter((t) => agentCanUse(t.url, t.workspaceId));
 }
 
-/** The tab an id prefix names, else the active tab, else the most recently used localhost tab. */
+/** The tab an id prefix names, else the active tab, else the most recently used one in scope. */
 export function resolveTab(arg: unknown): Tab {
   const tabs = scopedTabs();
   if (typeof arg === "string" && arg) {
     const hits = tabs.filter((t) => t.id.startsWith(arg));
     if (hits.length === 1) return hits[0];
     throw new Error(
-      hits.length ? `Tab id "${arg}" is ambiguous.` : `No localhost tab "${arg}". Call tabs.`,
+      hits.length ? `Tab id "${arg}" is ambiguous.` : `No tab "${arg}" you can use. Call tabs.`,
     );
   }
   const active = tabs.find((t) => t.id === getActiveTabId());
@@ -93,7 +94,7 @@ export function resolveTab(arg: unknown): Tab {
   const recent = tabs.sort((a, b) => b.lastActiveAt - a.lastActiveAt)[0];
   if (recent) return recent;
   throw new Error(
-    "No localhost tab is open. Ask the user to open their dev server in ZYNLEX (tabs lists running ones).",
+    `No tab you can use is open (${SCOPE}). Ask the user to open their dev server in ZYNLEX (tabs lists running ones).`,
   );
 }
 
@@ -184,10 +185,10 @@ function tabsTool(args: Args = {}): string {
     .map((s) => `  ${s.protocol}://localhost:${s.port}${s.title ? ` "${s.title}"` : ""}`);
   const hidden = Object.keys(useTabsStore.getState().tabs).length - tabs.length;
   return [
-    tabs.length ? "Localhost tabs (* = active):" : "No localhost tabs open.",
+    tabs.length ? "Tabs you can use (* = active):" : `No tabs you can use (${SCOPE}).`,
     ...lines,
     ...section("dev servers without a tab", idle),
-    hidden ? `${hidden} other tabs hidden (not localhost).` : "",
+    hidden ? `${hidden} other tabs hidden (out of scope).` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -454,7 +455,7 @@ function parseRef(ref: unknown): number {
 
 /**
  * Tabs the page opened since `mark` (target=_blank, window.open). They open in
- * front, so a localhost one becomes the default tab; any other can't be used,
+ * front, so one in scope becomes the default tab; any other can't be used,
  * only closed.
  */
 function popupLines(tab: Tab, mark: number | undefined): string[] {
@@ -463,9 +464,9 @@ function popupLines(tab: Tab, mark: number | undefined): string[] {
     const t = useTabsStore.getState().tabs[p.tabId];
     if (!t) return `Opened a new tab, already closed: ${p.url}`;
     const id = shortId(t);
-    return isLoopbackUrl(t.url)
+    return agentCanUse(t.url, t.workspaceId)
       ? `Opened new tab [${id}] ${t.url}, now the default tab; pass tab="${shortId(tab)}" to stay on this one.`
-      : `Opened new tab [${id}] ${t.url}: not localhost, so you can't use it (tabs close="${id}" closes it).`;
+      : `Opened new tab [${id}] ${t.url}: out of scope, so you can't use it (tabs close="${id}" closes it).`;
   });
 }
 
@@ -738,24 +739,26 @@ interface NavigationHistory {
 }
 
 /**
- * The history entry back/forward goes to. Refuses one that isn't on
- * localhost: the tab would leave the agent's scope.
+ * The history entry back/forward goes to. Refuses one out of scope: the tab
+ * would leave what the agent may use.
  */
 export function historyTarget(
   h: NavigationHistory,
   dir: "back" | "forward",
+  inScope: (url: string) => boolean,
 ): { id: number; url: string } {
   const entry = h.entries[h.currentIndex + (dir === "back" ? -1 : 1)];
   if (!entry) throw new Error(`Nothing to go ${dir} to in this tab's history.`);
-  if (!isLoopbackUrl(entry.url)) {
-    throw new Error(`Going ${dir} would leave localhost (${entry.url}). Nothing was done.`);
+  if (!inScope(entry.url)) {
+    throw new Error(`Going ${dir} would leave your scope (${entry.url}). Nothing was done.`);
   }
   return entry;
 }
 
 async function goHistory(tabId: string, dir: "back" | "forward"): Promise<void> {
   const h = await tabCdp<NavigationHistory>(tabId, "Page.getNavigationHistory");
-  const entry = historyTarget(h, dir);
+  const ws = useTabsStore.getState().tabs[tabId]?.workspaceId ?? "";
+  const entry = historyTarget(h, dir, (url) => agentCanUse(url, ws));
   await tabCdp(tabId, "Page.navigateToHistoryEntry", { entryId: entry.id });
 }
 
@@ -960,8 +963,8 @@ function openUrl(args: Args): string {
 
 async function openTool(args: Args): Promise<string> {
   const url = openUrl(args);
-  if (!url || !isLoopbackUrl(url)) {
-    throw new Error("open only takes localhost URLs (localhost, 127.0.0.1, *.localhost).");
+  if (!url || !agentCanUse(url, useWorkspacesStore.getState().activeWorkspaceId)) {
+    throw new Error(`open only takes URLs in your scope: ${SCOPE}.`);
   }
   const existing = scopedTabs().find((t) => t.url === url);
   const id = existing?.id ?? openTab({ url });

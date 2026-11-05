@@ -33,12 +33,15 @@ export function EnvironmentsSettings() {
   const tabUrl = useTabsStore((s) => (tabId ? s.tabs[tabId]?.url : "")) ?? "";
 
   const suggest = tabUrl && normalizeOrigin(tabUrl) && !matchEnv(tabUrl, envs) ? tabUrl : "";
-  const [name, setName] = useState("");
-  const [origin, setOrigin] = useState("");
+  // null = untouched, so the box shows the suggestion; "" = the developer
+  // cleared it, which must stay empty instead of refilling.
+  const [name, setName] = useState<string | null>(null);
+  const [origin, setOrigin] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const effectiveName = name || (suggest ? guessName(suggest) : "");
-  const effectiveOrigin = origin || (suggest ? displayOrigin(normalizeOrigin(suggest) ?? "") : "");
+  const effectiveName = name ?? (suggest ? guessName(suggest) : "");
+  const effectiveOrigin =
+    origin ?? (suggest ? displayOrigin(normalizeOrigin(suggest) ?? "") : "");
 
   function add() {
     const normalized = normalizeOrigin(effectiveOrigin);
@@ -51,8 +54,8 @@ export function EnvironmentsSettings() {
       origin: normalized,
       isProd: false,
     });
-    setName("");
-    setOrigin("");
+    setName(null);
+    setOrigin(null);
     setError("");
   }
 
@@ -91,6 +94,30 @@ export function EnvironmentsSettings() {
               />
               prod
             </label>
+            {!isLoopbackUrl(env.origin) && (
+              <label
+                className="flex items-center gap-1 text-micro shrink-0"
+                style={{
+                  color:
+                    env.agent && !env.isProd
+                      ? "var(--color-accent)"
+                      : "var(--color-text-disabled)",
+                }}
+                title={
+                  env.isProd
+                    ? "AI agents can't use production environments"
+                    : "Let AI agents (over MCP) see and use this environment's tabs, like localhost: read pages, click, type, run JavaScript, mock requests"
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={!!env.agent && !env.isProd}
+                  disabled={env.isProd}
+                  onChange={(e) => updateRule(wsId, env.id, { agent: e.target.checked })}
+                />
+                agent
+              </label>
+            )}
             <ConfirmButton
               onConfirm={() => removeRule(wsId, env.id)}
               title={`Remove ${env.name}`}
