@@ -12,8 +12,8 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportPresets";
 import { getActiveTabId } from "@/hooks/useActiveScope";
-import { clipRect, cutForInline, MAX_BODY, MAX_LINES, uploadPaths } from "@/lib/agentOutput";
 import { withFlags } from "@/lib/agentFlags";
+import { clipRect, cutForInline, MAX_BODY, MAX_LINES, uploadPaths } from "@/lib/agentOutput";
 import {
   actsOnPage,
   cancelPause,
@@ -43,6 +43,7 @@ import { recordingTool } from "@/lib/recorder";
 import { closeTab, openTab } from "@/lib/tabActions";
 import {
   type AgentStatus,
+  agentReady,
   agentReply,
   agentWriteTemp,
   captureScreenshot,
@@ -76,7 +77,9 @@ const MAX_ROWS = 50;
 const ASSET_TYPES = new Set(["script", "stylesheet", "image", "font", "media", "manifest"]);
 
 function scopedTabs(): Tab[] {
-  return Object.values(useTabsStore.getState().tabs).filter((t) => agentCanUse(t.url, t.workspaceId));
+  return Object.values(useTabsStore.getState().tabs).filter((t) =>
+    agentCanUse(t.url, t.workspaceId),
+  );
 }
 
 /** The tab an id prefix names, else the active tab, else the most recently used one in scope. */
@@ -1661,6 +1664,9 @@ export function listenForAgents(): Promise<UnlistenFn>[] {
       if (taken.size > 1000) taken.delete(taken.values().next().value as number);
       const { ok, text } = await handleAgentCall(tool, args ?? {});
       agentReply(id, ok, text).catch(() => {});
+    }).then((unlisten) => {
+      agentReady().catch(() => {});
+      return unlisten;
     }),
   ];
 }
