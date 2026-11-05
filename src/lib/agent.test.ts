@@ -319,9 +319,10 @@ describe("agent tools", () => {
     await expect(
       runAgentTool("act", { steps: [{ ref: "e4", action: "click" }, { action: "type" }] }),
     ).rejects.toThrow("Step 2: Expected a ref");
+    // A stray top-level action next to steps is ignored: the steps' own check still runs.
     await expect(
-      runAgentTool("act", { action: "click", ref: "e4", steps: [{ ref: "e4", action: "click" }] }),
-    ).rejects.toThrow("Pass action or steps, not both.");
+      runAgentTool("act", { action: "click", steps: [{ ref: "e4", action: "smash" }] }),
+    ).rejects.toThrow('Step 1: Unknown action "smash".');
     await expect(runAgentTool("act", { steps: [] })).rejects.toThrow("steps takes 1 to 10");
     const eleven = Array.from({ length: 11 }, () => ({ ref: "e4", action: "click" }));
     await expect(runAgentTool("act", { steps: eleven })).rejects.toThrow("steps takes 1 to 10");

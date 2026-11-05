@@ -993,7 +993,8 @@ async function doStep(tab: Tab, st: Step, labelOf: (r: number | null) => string)
 async function actTool(args: Args): Promise<string> {
   const tab = resolveTab(args.tab);
   const batch = Array.isArray(args.steps);
-  if (batch && args.action != null) throw new Error("Pass action or steps, not both.");
+  // With steps, a stray top-level action (agents sometimes send both) is
+  // ignored rather than refused: the steps say what to do.
   const raw = batch ? (args.steps as unknown[]) : [args];
   if (!raw.length || raw.length > MAX_STEPS) {
     throw new Error(`steps takes 1 to ${MAX_STEPS} actions.`);
