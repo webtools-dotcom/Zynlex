@@ -14,6 +14,8 @@ const hooks = vi.hoisted(() => ({
   status: null as null | ((s: { enabled: boolean; clients: string[] }) => void),
   requests: [] as ((r: { id: number; tool: string; args: object | null }) => void)[],
   replies: [] as number[],
+  /** `agent_ready` calls, and how many request listeners existed at each. */
+  ready: [] as number[],
   /** When set, the page's accessibility tree; otherwise every CDP call fails (tab not loaded). */
   ax: null as null | object[],
 }));
@@ -27,6 +29,10 @@ vi.mock("@/services/browser", async (importOriginal) => ({
   onAgentRequest: (cb: (typeof hooks.requests)[number]) => {
     hooks.requests.push(cb);
     return Promise.resolve(() => {});
+  },
+  agentReady: () => {
+    hooks.ready.push(hooks.requests.length);
+    return Promise.resolve();
   },
   agentReply: (id: number) => {
     hooks.replies.push(id);
@@ -50,6 +56,16 @@ vi.mock("@/services/browser", async (importOriginal) => ({
   },
 }));
 
+import { useAgentStore } from "@/stores/agent";
+import { useAgentActivityStore } from "@/stores/agentActivity";
+import { useAgentFlagsStore } from "@/stores/agentFlags";
+import { useConsoleStore } from "@/stores/console";
+import { useHeadersStore } from "@/stores/headers";
+import { type MockRule, useMocksStore } from "@/stores/mocks";
+import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
+import { useTabsStore } from "@/stores/tabs";
+import { withoutAgentRules } from "@/stores/workspaceRules";
+import type { Tab } from "@/types";
 import {
   cut,
   dragPath,
@@ -64,19 +80,9 @@ import {
   runAgentTool,
   waitPending,
 } from "./agent";
-import { useAgentFlagsStore } from "@/stores/agentFlags";
-import { useConsoleStore } from "@/stores/console";
-import { useHeadersStore } from "@/stores/headers";
-import { type MockRule, useMocksStore } from "@/stores/mocks";
-import { withoutAgentRules } from "@/stores/workspaceRules";
-import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
-import { useTabsStore } from "@/stores/tabs";
-import type { Tab } from "@/types";
+import { cancelPause, PAUSE_HOLD_MS, PAUSED_REPLY, pauseAgent, resumeAgent } from "./agentPause";
 import { notePopup, popupMark, takePopups } from "./agentTabs";
 import { forgetTab, notePageLoad } from "./errorGroups";
-import { cancelPause, PAUSE_HOLD_MS, PAUSED_REPLY, pauseAgent, resumeAgent } from "./agentPause";
-import { useAgentStore } from "@/stores/agent";
-import { useAgentActivityStore } from "@/stores/agentActivity";
 
 const tab = (id: string, url: string, lastActiveAt = 0): Tab => ({
   id,
@@ -345,6 +351,13 @@ describe("agent tools", () => {
     await vi.waitFor(() => expect(hooks.replies).toContain(4242));
     await new Promise((r) => setTimeout(r, 20));
     expect(hooks.replies.filter((id) => id === 4242)).toHaveLength(1);
+  });
+
+  it("tells the app it's ready only once the request listener is up", async () => {
+    hooks.requests.length = 0;
+    hooks.ready.length = 0;
+    listenForAgents();
+    await vi.waitFor(() => expect(hooks.ready).toEqual([1]));
   });
 
   it("reports an open dialog instead of calling into the paused page", async () => {
@@ -647,7 +660,9 @@ describe("back/forward", () => {
   });
 
   it("refuses to run off the history or off localhost", () => {
-    expect(() => historyTarget({ ...h, currentIndex: 0 }, "back", isLoopbackUrl)).toThrow("Nothing to go back");
+    expect(() => historyTarget({ ...h, currentIndex: 0 }, "back", isLoopbackUrl)).toThrow(
+      "Nothing to go back",
+    );
     expect(() => historyTarget({ ...h, currentIndex: 2 }, "forward", isLoopbackUrl)).toThrow(
       "Nothing to go forward",
     );

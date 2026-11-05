@@ -616,7 +616,6 @@ export function onDialog(callback: (e: DialogEvent) => void): Promise<UnlistenFn
   return listen<DialogEvent>("browser://dialog", (e) => callback(e.payload));
 }
 
-
 export async function getAgentStatus(): Promise<AgentStatus> {
   return invoke<AgentStatus>("agent_status");
 }
@@ -632,6 +631,11 @@ export async function agentReply(id: number, ok: boolean, text: string): Promise
 
 export function onAgentStatus(callback: (status: AgentStatus) => void): Promise<UnlistenFn> {
   return listen<AgentStatus>("agent://status", (e) => callback(e.payload));
+}
+
+/** Tells the app the dispatcher is listening, so calls that arrived during startup go out. */
+export async function agentReady(): Promise<void> {
+  await invoke<void>("agent_ready");
 }
 
 export function onAgentRequest(callback: (req: AgentRequest) => void): Promise<UnlistenFn> {

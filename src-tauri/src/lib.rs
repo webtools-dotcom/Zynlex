@@ -326,6 +326,7 @@ pub fn run() {
             commands::browser::browser_cdp,
             commands::browser::browser_pending_requests,
             agent::agent_reply,
+            agent::agent_ready,
             agent::agent_status,
             agent::agent_set_enabled,
             agent::agent_reveal_window,

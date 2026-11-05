@@ -53,6 +53,25 @@ fn sessions() -> &'static Mutex<HashMap<u64, String>> {
     S.get_or_init(Default::default)
 }
 
+/// How long a call that arrives while ZYNLEX is starting waits for the
+/// frontend's listener (`agent_ready`). A cold dev build took about 20 s;
+/// a release build is quicker.
+const STARTUP_WAIT: Duration = Duration::from_secs(60);
+
+/// True once the frontend listens for `agent://request`. The pipe accepts
+/// agents as soon as the app starts, before the page has loaded: an event
+/// emitted then reaches no one and the call waited out REPLY_TIMEOUT.
+fn ready() -> &'static watch::Sender<bool> {
+    static R: OnceLock<watch::Sender<bool>> = OnceLock::new();
+    R.get_or_init(|| watch::channel(false).0)
+}
+
+/// The frontend now listens for `agent://request`.
+#[tauri::command]
+pub fn agent_ready() {
+    ready().send_replace(true);
+}
+
 /// Bumped by the Stop button; every open session watches it and disconnects.
 fn stop_signal() -> &'static watch::Sender<u64> {
     static W: OnceLock<watch::Sender<u64>> = OnceLock::new();
@@ -183,6 +202,12 @@ async fn session(app: AppHandle, pipe: NamedPipeServer) {
 }
 
 async fn forward(app: &AppHandle, tool: &str, args: Value) -> Reply {
+    if !wait_until_ready(STARTUP_WAIT).await {
+        return Err(format!(
+            "ZYNLEX is still starting (no answer from its window after {}s). Try again in a moment.",
+            STARTUP_WAIT.as_secs()
+        ));
+    }
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let (tx, rx) = oneshot::channel();
     pending()
@@ -207,6 +232,13 @@ async fn forward(app: &AppHandle, tool: &str, args: Value) -> Reply {
             ))
         }
     }
+}
+
+/// Waits for `agent_ready`; false if it didn't come within `limit`.
+async fn wait_until_ready(limit: Duration) -> bool {
+    let mut rx = ready().subscribe();
+    let waited = tokio::time::timeout(limit, rx.wait_for(|r| *r)).await;
+    matches!(waited, Ok(Ok(_)))
 }
 
 /// The dispatcher's answer to one `agent://request`.
@@ -318,7 +350,21 @@ pub fn agent_write_temp(name: String, text: String) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::temp_file_name;
+    use super::*;
+
+    #[test]
+    fn calls_wait_for_the_frontend_listener() {
+        tauri::async_runtime::block_on(async {
+            ready().send_replace(false);
+            assert!(!wait_until_ready(Duration::from_millis(20)).await);
+            let waiting = tauri::async_runtime::spawn(wait_until_ready(Duration::from_secs(5)));
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            agent_ready();
+            assert!(waiting.await.unwrap());
+            // Once ready, later calls don't wait at all.
+            assert!(wait_until_ready(Duration::ZERO).await);
+        });
+    }
 
     #[test]
     fn temp_file_names_stay_in_the_folder() {
