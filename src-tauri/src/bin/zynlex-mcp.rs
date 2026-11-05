@@ -146,6 +146,11 @@ fn tools() -> Value {
                 "value": { "type": "string" },
                 "id": { "type": "string", "description": "remove: id from list." }
             }, "required": ["action"] }
+        },
+        {
+            "name": "recording",
+            "description": "The steps the developer recorded in ZYNLEX (their clicks, typing, choices, key presses) as act-style lines with refs, each followed by the errors, failed requests and navigation it caused. Use it to reproduce a bug they showed you. Password values are never recorded.",
+            "inputSchema": { "type": "object", "properties": {} }
         }
     ])
 }
@@ -307,7 +312,7 @@ mod tests {
         )
         .unwrap();
         let tools = list["result"]["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 12);
+        assert_eq!(tools.len(), 13);
         assert_eq!(
             tools[0]["inputSchema"]["properties"]["close"]["type"],
             "string"
@@ -322,6 +327,7 @@ mod tests {
         assert_eq!(schema("act")["files"]["type"], "array");
         assert_eq!(schema("screenshot")["ref"]["type"], "string");
         assert_eq!(schema("screenshot")["full"]["type"], "boolean");
+        assert!(schema("recording").as_object().unwrap().is_empty());
         let mock = tools.iter().find(|t| t["name"] == "mock").unwrap();
         assert_eq!(mock["inputSchema"]["required"], json!(["action"]));
 

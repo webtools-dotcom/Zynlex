@@ -37,6 +37,7 @@ import {
   takePopups,
 } from "@/lib/agentTabs";
 import { forgetReported, isFailedRow, report, tabProblems } from "@/lib/errorGroups";
+import { recordingTool } from "@/lib/recorder";
 import { closeTab, openTab } from "@/lib/tabActions";
 import { isLoopbackUrl } from "@/lib/url";
 import {
@@ -1436,6 +1437,8 @@ ${note}`;
       return waitForTool(args);
     case "mock":
       return mockTool(resolveTab(args.tab), args);
+    case "recording":
+      return recordingTool();
     default:
       throw new Error(`Unknown tool "${tool}".`);
   }

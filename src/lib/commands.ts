@@ -15,6 +15,7 @@ import {
   Bookmark,
   Bug,
   Camera,
+  Circle,
   Clock,
   Code2,
   Eraser,
@@ -51,6 +52,7 @@ import { originOf } from "@/lib/url";
 import { copyBugReport } from "@/lib/bugReport";
 import { cancelFlag, startFlag } from "@/lib/agentFlags";
 import { useAgentFlagsStore } from "@/stores/agentFlags";
+import { toggleRecording } from "@/lib/recorder";
 import {
   clearSiteData,
   hardReload,
@@ -518,6 +520,17 @@ const COMMANDS: Command[] = [
     keys: [],
     icon: Bot,
     run: () => openPanel("agent"),
+  },
+  {
+    id: "agent.record",
+    title: "Record Steps for Agent (start/stop)",
+    keys: [],
+    icon: Circle,
+    run: () => {
+      const tabId = getActiveTabId();
+      if (!tabId) return false;
+      void toggleRecording(tabId);
+    },
   },
   {
     id: "help.shortcuts",
