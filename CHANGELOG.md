@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a check that the page threw no errors. Passwords and credential headers are
   read from environment variables, never written into the file.
 
+### Fixed
+
+- An agent's first call while ZYNLEX was starting got no answer and failed
+  after 90 seconds. It now waits for the window to be ready and goes through.
+
 ## [0.16.1] - 2026-10-28
 
 ### Fixed
