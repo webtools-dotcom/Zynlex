@@ -36,7 +36,7 @@ developer's own browser.
 | # | Item | Status |
 |---|---|---|
 | S1 | Settings → AI agents setup snippets + palette command (`feat/agent-setup-button`) | done, not merged |
-| S2 | `zynlex-mcp.exe` on `PATH` from the installer, so the setup is just `zynlex-mcp` | todo |
+| S2 | `zynlex-mcp.exe` on `PATH` from the NSIS installer, so the setup is just `zynlex-mcp` | done |
 | S3 | Signed release (code-signing certificate; stops antivirus quarantining the build) and the updater signing key in CI | todo (needs a certificate purchase) |
 | S4 | Public, reproducible benchmark (harness, apps, graders, raw results in a repo) | todo |
 | S5 | Benchmark with a second model family (e.g. GPT or Gemini through Codex/Antigravity, or Haiku) | todo |
