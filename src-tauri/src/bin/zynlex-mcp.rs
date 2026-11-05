@@ -328,7 +328,7 @@ mod tests {
         assert_eq!(schema("act")["files"]["type"], "array");
         assert_eq!(schema("screenshot")["ref"]["type"], "string");
         assert_eq!(schema("screenshot")["full"]["type"], "boolean");
-        assert!(schema("recording").as_object().unwrap().is_empty());
+        assert_eq!(schema("recording")["playwright"]["type"], "boolean");
         let mock = tools.iter().find(|t| t["name"] == "mock").unwrap();
         assert_eq!(mock["inputSchema"]["required"], json!(["action"]));
 
