@@ -526,13 +526,21 @@ take it as they take a snapshot's.
 
 ## Setup
 
+With the NSIS installer (open a new terminal after installing, so it sees the
+new `PATH`):
+
 ```
-claude mcp add zynlex -- "C:\path\to\zynlex-mcp.exe"
+claude mcp add zynlex zynlex-mcp
 ```
 
-Any MCP client takes the same command (no arguments, stdio transport). The NSIS
-installer ships `zynlex-mcp.exe` next to `zynlex.exe` (Cargo builds every bin
-target and the bundler packs them all); it isn't put on `PATH`. The MCP
+Any MCP client takes the same command (no arguments, stdio transport). Settings
+→ AI agents gives the snippet for each agent with the full path, which works
+without `PATH` (MSI installs, dev builds).
+
+How it ships: the bundler packs every bin target of the crate, so both
+installers put `zynlex-mcp.exe` next to `zynlex.exe`. The NSIS hooks in
+[windows/hooks.nsh](../src-tauri/windows/hooks.nsh) add the install folder to
+the user's `PATH` and take it off on uninstall. The MCP
 server's `instructions` give the short version of when to use which tool.
 
 The longer version is an agent skill,
@@ -811,5 +819,3 @@ another client" checks, not benchmark runs.
   `check`/`act`? Bodies up to 64 KB each add memory on busy pages.
 - Should `errors` dedupe the way the console store does (`count`), or report
   every occurrence? Dedupe saves tokens but hides "it fired 40 times".
-- Put `zynlex-mcp.exe` on `PATH` from the installer, or have a "Copy MCP
-  setup command" button in ZYNLEX that fills in the real path?
