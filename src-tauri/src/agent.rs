@@ -28,7 +28,10 @@ use crate::zynlex_log;
 const PIPE_NAME: &str = r"\\.\pipe\zynlex-agent";
 
 /// How long a tool call may take in the frontend before the agent gets an error.
-const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+/// Must exceed `PAUSE_HOLD_MS` in src/lib/agentPause.ts (a call held by the
+/// developer's Pause, 45 s) plus the slowest tool (`wait_for`, 30 s, then
+/// settling): a call timed out here would still run in the frontend later.
+const REPLY_TIMEOUT: Duration = Duration::from_secs(90);
 
 type Reply = Result<String, String>;
 
@@ -129,6 +132,8 @@ async fn session(app: AppHandle, pipe: NamedPipeServer) {
     // Record full requests (headers, bodies) while an agent is connected, not
     // just while the Network panel is open.
     crate::commands::browser::browser_set_network_capture(true);
+    // And console.log/info, for `errors level=…`.
+    crate::commands::browser::set_console_verbose(true);
 
     loop {
         let line = tokio::select! {
@@ -169,6 +174,7 @@ async fn session(app: AppHandle, pipe: NamedPipeServer) {
     }
 
     crate::commands::browser::browser_set_network_capture(false);
+    crate::commands::browser::set_console_verbose(false);
     sessions()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -195,7 +201,10 @@ async fn forward(app: &AppHandle, tool: &str, args: Value) -> Reply {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .remove(&id);
-            Err("ZYNLEX didn't answer within 30s".into())
+            Err(format!(
+                "ZYNLEX didn't answer within {}s",
+                REPLY_TIMEOUT.as_secs()
+            ))
         }
     }
 }
@@ -248,6 +257,16 @@ pub fn agent_reveal_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Where `zynlex-mcp.exe` is, for the setup snippets in Settings: next to
+/// this executable, where the installer puts it. None when it isn't there.
+#[tauri::command]
+pub fn agent_mcp_path() -> Option<String> {
+    let path = std::env::current_exe()
+        .ok()?
+        .with_file_name("zynlex-mcp.exe");
+    path.is_file().then(|| path.to_string_lossy().into_owned())
+}
+
 /// For a frontend that (re)loaded after agents connected.
 #[tauri::command]
 pub fn agent_status() -> AgentStatus {
@@ -263,4 +282,59 @@ pub fn agent_set_enabled(app: AppHandle, enabled: bool) {
         stop_signal().send_modify(|g| *g += 1);
     }
     emit_status(&app);
+}
+
+/// Where an agent's working files go (screenshots, output too long to return
+/// inline): `%TEMP%\zynlex-agent`, not Downloads, since the user didn't save them.
+pub fn agent_temp_dir() -> Result<std::path::PathBuf, String> {
+    let dir = std::env::temp_dir().join("zynlex-agent");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("agent folder: {e}"))?;
+    Ok(dir)
+}
+
+/// `zynlex-<name>.txt`, with `name` cut to ASCII letters, digits, `-` and `_`
+/// (at most 80), so the file can only land directly in the agent folder. The
+/// prefix also keeps it clear of reserved device names (`CON`, `NUL`).
+fn temp_file_name(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(80)
+        .collect();
+    format!(
+        "zynlex-{}.txt",
+        if safe.is_empty() { "output" } else { &safe }
+    )
+}
+
+/// Writes text the agent asked for but that is too long to return inline (a
+/// big snapshot, a response body) and returns the file's path.
+#[tauri::command]
+pub fn agent_write_temp(name: String, text: String) -> Result<String, String> {
+    let path = agent_temp_dir()?.join(temp_file_name(&name));
+    std::fs::write(&path, text).map_err(|e| format!("agent_write_temp: {e}"))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::temp_file_name;
+
+    #[test]
+    fn temp_file_names_stay_in_the_folder() {
+        assert_eq!(
+            temp_file_name("snapshot-1a2b3c4d-17"),
+            "zynlex-snapshot-1a2b3c4d-17.txt"
+        );
+        assert_eq!(
+            temp_file_name(r"..\..\Windows\win.ini"),
+            "zynlex-Windowswinini.txt"
+        );
+        assert_eq!(temp_file_name("C:/x/y:z"), "zynlex-Cxyz.txt");
+        assert_eq!(temp_file_name("../"), "zynlex-output.txt");
+        assert_eq!(
+            temp_file_name(&"a".repeat(200)).len(),
+            "zynlex-.txt".len() + 80
+        );
+    }
 }

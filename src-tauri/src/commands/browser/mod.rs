@@ -243,6 +243,7 @@ fn create_webview_for_tab(
     let tab_id_load = tab_id.to_string();
     let app_for_load = app.clone();
     let app_for_new_window = app.clone();
+    let tab_id_new_window = tab_id.to_string();
     let tab_id_download = tab_id.to_string();
     let app_for_download = app.clone();
 
@@ -339,7 +340,9 @@ fn create_webview_for_tab(
             let _ = app_for_new_window.emit(
                 "browser://open-new-tab",
                 serde_json::json!({
-                    "url": url.to_string()
+                    "url": url.to_string(),
+                    // The opener, so an agent's action can report the tab it caused.
+                    "tabId": tab_id_new_window,
                 }),
             );
             tauri::webview::NewWindowResponse::Deny
@@ -746,14 +749,25 @@ pub async fn browser_clear_site_data(
     })
 }
 
+/// A screenshot area in page (document) CSS pixels, as `Page.captureScreenshot` takes it.
+#[derive(serde::Deserialize)]
+pub struct Clip {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
 /// Saves a PNG of the tab to Downloads and returns its path. `kind`: "bug" (the visible
 /// area, for a bug report), "visible", "full" (the whole page, up to Chromium's 16384 px),
-/// or "agent" (the visible area, saved to %TEMP%\zynlex-agent instead).
+/// or "agent" / "agent-full" (visible area / whole page, saved to %TEMP%\zynlex-agent
+/// instead). `clip`, if given, is the area to capture instead.
 #[tauri::command]
 pub async fn browser_capture_screenshot(
     app: AppHandle,
     tab_id: String,
     kind: String,
+    clip: Option<Clip>,
 ) -> Result<String, String> {
     use base64::Engine;
     let (prefix, full) = match kind.as_str() {
@@ -761,10 +775,18 @@ pub async fn browser_capture_screenshot(
         "visible" => ("screenshot", false),
         "full" => ("screenshot", true),
         "agent" => ("agent", false),
+        "agent-full" => ("agent", true),
         _ => return Err(format!("screenshot: unknown kind {kind}")),
     };
     let wv = find_tab_webview(&app, &webview_label_for_tab(&tab_id)).ok_or("tab not found")?;
-    let params = if full {
+    let params = if let Some(c) = clip {
+        serde_json::json!({
+            "format": "png",
+            "captureBeyondViewport": true,
+            "clip": { "x": c.x, "y": c.y, "width": c.width, "height": c.height, "scale": 1 }
+        })
+        .to_string()
+    } else if full {
         let metrics: serde_json::Value =
             serde_json::from_str(&cdp_result(&wv, "Page.getLayoutMetrics", "{}".into()).await?)
                 .map_err(|e| format!("screenshot: {e}"))?;
@@ -792,10 +814,8 @@ pub async fn browser_capture_screenshot(
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis());
     // An agent's screenshots are working files, not something the user saved.
-    let dir = if kind == "agent" {
-        let dir = std::env::temp_dir().join("zynlex-agent");
-        std::fs::create_dir_all(&dir).map_err(|e| format!("screenshot: {e}"))?;
-        dir
+    let dir = if prefix == "agent" {
+        crate::agent::agent_temp_dir()?
     } else {
         app.path().download_dir().map_err(|e| e.to_string())?
     };

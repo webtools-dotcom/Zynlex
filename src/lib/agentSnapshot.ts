@@ -2,7 +2,8 @@
  * The agent's view of a page: CDP's accessibility tree cut down to what can be
  * acted on, plus the headings and landmarks that say where it is. Each
  * actionable element gets a ref (`e` + its backendDOMNodeId), which survives
- * re-renders that keep the same DOM node. See docs/agent-interface.md.
+ * re-renders that keep the same DOM node. Same-origin iframes are walked and
+ * shown under their iframe (see `mergeFrames`). See docs/agent-interface.md.
  */
 
 /** The parts of a CDP `Accessibility.AXNode` this reads. */
@@ -15,9 +16,11 @@ export interface AXNode {
   properties?: { name: string; value: { value?: unknown } }[];
   childIds?: string[];
   backendDOMNodeId?: number;
+  /** Set by `mergeFrames`, not CDP: an iframe whose document can't be read. */
+  crossOrigin?: boolean;
 }
 
-const INTERACTIVE = new Set([
+export const INTERACTIVE = new Set([
   "button",
   "link",
   "textbox",
@@ -55,9 +58,10 @@ const HAS_VALUE = new Set(["textbox", "searchbox", "combobox", "spinbutton", "sl
 /** Not `focused`: it moves on every click and turns each diff into noise. */
 const STATES = ["disabled", "checked", "selected", "required", "invalid", "pressed"];
 
-/** Lines past this are cut, with a pointer to `within`. */
-const MAX_LINES = 300;
 const MAX_NAME = 80;
+
+/** CDP's roles for an `<iframe>`. */
+const IFRAME = new Set(["Iframe", "IframePresentational"]);
 
 const str = (v: unknown) =>
   typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : "";
@@ -65,6 +69,47 @@ const str = (v: unknown) =>
 function clip(s: string): string {
   const one = s.replace(/\s+/g, " ").trim();
   return one.length > MAX_NAME ? `${one.slice(0, MAX_NAME)}…` : one;
+}
+
+export const isIframe = (n: AXNode): boolean => IFRAME.has(str(n.role?.value));
+
+/**
+ * Per iframe element (its backendDOMNodeId), that frame's own tree, or
+ * "cross-origin" when it isn't readable.
+ */
+export type FrameTrees = Map<number, AXNode[] | "cross-origin">;
+
+/**
+ * One tree from a page's tree and its iframes' (CDP returns one per frame):
+ * each frame's root becomes its iframe node's only child. Node ids restart in
+ * every frame, so a frame's are prefixed; backendDOMNodeIds (the refs) are
+ * unique across same-process frames and stay as they are. Root stays first.
+ */
+export function mergeFrames(main: AXNode[], frames: FrameTrees): AXNode[] {
+  if (!frames.size) return main;
+  const out: AXNode[] = [];
+  const done = new Set<number>();
+  const add = (nodes: AXNode[], prefix: string) => {
+    const nested: [AXNode[], string][] = [];
+    for (const n of nodes) {
+      const id = (x: string) => prefix + x;
+      let copy: AXNode = prefix ? { ...n, nodeId: id(n.nodeId), childIds: n.childIds?.map(id) } : n;
+      const key = n.backendDOMNodeId;
+      const sub = isIframe(n) && key != null && !done.has(key) ? frames.get(key) : undefined;
+      if (sub === "cross-origin") {
+        copy = { ...copy, crossOrigin: true, childIds: [] };
+      } else if (sub?.length && key != null) {
+        done.add(key);
+        const p = `f${key}:`;
+        copy = { ...copy, childIds: [p + sub[0].nodeId] };
+        nested.push([sub, p]);
+      }
+      out.push(copy);
+    }
+    for (const [sub, p] of nested) add(sub, p);
+  };
+  add(main, "");
+  return out;
 }
 
 function describe(n: AXNode, role: string, text: string): string {
@@ -110,10 +155,17 @@ export function formatSnapshot(
         const c = byId.get(id);
         return c ? walk(c, d) : [];
       });
+    const pad = "  ".repeat(depth);
+    // Before the ignored check: an iframe's node can be ignored while its document isn't.
+    if (IFRAME.has(role)) {
+      const title = name ? `iframe "${clip(name)}"` : "iframe";
+      if (n.crossOrigin) return [`${pad}${title} (cross-origin, not shown)`];
+      const inner = kids(depth + 1);
+      return inner.length || full ? [pad + title, ...inner] : [];
+    }
     // ListMarker is a list's bullet or number: pure noise in a diff.
     if (n.ignored || role === "InlineTextBox" || role === "ListMarker") return kids(depth);
 
-    const pad = "  ".repeat(depth);
     if (INTERACTIVE.has(role)) {
       // A button's or link's text is its name; walking in would repeat it.
       const inner = role === "button" || role === "link" ? [] : kids(depth + 1);
@@ -139,12 +191,8 @@ export function formatSnapshot(
   };
 
   const lines = walk(root, 0);
-  if (!lines.length) return "(nothing actionable on the page)";
-  if (lines.length <= MAX_LINES) return lines.join("\n");
-  return [
-    ...lines.slice(0, MAX_LINES),
-    `… ${lines.length - MAX_LINES} more lines. Pass within=<ref of a landmark> to see one part.`,
-  ].join("\n");
+  // Not cut here: diffs need the whole page. The agent tools cut what they show.
+  return lines.length ? lines.join("\n") : "(nothing actionable on the page)";
 }
 
 /**

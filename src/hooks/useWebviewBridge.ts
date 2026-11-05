@@ -61,6 +61,8 @@ import { useMocksStore } from "@/stores/mocks";
 import { isLoopbackUrl, titleFromUrl } from "@/lib/url";
 import { openTab } from "@/lib/tabActions";
 import { listenForAgents } from "@/lib/agent";
+import { notePageLoad } from "@/lib/errorGroups";
+import { notePopup } from "@/lib/agentTabs";
 
 let _netEntryId = 0;
 
@@ -378,7 +380,13 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     if (!IS_TAURI) return;
     const { track, dispose } = tracker();
 
-    track(onNewTabRequested((url) => openTab({ url })));
+    track(
+      onNewTabRequested((url, openerTabId) => {
+        const id = openTab({ url });
+        // Lets an agent's action report the tab it opened (src/lib/agentTabs.ts).
+        if (openerTabId) notePopup(openerTabId, id, url);
+      }),
+    );
 
     track(
       onUrlChanged((tabId, url) => {
@@ -412,7 +420,9 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
             useNetworkStore.getState().clearTab(tabId);
           }
           // The badge counts the current page's errors, not the tab's lifetime.
+          // The agent's grouped log keeps them, and counts the load.
           useConsoleStore.getState().clearTab(tabId);
+          notePageLoad(tabId);
         } else {
           const startedAt = loadStartRef.current.get(tabId);
           loadStartRef.current.delete(tabId);

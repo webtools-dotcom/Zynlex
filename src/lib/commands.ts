@@ -15,10 +15,12 @@ import {
   Bookmark,
   Bug,
   Camera,
+  Circle,
   Clock,
   Code2,
   Eraser,
   FileWarning,
+  Flag,
   Gauge,
   Keyboard,
   type LucideIcon,
@@ -28,11 +30,15 @@ import {
   RotateCw,
   Search,
   Settings,
+  Bot,
+  Pause,
   Star,
   TerminalSquare,
   X,
 } from "lucide-react";
 import { useUIStore, isFindOpen } from "@/stores/ui";
+import { AI_AGENTS_SECTION } from "@/lib/mcpSetup";
+import { toggleAgentPause } from "@/lib/agentPause";
 import { useTabsStore } from "@/stores/tabs";
 import { useConsoleStore } from "@/stores/console";
 import { useWorkspacesStore } from "@/stores/workspaces";
@@ -44,6 +50,9 @@ import { getActiveTabId } from "@/hooks/useActiveScope";
 import { activeEnv, switchEnv, workspaceEnvs } from "@/lib/envActions";
 import { originOf } from "@/lib/url";
 import { copyBugReport } from "@/lib/bugReport";
+import { cancelFlag, startFlag } from "@/lib/agentFlags";
+import { useAgentFlagsStore } from "@/stores/agentFlags";
+import { toggleRecording } from "@/lib/recorder";
 import {
   clearSiteData,
   hardReload,
@@ -120,12 +129,15 @@ function selectTab(pick: (ids: string[], current: number) => number): boolean {
   return true;
 }
 
-function openPanel(panel: "history" | "bookmarks" | "console") {
+function openPanel(panel: "history" | "bookmarks" | "console" | "agent") {
   useUIStore.getState().setActivePanel(panel);
   useUIStore.getState().setSidebarOpen(true);
 }
 
 function stopOrCloseFind(): boolean {
+  // Escape in the page while picking an element to flag; the note input
+  // handles its own.
+  if (cancelFlag()) return true;
   if (isFindOpen()) {
     useUIStore.getState().closeFind();
     return true;
@@ -465,6 +477,60 @@ const COMMANDS: Command[] = [
     keys: ["ctrl+,"],
     icon: Settings,
     run: () => void useUIStore.getState().toggleSettingsPanel(),
+  },
+  {
+    id: "settings.agents",
+    title: "Connect an AI Agent (MCP)",
+    keys: [],
+    icon: Bot,
+    run: () => {
+      const ui = useUIStore.getState();
+      if (!ui.settingsPanelOpen) ui.toggleSettingsPanel();
+      // The panel mounts on the next render; scroll once it's there.
+      setTimeout(() => document.getElementById(AI_AGENTS_SECTION)?.scrollIntoView(), 50);
+    },
+  },
+  {
+    id: "agent.flag",
+    title: "Flag Element for Agent",
+    keys: ["ctrl+shift+e"],
+    icon: Flag,
+    run: startFlag,
+  },
+  {
+    id: "agent.flags.clear",
+    title: "Clear Agent Flags",
+    keys: [],
+    icon: Flag,
+    run: () => {
+      if (!useAgentFlagsStore.getState().flags.length) return false;
+      useAgentFlagsStore.getState().clear();
+    },
+  },
+  {
+    id: "agent.pause",
+    title: "Pause or Resume the AI Agent (take over)",
+    keys: [],
+    icon: Pause,
+    run: () => toggleAgentPause(),
+  },
+  {
+    id: "panel.agent",
+    title: "Agent Activity Panel",
+    keys: [],
+    icon: Bot,
+    run: () => openPanel("agent"),
+  },
+  {
+    id: "agent.record",
+    title: "Record Steps for Agent (start/stop)",
+    keys: [],
+    icon: Circle,
+    run: () => {
+      const tabId = getActiveTabId();
+      if (!tabId) return false;
+      void toggleRecording(tabId);
+    },
   },
   {
     id: "help.shortcuts",

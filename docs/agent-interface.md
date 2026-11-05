@@ -38,7 +38,11 @@ Built on, unchanged:
 - **Console capture** ([console.rs](../src-tauri/src/commands/browser/console.rs)):
   always on per tab. Exceptions, `console.error`/`warn`, and Chromium's own log,
   which includes failed requests. Entries are emitted to the frontend and live
-  in `useConsoleStore`.
+  in `useConsoleStore`. While an agent is connected (`CONSOLE_VERBOSE`, a
+  ref-count like network capture) `console.log`/`info`/`debug` and Chromium's
+  info log are forwarded too; the store keeps them in `logsByTab`, apart from
+  errors and warnings, capped at 200 per tab and never counted in the tab badge,
+  status bar or Console panel.
 - **Screenshots:** `browser_capture_screenshot` already writes a PNG to disk and
   returns the path, which is the shape agents want.
 - **Script execution:** `browser_run_script`, `eval_json`.
@@ -51,8 +55,10 @@ Correction to an easy assumption: **full network capture is not always on.**
 Request/response capture (headers, bodies, timing) is gated by
 `NETWORK_CAPTURE_ACTIVE` and only runs while the Network panel is open. Failed
 requests *are* always captured, through the console's `Log.entryAdded`. So
-before an agent connects, it gets errors and failed-request URLs; bodies and
-timing only from when it (or the panel) is attached. An agent session holds a
+before an agent connects, it gets errors and failed-request URLs (kept across
+page loads and offered under `Before you connected:`, see
+[Error grouping](#error-grouping)); bodies and timing only from when it (or the
+panel) is attached. An agent session holds a
 reference on the same counter while connected — the ref-count was built for
 exactly this kind of independent client.
 
@@ -103,20 +109,151 @@ call to find out.
 
 | Tool | Does | Status |
 |---|---|---|
-| `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab | Built |
+| `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab; `close` closes a tab the agent opened | Built |
 | `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors | Built |
-| `check` | Settles, then new errors + failed requests since the last report; `reload` reloads first | Built |
-| `errors` | Every recorded error and failed request; `warnings` adds warnings | Built |
+| `check` | Settles, then new errors + failed requests since the last report, grouped (see [Error grouping](#error-grouping)); `reload` reloads first | Built |
+| `errors` | Every error and failed request on the current page, plus any from earlier page loads not yet shown, grouped; `level` adds `warning`, `info` or `log` (each includes the levels above it; newest 50 log/info lines) | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
-| `act` | `click` / `type` / `select` / `press` on a ref with real input, then the consequences | Built |
+| `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` / `upload` on a ref with real input, `back` / `forward` in history (localhost entries only), then the consequences (including any tab it opened) | Built (hover, drag, back/forward, upload untested on Windows) |
 | `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
-| `screenshot` | Visible area to `%TEMP%\zynlex-agent`, returns the path | Built (no element crop yet) |
-| `mock` | Add/list/clear mocks through the mocks store, so they show in the UI | Phase 4 |
-| `eval` | Escape hatch, in-scope tabs only | Phase 4 |
+| `screenshot` | Visible area, one element (`ref`) or the whole page (`full`) to `%TEMP%\zynlex-agent`, returns the path | Built (`ref`, `full` untested on Windows) |
+| `viewport` | Device presets or width×height, touch, mobile UA; `reset` | Built |
+| `eval` | `Runtime.evaluate` (`awaitPromise`, `returnByValue`, `replMode`): an expression, or a function body when the code has `return`; value as compact JSON cut at 4 KB, exceptions as `Threw: …`, gives up after 10 s | Built, untested on Windows |
+| `wait_for` | Polls every 250 ms until all given conditions hold: `text` appears, `gone` disappears (full snapshot + `body.innerText`), `url` contains; `timeout` s (default 10, max 30); says what matched or what's pending, then the consequences | Built, untested on Windows |
+| `mock` | `add` a canned response (or, with `header`+`value`, a request-header rule), `list`, `remove` by id, `clear`, through the panels' stores | Built |
+| `recording` | The developer's latest recorded steps (click/type/select/press/upload, with refs) and what each caused; see [Recorded steps](#recorded-steps) | Built, untested on Windows |
 
-`check`, `act` and `open` share one report cursor per tab: whatever one of them
-reported, the next one doesn't repeat. Bodies over 8 KB are cut inline (writing
-them to a file is not done yet).
+### Recorded steps
+
+"Show the agent what I did" (roadmap M2). The developer starts recording on a
+localhost tab (palette: **Record Steps for Agent (start/stop)**, or **Record**
+in the status bar while an agent is connected), uses the page, and stops
+(**Stop** next to `● Recording 3 steps`). The agent reads it with `recording`:
+
+```
+Recording of http://localhost:5173/cart "Shop" [a1b2c3d4], 42s, 4 steps:
+1. type textbox "Email" [e52] "a@b.co"
+2. type textbox "Password" [e53] (password, not recorded)
+3. click button "Pay" [e41] → POST /api/pay 500, TypeError: total is undefined
+4. press Escape
+Refs are from recording time; take a snapshot before acting on them.
+```
+
+A tool of its own rather than an option on `errors` or `check`: those report
+the live page, a recording is a finished artefact from earlier, and one empty
+schema costs fewer tokens than explaining a mode switch.
+
+- **Capture without page IPC.** [recorder.ts](../src/lib/recorder.ts) puts a
+  listener in the page ([RECORDER_SCRIPT](../src/lib/agentRecord.ts), by
+  `Runtime.evaluate` and `Page.addScriptToEvaluateOnNewDocument`; top document
+  only). It buffers trusted `click`/`input`/`change`/`keydown` events and calls
+  nothing; the app drains the buffer with its own `Runtime.evaluate` every
+  300 ms. Each element is fetched as a remote object and resolved with
+  `DOM.describeNode` (backendNodeId → the ref, attributes) and
+  `Accessibility.getPartialAXTree` (role and name, the snapshot's words); the
+  page's own label and tag stand in when that fails.
+- **Same vocabulary as `act`.** Typing into one field in a row collapses to
+  its final value (the click that focused it folds in, editing keys inside it
+  are dropped). The click an Enter causes is not a second step. Only the keys
+  `act` can press are recorded, without modifiers.
+- **What each step caused.** Errors and failed requests are copied from the
+  console and network stores as they arrive (a navigation clears those
+  stores) and given to the last step before them; a request row's arrival time
+  is its time, and the console's line for the same URL gives way to it.
+  Recording holds a network-capture reference so rows have method and status.
+  A URL change within 3 s of a step is its result (`→ /checkout`); a later one
+  is an `open` step of its own (the address bar). Up to 4 per step, then
+  `+N more`.
+- **Passwords.** The page script never puts a password field's value in the
+  buffer (`type=password`, `autocomplete` password/one-time-code/card number
+  or CVC, and a field that was a password before a show-password toggle).
+  The app drops it again from the node's attributes, so a value the page sent
+  anyway is never kept: `(password, not recorded)`.
+- **Scope and lifetime.** Localhost tabs only; recording stops by itself if
+  the tab closes or leaves localhost. One recording, in memory, replaced by
+  the next. `recording` during a recording drains first and says `still
+  recording`. 200 steps at most.
+- **Known gaps.** A click that unloads the page within 300 ms of the last
+  drain is lost with the old document (its navigation still shows as a
+  step's result or an `open` step). Steps in iframes aren't recorded. The page
+  can read or forge its own buffer: a recording is page data, like console
+  text. Input an agent sends while recording is recorded too.
+
+### Mocks and header rules
+
+`mock` writes to the same per-workspace stores as the Mocks and Headers panels
+([agentRules.ts](../src/lib/agentRules.ts)), so the developer sees every rule
+and the bridge pushes them to Rust the normal way; nothing writes the Rust rule
+maps directly. Scope matches the panels: the target tab's workspace, applying
+to every tab in it. Agent rules carry `agent: true` (an "agent" tag in the
+panels; Rust ignores the field):
+
+- the agent can `remove` and `clear` only its own; the developer's are listed
+  as "developer's" and refused;
+- an agent mock goes first in the list (first enabled match wins), so it's the
+  one served;
+- they are never persisted, and are dropped when the last agent disconnects,
+  so a forgotten canned 500 can't outlive the session.
+
+Blank and bare-`*` patterns are refused for both kinds (a catch-all mock
+replaces the page itself; a catch-all header goes to every third party).
+
+`check`, `act`, `open` and `errors` share what was reported per tab: whatever
+one of them showed, the next `check`, `act` or `open` doesn't repeat (see
+below).
+
+### Error grouping
+
+Roadmap M6 and M3, in [errorGroups.ts](../src/lib/errorGroups.ts). The
+console store keeps only the current page's entries, because a page load
+clears them for the badge. The console store's `add` also feeds a grouped log
+for each tab. Page loads don't clear it; only closing the tab does. It holds
+up to 300 groups per tab and drops the least recently seen first.
+
+- **Errors** group by message plus source location (URL path and line).
+  Before comparing, the message is normalised: URLs lose their query string
+  and fragment (a stack frame's `:42:7` stays), uuids and hex ids of 8+
+  characters become `<id>`, and standalone numbers become `<n>`.
+- **Failed requests** group by method + URL path + status. The console's
+  failed-request lines are always recorded, so they also cover the time
+  before an agent connected, but they carry no method. Their status is read
+  from Chromium's text (`status of 500`, `net::ERR_…`). Network rows (only
+  while capture is on) add the method and an id for `network id=…`. A row
+  group takes over the console group with the same path and status. Its count
+  is the larger of the two, not the sum, because both usually saw the same
+  requests.
+- **One line per group**, with the count, first-seen time and number of page
+  loads when they say something:
+  `TypeError: x is undefined at /src/app.js:42 (×7 since 14:02, across 3 page loads)`.
+  URLs on the tab's own origin are shown as paths. A stack is shown under the
+  first line only the first time.
+- **Repeats cost one short line.** Each group remembers how many of its
+  occurrences the agent has seen. `check` and the reports after `act`/`open`
+  show a group again only when it grew, as `TypeError: x is undefined at
+  /src/app.js:42 (+3)`. `errors` lists the whole current page with full
+  counts, plus anything from earlier loads not shown yet. It also marks all
+  of them as shown.
+- **Before you connected.** Groups first seen before the agent session began
+  and not yet shown go under a `Before you connected:` header, and what's
+  left goes under `Since you connected:`. This only happens on the agent's
+  first `check`, `open`, `errors` or action on that tab, since afterwards
+  they've been shown. The session starts when the first agent connects; when
+  the last one leaves, the reported state is reset, so the next agent gets
+  the whole story.
+
+### Large output
+
+A snapshot (or action diff) over 300 lines returns its first 300, then
+`… 412 more lines; all of it is in C:\…\zynlex-agent\zynlex-snapshot-<tab>-<ms>.txt.`
+A response body over 8 KB returns its first 8,000 characters and the path of
+`zynlex-body-<tab>-<request>-<ms>.txt` the same way. The head stays inline so
+the refs and the start of the payload are usable without a second call; the
+agent reads the file only when it needs the rest. The files are written by
+`agent_write_temp` ([agent.rs](../src-tauri/src/agent.rs)), which keeps the
+name to letters, digits, `-` and `_` under a `zynlex-` prefix, so it can only
+write `.txt` files directly in `%TEMP%\zynlex-agent`, next to the agent's
+screenshots. Nothing cleans that folder up yet. Diffs are now taken over the
+whole page, so a change past line 300 still shows.
 
 ### Snapshot and refs
 
@@ -152,10 +289,83 @@ Acting is real input, not `element.click()`: `DOM.scrollIntoViewIfNeeded` +
 `DOM.getContentQuads` + `Input.dispatchMouseEvent` at the centre for clicks;
 `DOM.focus`, select-all and `Input.insertText` for typing (replaces the value);
 a `change` + `input` event pair for `<select>`; `Input.dispatchKeyEvent` for
-keys. An action brings its tab to the front so the developer sees it happen.
+keys; `DOM.setFileInputFiles` for `upload`, which takes absolute paths on the
+developer's machine (not checked for existence) and fires the page's `input`
+and `change` events. Its ref can be the `<input type=file>` itself, a `<label>`
+for one, or an element holding one (styled inputs are often hidden, so they
+have no ref of their own); anything else is refused, as are several files for
+an input without `multiple`. `hover` is a lone `mouseMoved` at the centre; `drag` presses on `ref`,
+moves in five steps and releases on `to` (button held, `buttons: 1`), after the
+same covered-element check `click` makes (and one on the drop target, done
+before anything is pressed). `back`/`forward` read `Page.getNavigationHistory`
+and go to the neighbouring entry with `Page.navigateToHistoryEntry`, refusing
+an entry that isn't on localhost. An action brings its tab to the front so the
+developer sees it happen.
 
-Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`); iframes
-aren't walked; the snapshot is cut at 300 lines (use `within`).
+Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`);
+cross-origin iframes aren't walked; a snapshot over 300 lines spills to a
+file (see Large output).
+
+`screenshot ref=e12` scrolls the element into view, takes the box around its
+`DOM.getContentQuads` plus the scroll offset (`Page.getLayoutMetrics`), and
+captures just that area with `captureBeyondViewport`; `full` captures the whole
+page (up to Chromium's 16,384 px), as the Screenshot command does for people.
+
+### Iframes
+
+`Accessibility.getFullAXTree` returns one frame's tree. When the page's tree
+has `Iframe` nodes (and only then, so a page without iframes costs no extra
+calls), `axTree` in [agent.ts](../src/lib/agent.ts) reads `Page.getFrameTree`,
+finds each iframe's frame with `DOM.describeNode`, and fetches that frame's
+tree with `getFullAXTree({ frameId })` when its `securityOrigin` equals the top
+page's. `mergeFrames` ([agentSnapshot.ts](../src/lib/agentSnapshot.ts)) hangs
+each frame's root under its iframe node (frame node ids are prefixed, since
+they restart per frame), so frames nest at any depth, up to 20 per snapshot:
+
+```
+main
+  button "Save" [e12]
+  iframe "Feedback widget"
+    textbox "Message" [e40] value=""
+    button "Send" [e41]
+iframe "Payment" (cross-origin, not shown)
+```
+
+Refs inside a frame are ordinary refs: backendDOMNodeIds are unique across
+the frames of one renderer target, so `DOM.resolveNode`, `getContentQuads`
+and `scrollIntoViewIfNeeded` take them unchanged. Content quads of a
+same-process frame are already in the top page's viewport, which is what
+`Input.dispatchMouseEvent` wants; the covered-element hit test subtracts each
+enclosing frame's content-box offset before `elementFromPoint`, which works
+in the frame's own coordinates. A cross-origin frame (or one whose tree can't
+be read, e.g. out-of-process) is listed with its title and not walked. The
+settle rule's DOM-stillness probe watches the top document only.
+
+### Tabs and popups
+
+A page's new-window request (`target=_blank`, `window.open`) is denied as a
+window and opened as a tab, as it always was for people
+(`browser://open-new-tab` → `openTab` in
+[useWebviewBridge.ts](../src/hooks/useWebviewBridge.ts)); the event now
+carries the opener's tab id, and the bridge notes each popup in
+[agentTabs.ts](../src/lib/agentTabs.ts). `act` (and dialog `accept`/`dismiss`)
+takes a mark before the input and, after settling, reports the popups its tab
+opened since:
+
+```
+Clicked link "Terms" [e9]
+Opened new tab [3f2a91c0] http://localhost:5173/terms, now the default tab; pass tab="a1b2c3d4" to stay on this one.
+```
+
+The popup opens in front, so it becomes the default tab for the next call.
+A non-localhost popup (an OAuth provider) is reported but stays out of scope
+like any other tab: `Opened new tab [id] https://…: not localhost, so you
+can't use it`. Popups an action caused, and tabs `open` created, are the
+agent's: `tabs` marks them `(opened by you)` and `tabs close=<id>` closes them.
+Any other tab is refused, and the lookup only searches the agent's tabs, so
+an id prefix says nothing about tabs it can't see. Known ceiling: the window is
+denied and reopened as a tab, so the popup has no `window.opener`; an OAuth
+flow that `postMessage`s back to its opener won't complete.
 
 ### Settle rule
 
@@ -190,10 +400,11 @@ The agent is untrusted by default, and page content is untrusted always.
   `first_pipe_instance` stops a second ZYNLEX from joining the pipe.
   Known ceiling: another local user who starts first could squat the name.
 - **Visible.** While an agent is connected, the status bar names the client
-  (`● Agent: claude-code`) with a **Stop** button. Stop disconnects every agent
-  and refuses further calls ("the user turned off agent access") until the user
-  clicks **Turn on**; it lasts until restart. Later: a per-tab marker and an
-  activity list (nothing may float over the tab, so not a popover).
+  (`● Agent: claude-code`) with **Pause** and **Stop**. Stop disconnects every
+  agent and refuses further calls ("the user turned off agent access") until
+  the user clicks **Turn on**; it lasts until restart. Pause is a take-over,
+  see [Shared control](#shared-control-take-over-and-activity). Tabs an agent
+  acted on carry a marker, and every call is listed in the Agent Activity panel.
 - **Page text is data.** Snapshot names, console messages and response bodies
   come from the page and may carry prompt-injection attempts. The MCP server's
   instructions tell the agent to treat them as data; fencing them in the
@@ -201,16 +412,113 @@ The agent is untrusted by default, and page content is untrusted always.
 - **Tab suspension.** Every in-scope tab is localhost, and localhost tabs are
   never suspended.
 
+## Shared control: take over and activity
+
+Built (roadmap M5, S6), untested on Windows. Pause state, the hold and the
+activity list are all frontend:
+[agentPause.ts](../src/lib/agentPause.ts),
+[agentActivity.ts](../src/stores/agentActivity.ts), wired into the
+dispatcher's `runAgentTool`/`handleAgentCall` in [agent.ts](../src/lib/agent.ts).
+
+**Take over.** **Pause** in the status bar's agent indicator (or the Agent
+Activity panel, or the palette's "Pause or Resume the AI Agent") pauses the
+agent; the indicator then shows `❚❚ Agent paused 12 s · 1 waiting` and
+**Resume**. While paused:
+
+- Calls that act on a page **wait**: `act` (every action, dialog answers
+  included), `open`, `check reload=true`, `eval`, `wait_for`, `viewport`,
+  `mock` (all but `action=list`) and `tabs close=…`.
+- Reads **still answer**: `tabs` (list), `check` (no reload), `snapshot`,
+  `errors`, `network`, `screenshot`, `mock action=list`.
+- On **Resume** each waiting call runs, and its reply starts with
+  `The developer took over for 42 s and resumed; the page may have changed.`
+  (counted from Pause), then the page's diff against the agent's last snapshot
+  of that tab (`Page changes since your last look:`, the whole page when the
+  diff would be longer, or `Page unchanged since your last look.`), then the
+  call's own reply. No diff for `open`, `tabs close`, a tab the agent never
+  looked at, or a tab paused by a dialog. Refs stay valid: they're backend node
+  ids, and the stored snapshot is replaced by the fresh one.
+- A call waits **at most 45 s** (`PAUSE_HOLD_MS`), then gets
+  `Paused by the developer; call again later.` and is **never run**. Clients
+  give up on a tool call long before a 10-minute pause ends (Codex's default
+  is reported as 60 s), and a call the client abandoned must not run later
+  behind the agent's back. So the hold sits under 60 s, and the agent retries.
+  Rust's bridge timeout (`REPLY_TIMEOUT` in agent.rs) went from 30 s to 90 s
+  so it can't cut a held call short: a call timed out in Rust still runs in the
+  frontend. Known edge: a call released near the end of its 45 s hold that
+  then runs a long `wait_for` can go past a 60 s client limit.
+- **Stop** while paused, or the last agent disconnecting, ends the pause; the
+  waiting calls fail with "The developer stopped the agent while it was
+  paused." and don't run. Pause needs a connected agent (the indicator that
+  shows it hides otherwise).
+
+**Activity.** Every call the dispatcher answers is recorded, newest first, last
+50 (`MAX_CALLS`): time, tool, tab (`[short id] url`, a link while the tab is
+open), the arguments on one line (`action=click ref=e12`), duration, the first
+line of any error, and `ran after takeover` / `paused, not run`. It's the
+**Agent Activity** sidebar panel (robot icon), opened from the indicator's
+agent name, from a tab's marker, or from the palette; not a popover, because
+nothing may float over the tab. **Agent was here**: a small robot glyph in the
+tab strip, before the error badge, on every tab a page-acting call named
+(reads don't mark), titled with the last time. Clear in the panel empties the
+list and the markers. Neither is persisted.
+
 ## Human → agent handoff
 
 MCP is pull-based; ZYNLEX can't push into the agent's conversation. So:
 
-- **Flag for agent** (context menu on an element, or a toolbar action on the
-  page): the developer types a short note. It's queued and appears at the top of
-  the agent's next `check` reply, with the element's ref:
-  `user flagged e15 (button "Apply"): "does nothing on mobile"`.
+- **Flag for agent**: see below. Done, untested on Windows.
 - **Copy for agent**: the existing bug report plus the flagged ref, on the
   clipboard, for pasting into a chat that isn't connected.
+
+### Flag for agent
+
+The developer points at an element in a localhost tab and says what's wrong
+with it; the agent's next reply on that tab starts with it.
+
+1. **Flag Element for Agent** (Ctrl+Shift+E, or the palette) in a localhost
+   tab. Other tabs get a toast: the agent can't see them anyway.
+2. A picker script runs in the tab through `Runtime.evaluate` with
+   `awaitPromise`: a box follows the mouse over the element under it, and a
+   bar docked above the content area (like the find bar; nothing can float
+   over the tab) says "Click an element in the page". Escape (in the page or
+   the app), the bar's ×, or switching tabs cancels.
+3. The click is the picker's, not the page's: its capture-phase listeners
+   swallow the press, release and click and resolve the promise with the
+   element, so the waiting CDP call returns it; `DOM.describeNode` gives its
+   backendNodeId. Rust-initiated, no page IPC. The frontend describes it from
+   `Accessibility.getPartialAXTree`: the nearest interactive ancestor wins (a
+   click on the icon in a button flags the button, with the button's ref),
+   else the element itself, named by its role or, when that's just `generic`,
+   its tag. Not CDP's Overlay inspect mode: in WebView2, once it has been on,
+   the tab ignores the agent's `Input.dispatchMouseEvent` clicks (found in
+   the Windows live test). Ceiling: a click inside an iframe flags the iframe.
+4. The bar becomes a note input. Enter queues the flag, Escape drops it.
+
+Queued flags show in the status bar ("2 flags queued", with **Clear**; also
+the **Clear Agent Flags** command). They live in `useAgentFlagsStore`
+([stores/agentFlags.ts](../src/stores/agentFlags.ts)), not persisted.
+
+Delivery ([agent.ts](../src/lib/agent.ts) `runAgentTool`): every tool that
+resolves a tab takes that tab's flags and puts them first in its reply, one
+line each:
+
+```
+Developer flagged e15 button "Apply": does nothing on mobile
+http://localhost:5173/cart "Cart" [3f2a9c1b]
+...
+```
+
+`tabs` takes every localhost tab's flags and names the tab
+(`... "Apply" in [3f2a9c1b]: ...`); `open` takes the flags of the tab it lands
+on. Each flag is delivered once. A call that fails delivers nothing, so the
+flag waits for a reply the agent actually reads. MCP is pull-based, so a flag
+waits for the agent's next call; it can't interrupt one. The MCP server's
+instructions ([zynlex-mcp.rs](../src-tauri/src/bin/zynlex-mcp.rs)) say what
+the line means, since everything else in a reply is page data.
+
+The ref is a normal `e<backendDOMNodeId>` ref: `act` and `screenshot ref=`
+take it as they take a snapshot's.
 
 ## Setup
 
@@ -473,14 +781,16 @@ another client" checks, not benchmark runs.
 
 1. **Read-only. Built.** Pipe, MCP server, frontend dispatcher
    ([src/lib/agent.ts](../src/lib/agent.ts)), localhost-only scope, status-bar
-   indicator + Stop. Tools: `tabs`, `check` (no reload), `errors`, `network`,
+   indicator + Stop (later Pause/take-over and the activity panel). Tools: `tabs`, `check` (no reload), `errors`, `network`,
    `screenshot`. Useful on its own and can't change anything.
 2. **Driving. Built.** `snapshot`, `act`, `open`, `check` with `reload`, settle
    rule ([agentSnapshot.ts](../src/lib/agentSnapshot.ts)).
 3. **MCP + skill + benchmark. Done.** MCP server, tuned and held-out
    benchmarks, dialog support (v3), and the agent skill (measured: no
    benefit over the MCP instructions; kept as optional).
-4. **Developer features.** `mock`, `eval`, flag-for-agent, scope grants UI.
+4. **Developer features.** `mock`, console levels, `eval`, flag-for-agent and
+   recorded steps (`recording`) done (untested on Windows); scope grants UI to
+   do.
 
 ## Not doing
 
