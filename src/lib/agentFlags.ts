@@ -4,15 +4,16 @@
  * that touches that tab gets it as the first line of its reply, with the
  * element's ref, so the agent sees what the person is pointing at.
  *
- * Picking uses CDP's Overlay inspect mode (the DevTools element picker). Its
- * events come back through console.rs's per-tab CDP subscription, like dialog
- * events: Rust-initiated, never page-originated IPC.
+ * Picking runs a small script in the tab through `Runtime.evaluate` that
+ * highlights what's under the mouse and resolves with the clicked element; the
+ * CDP call simply waits for it (Rust-initiated, never page-originated IPC).
+ * Not Overlay inspect mode: in WebView2 it leaves the tab ignoring the agent's
+ * `Input.dispatchMouseEvent` clicks after it's turned off.
  */
-import type { UnlistenFn } from "@tauri-apps/api/event";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 import { type AXNode, INTERACTIVE } from "@/lib/agentSnapshot";
 import { isLoopbackUrl } from "@/lib/url";
-import { type InspectEvent, onInspect, tabCdp } from "@/services/browser";
+import { tabCdp } from "@/services/browser";
 import { type AgentFlag, type FlagTarget, useAgentFlagsStore } from "@/stores/agentFlags";
 import { useTabsStore } from "@/stores/tabs";
 import { useUIStore } from "@/stores/ui";
@@ -88,28 +89,55 @@ export function describePicked(nodes: PickedNode[], backendNodeId: number, tag =
   };
 }
 
-/** DevTools' own picker colours, so the overlay looks like the tool it is. */
-const HIGHLIGHT = {
-  showInfo: true,
-  contentColor: { r: 111, g: 168, b: 220, a: 0.66 },
-  paddingColor: { r: 147, g: 196, b: 125, a: 0.55 },
-  borderColor: { r: 255, g: 229, b: 153, a: 0.66 },
-  marginColor: { r: 246, g: 178, b: 107, a: 0.66 },
-};
+/**
+ * Highlights the element under the mouse and resolves with the one clicked
+ * (null on Escape or cancel). The click and its press/release never reach the
+ * page. `__zynlexFlagCancel` lets `cancelFlag` end it from the app.
+ */
+const PICKER = `new Promise((resolve) => {
+  window.__zynlexFlagCancel?.();
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;z-index:2147483647;pointer-events:none;display:none;" +
+    "background:rgba(111,168,220,.35);outline:2px solid rgb(111,168,220)";
+  document.documentElement.append(box);
+  const block = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+  const on = [
+    ["mousemove", (e) => {
+      const r = e.target.getBoundingClientRect();
+      Object.assign(box.style, { display: "block", left: r.left + "px", top: r.top + "px",
+        width: r.width + "px", height: r.height + "px" });
+    }],
+    ["pointerdown", block], ["mousedown", block], ["pointerup", block], ["mouseup", block],
+    ["click", (e) => { block(e); done(e.target); }],
+    ["keydown", (e) => { if (e.key === "Escape") { block(e); done(null); } }],
+  ];
+  const done = (el) => {
+    for (const [t, f] of on) removeEventListener(t, f, true);
+    box.remove();
+    delete window.__zynlexFlagCancel;
+    resolve(el);
+  };
+  for (const [t, f] of on) addEventListener(t, f, true);
+  window.__zynlexFlagCancel = () => done(null);
+})`;
 
-async function inspectMode(tabId: string, on: boolean): Promise<void> {
-  if (on) {
-    // Overlay needs the DOM domain on.
-    await tabCdp(tabId, "DOM.enable");
-    await tabCdp(tabId, "Overlay.enable");
-    await tabCdp(tabId, "Overlay.setInspectMode", {
-      mode: "searchForNode",
-      highlightConfig: HIGHLIGHT,
+const PICK_GROUP = "zynlex-agent-flag";
+
+/** The clicked element's backendNodeId, or null when picking was cancelled. */
+async function pickElement(tabId: string): Promise<number | null> {
+  const r = await tabCdp<{ result: { objectId?: string } }>(tabId, "Runtime.evaluate", {
+    expression: PICKER,
+    awaitPromise: true,
+    objectGroup: PICK_GROUP,
+  });
+  try {
+    if (!r.result.objectId) return null;
+    const d = await tabCdp<{ node: { backendNodeId: number } }>(tabId, "DOM.describeNode", {
+      objectId: r.result.objectId,
     });
-  } else {
-    await tabCdp(tabId, "Overlay.setInspectMode", { mode: "none" });
-    await tabCdp(tabId, "Overlay.disable");
-    await tabCdp(tabId, "DOM.disable");
+    return d.node.backendNodeId;
+  } finally {
+    tabCdp(tabId, "Runtime.releaseObjectGroup", { objectGroup: PICK_GROUP }).catch(() => {});
   }
 }
 
@@ -139,10 +167,14 @@ export function startFlag(): boolean {
   cancelFlag();
   const { setPick } = useAgentFlagsStore.getState();
   setPick({ tabId: tab.id });
-  inspectMode(tab.id, true).catch(() => {
-    if (useAgentFlagsStore.getState().pick?.tabId === tab.id) setPick(null);
-    pushToast("Couldn't start picking in this tab", "danger");
-  });
+  pickElement(tab.id)
+    .then((id) => onPicked(tab.id, id))
+    .catch(() => {
+      // A reload or navigation mid-pick lands here too.
+      if (useAgentFlagsStore.getState().pick?.tabId !== tab.id) return;
+      setPick(null);
+      pushToast("Couldn't pick an element in this tab", "danger");
+    });
   return true;
 }
 
@@ -150,7 +182,11 @@ export function startFlag(): boolean {
 export function cancelFlag(): boolean {
   const { pick, setPick } = useAgentFlagsStore.getState();
   if (!pick) return false;
-  if (!pick.target) inspectMode(pick.tabId, false).catch(() => {});
+  if (!pick.target) {
+    tabCdp(pick.tabId, "Runtime.evaluate", {
+      expression: "window.__zynlexFlagCancel?.()",
+    }).catch(() => {});
+  }
   setPick(null);
   return true;
 }
@@ -166,25 +202,16 @@ export function saveFlag(note: string): void {
     .pushToast("Flagged: the agent's next reply on this tab starts with it", "success");
 }
 
-async function onPicked(e: InspectEvent): Promise<void> {
+async function onPicked(tabId: string, id: number | null): Promise<void> {
   const { pick, setPick } = useAgentFlagsStore.getState();
-  if (!pick || pick.tabId !== e.tabId || pick.target) return;
-  if (e.canceled || e.backendNodeId == null) {
+  if (!pick || pick.tabId !== tabId || pick.target) return;
+  if (id == null) {
     cancelFlag();
     return;
   }
-  const id = e.backendNodeId;
-  // A target at once, so the inspectModeCanceled that turning the mode off
-  // may fire can't end the flow while the description loads.
-  setPick({ tabId: e.tabId, target: { ref: `e${id}`, role: "element", name: "" } });
-  inspectMode(e.tabId, false).catch(() => {});
-  const target = await describe(e.tabId, id);
+  // A target at once, so the note input shows while the description loads.
+  setPick({ tabId, target: { ref: `e${id}`, role: "element", name: "" } });
+  const target = await describe(tabId, id);
   const now = useAgentFlagsStore.getState().pick;
-  if (now?.tabId === e.tabId && now.target?.ref === `e${id}`) setPick({ tabId: e.tabId, target });
-}
-
-export function listenForFlags(): Promise<UnlistenFn> {
-  return onInspect((e) => {
-    onPicked(e).catch(() => {});
-  });
+  if (now?.tabId === tabId && now.target?.ref === `e${id}`) setPick({ tabId, target });
 }

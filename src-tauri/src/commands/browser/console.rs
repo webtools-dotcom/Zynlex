@@ -121,7 +121,7 @@ fn console_entry(event: &str, p: &Value, verbose: bool) -> Option<Value> {
     }))
 }
 
-const EVENTS: [&str; 7] = [
+const EVENTS: [&str; 5] = [
     "Runtime.exceptionThrown",
     "Runtime.consoleAPICalled",
     "Log.entryAdded",
@@ -129,10 +129,6 @@ const EVENTS: [&str; 7] = [
     // know when alert/confirm/prompt has paused the page (src/lib/agent.ts).
     "Page.javascriptDialogOpening",
     "Page.javascriptDialogClosed",
-    // "Flag for agent" (src/lib/agentFlags.ts): the element the developer
-    // clicked while the frontend had Overlay inspect mode on, or Escape.
-    "Overlay.inspectNodeRequested",
-    "Overlay.inspectModeCanceled",
 ];
 
 /// A dialog event as the frontend wants it: `open` with type and message, or
@@ -146,18 +142,6 @@ fn dialog_event(event: &str, p: &Value) -> Option<Value> {
             "defaultPrompt": p["defaultPrompt"].as_str().unwrap_or_default(),
         })),
         "Page.javascriptDialogClosed" => Some(json!({ "open": false })),
-        _ => None,
-    }
-}
-
-/// An inspect-mode event as the frontend wants it: the picked element's
-/// backendNodeId (the agent's ref without the `e`), or canceled.
-fn inspect_event(event: &str, p: &Value) -> Option<Value> {
-    match event {
-        "Overlay.inspectNodeRequested" => {
-            Some(json!({ "backendNodeId": p["backendNodeId"].as_u64()? }))
-        }
-        "Overlay.inspectModeCanceled" => Some(json!({ "canceled": true })),
         _ => None,
     }
 }
@@ -192,9 +176,6 @@ pub fn register_webview_console_capture(wv: &tauri::Webview, app: &AppHandle, ta
                     } else if let Some(mut dialog) = dialog_event(event, &params) {
                         dialog["tabId"] = json!(tab_id);
                         let _ = app.emit("browser://dialog", dialog);
-                    } else if let Some(mut inspect) = inspect_event(event, &params) {
-                        inspect["tabId"] = json!(tab_id);
-                        let _ = app.emit("browser://inspect", inspect);
                     }
                     Ok(())
                 }));
@@ -211,7 +192,7 @@ pub fn register_webview_console_capture(wv: &tauri::Webview, app: &AppHandle, ta
 
 #[cfg(test)]
 mod tests {
-    use super::{console_entry, dialog_event, inspect_event};
+    use super::{console_entry, dialog_event};
     use serde_json::json;
 
     #[test]
@@ -229,22 +210,6 @@ mod tests {
             false
         );
         assert!(dialog_event("Runtime.consoleAPICalled", &json!({})).is_none());
-    }
-
-    #[test]
-    fn inspect_events() {
-        let picked = inspect_event(
-            "Overlay.inspectNodeRequested",
-            &json!({"backendNodeId": 15}),
-        )
-        .unwrap();
-        assert_eq!(picked["backendNodeId"], 15);
-        assert!(inspect_event("Overlay.inspectNodeRequested", &json!({})).is_none());
-        assert_eq!(
-            inspect_event("Overlay.inspectModeCanceled", &json!({})).unwrap()["canceled"],
-            true
-        );
-        assert!(inspect_event("Page.javascriptDialogClosed", &json!({})).is_none());
     }
 
     #[test]

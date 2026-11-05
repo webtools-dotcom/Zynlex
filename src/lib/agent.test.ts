@@ -22,7 +22,6 @@ vi.mock("@/services/browser", async (importOriginal) => ({
     return Promise.resolve(() => {});
   },
   onAgentRequest: () => Promise.resolve(() => {}),
-  onInspect: () => Promise.resolve(() => {}),
   onDialog: (cb: typeof hooks.dialog) => {
     hooks.dialog = cb;
     return Promise.resolve(() => {});

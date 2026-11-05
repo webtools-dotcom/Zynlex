@@ -12,7 +12,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportPresets";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 import { clipRect, cutForInline, MAX_BODY, MAX_LINES, uploadPaths } from "@/lib/agentOutput";
-import { listenForFlags, withFlags } from "@/lib/agentFlags";
+import { withFlags } from "@/lib/agentFlags";
 import {
   actsOnPage,
   cancelPause,
@@ -1183,6 +1183,7 @@ async function screenshotTool(args: Args): Promise<string> {
 const MAX_EVAL = 4000;
 /** How long `eval` waits for its value (a promise that never settles would hang the agent). */
 const EVAL_TIMEOUT = 10_000;
+const EVAL_GROUP = "zynlex-agent-eval";
 
 /** `text` cut to `max` chars, saying how much was dropped. */
 export function cut(text: string, max: number): string {
@@ -1222,17 +1223,39 @@ async function evalTool(args: Args): Promise<string> {
   if (!code)
     throw new Error("Pass code: a JS expression, or a function body that returns a value.");
   await showTab(tab);
-  const call = tabCdp<{
-    result: RemoteObject;
+  type Evaluated = {
+    result: RemoteObject & { objectId?: string };
     exceptionDetails?: { text: string; exception?: { description?: string } };
-  }>(tab.id, "Runtime.evaluate", {
-    expression: evalSource(code),
-    awaitPromise: true,
-    returnByValue: true,
-    replMode: true,
-    userGesture: true,
+  };
+  // replMode ignores awaitPromise, so a promise (an async body, fetch().then…)
+  // came back as `{}`. Take a handle instead, await it if it's a promise, then
+  // read the value.
+  const call = async (): Promise<Evaluated> => {
+    const r = await tabCdp<Evaluated>(tab.id, "Runtime.evaluate", {
+      expression: evalSource(code),
+      objectGroup: EVAL_GROUP,
+      replMode: true,
+      userGesture: true,
+    });
+    const id = r.result.objectId;
+    if (r.exceptionDetails || !id) return r;
+    return r.result.subtype === "promise"
+      ? tabCdp<Evaluated>(tab.id, "Runtime.awaitPromise", {
+          promiseObjectId: id,
+          returnByValue: true,
+        })
+      : tabCdp<Evaluated>(tab.id, "Runtime.callFunctionOn", {
+          objectId: id,
+          functionDeclaration: "function () { return this; }",
+          returnByValue: true,
+        });
+  };
+  const r = await Promise.race([
+    orDialog(tab.id, call()),
+    sleep(EVAL_TIMEOUT).then(() => null),
+  ]).finally(() => {
+    tabCdp(tab.id, "Runtime.releaseObjectGroup", { objectGroup: EVAL_GROUP }).catch(() => {});
   });
-  const r = await Promise.race([orDialog(tab.id, call), sleep(EVAL_TIMEOUT).then(() => null)]);
   if (r === DIALOG) return `${header(tab)}\n${dialogNote(tab.id)}`;
   if (r === null) {
     throw new Error(`No value after ${EVAL_TIMEOUT / 1000}s (a promise that never settles?).`);
@@ -1524,7 +1547,6 @@ export function listenForAgents(): Promise<UnlistenFn>[] {
     .catch(() => {});
   return [
     onAgentStatus(setStatus),
-    listenForFlags(),
     onDialog(({ tabId, open, type, message }) => {
       if (open) dialogs.set(tabId, { type: type ?? "alert", message: message ?? "" });
       else dialogs.delete(tabId);

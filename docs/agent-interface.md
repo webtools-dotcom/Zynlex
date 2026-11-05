@@ -478,20 +478,21 @@ with it; the agent's next reply on that tab starts with it.
 
 1. **Flag Element for Agent** (Ctrl+Shift+E, or the palette) in a localhost
    tab. Other tabs get a toast: the agent can't see them anyway.
-2. The tab goes into CDP inspect mode (`DOM.enable`, `Overlay.enable`,
-   `Overlay.setInspectMode` `searchForNode`, DevTools' highlight colours), and
-   a bar docked above the content area (like the find bar; nothing can float
-   over the tab) says "Click an element in the page". Escape, the bar's ×, or
-   switching tabs cancels.
-3. The click is the overlay's, not the page's: Chromium sends
-   `Overlay.inspectNodeRequested` with the element's backendNodeId.
-   [console.rs](../src-tauri/src/commands/browser/console.rs) subscribes to it
-   (and `Overlay.inspectModeCanceled`) on the same per-tab CDP receivers as the
-   dialog events, and emits `browser://inspect`. The frontend turns inspect
-   mode off and describes the element from `Accessibility.getPartialAXTree`:
-   the nearest interactive ancestor wins (a click on the icon in a button
-   flags the button, with the button's ref), else the element itself, named
-   by its role or, when that's just `generic`, its tag.
+2. A picker script runs in the tab through `Runtime.evaluate` with
+   `awaitPromise`: a box follows the mouse over the element under it, and a
+   bar docked above the content area (like the find bar; nothing can float
+   over the tab) says "Click an element in the page". Escape (in the page or
+   the app), the bar's ×, or switching tabs cancels.
+3. The click is the picker's, not the page's: its capture-phase listeners
+   swallow the press, release and click and resolve the promise with the
+   element, so the waiting CDP call returns it; `DOM.describeNode` gives its
+   backendNodeId. Rust-initiated, no page IPC. The frontend describes it from
+   `Accessibility.getPartialAXTree`: the nearest interactive ancestor wins (a
+   click on the icon in a button flags the button, with the button's ref),
+   else the element itself, named by its role or, when that's just `generic`,
+   its tag. Not CDP's Overlay inspect mode: in WebView2, once it has been on,
+   the tab ignores the agent's `Input.dispatchMouseEvent` clicks (found in
+   the Windows live test). Ceiling: a click inside an iframe flags the iframe.
 4. The bar becomes a note input. Enter queues the flag, Escape drops it.
 
 Queued flags show in the status bar ("2 flags queued", with **Clear**; also

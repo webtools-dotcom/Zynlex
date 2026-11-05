@@ -15,16 +15,16 @@ Status: **todo** · **doing** · **done**.
 | # | Feature | Why it matters | Status |
 |---|---|---|---|
 | P1 | **Viewport / mobile emulation** (`viewport` tool: device presets, width×height, touch, back to normal) | "Does it break on mobile?" is one of the most common checks. ZYNLEX has a viewport panel for people, not for agents. | done |
-| P2 | **`eval`** (run JS in the page, return a value; localhost tabs only) | Escape hatch for anything the other tools don't cover. | done, untested on Windows |
-| P3 | **`hover`, `back`/`forward`, drag** | Hover menus, history navigation. | done, untested on Windows |
-| P4 | **`wait_for`** (text appears/disappears, URL changes, timeout) | Long async flows beyond the settle rule. | done, untested on Windows |
-| P5 | **Tabs and popups** (follow `target=_blank` and `window.open`, list/switch/close tabs the agent opened) | OAuth popups, "open in new tab" links. | done, untested on Windows |
-| P6 | **Iframes in the snapshot** (same-origin frames walked, refs that work inside them) | Embedded widgets, payment forms. | done, untested on Windows |
-| P7 | **File upload** (`act` upload on an `<input type=file>`) | Upload forms. | done, untested on Windows |
-| P8 | **Screenshots: element crop, full page** | Smaller images, whole-page layout checks. | done, untested on Windows |
+| P2 | **`eval`** (run JS in the page, return a value; localhost tabs only) | Escape hatch for anything the other tools don't cover. | done, tested on Windows |
+| P3 | **`hover`, `back`/`forward`, drag** | Hover menus, history navigation. | done, tested on Windows |
+| P4 | **`wait_for`** (text appears/disappears, URL changes, timeout) | Long async flows beyond the settle rule. | done, tested on Windows |
+| P5 | **Tabs and popups** (follow `target=_blank` and `window.open`, list/switch/close tabs the agent opened) | OAuth popups, "open in new tab" links. | done, tested on Windows |
+| P6 | **Iframes in the snapshot** (same-origin frames walked, refs that work inside them) | Embedded widgets, payment forms. | done, tested on Windows |
+| P7 | **File upload** (`act` upload on an `<input type=file>`) | Upload forms. | done, tested on Windows |
+| P8 | **Screenshots: element crop, full page** | Smaller images, whole-page layout checks. | done, tested on Windows |
 | P9 | **Large output to a file** (snapshot over 300 lines, bodies over 8 KB written to `%TEMP%`, path returned) | Big pages and payloads without blowing the context. | done, untested on Windows |
-| P10 | **Network mocking and header rules for agents** (`mock` add/list/clear through the existing stores) | Test error states and auth without a backend change. ZYNLEX already has both for people. | done, untested on Windows |
-| P11 | **Console at all levels** (`errors` can include log/info on request) | Debug-print driven debugging. | done, untested on Windows |
+| P10 | **Network mocking and header rules for agents** (`mock` add/list/clear through the existing stores) | Test error states and auth without a backend change. ZYNLEX already has both for people. | done, tested on Windows |
+| P11 | **Console at all levels** (`errors` can include log/info on request) | Debug-print driven debugging. | done, tested on Windows |
 | P12 | **Staging hosts** (per-workspace list of non-localhost hosts the agent may use, granted in the UI) | Test what's deployed, not only localhost. | todo |
 
 Not planned: headless mode, parallel browsers, CI runs, cross-browser
@@ -40,7 +40,7 @@ developer's own browser.
 | S3 | Signed release (code-signing certificate; stops antivirus quarantining the build) and the updater signing key in CI | todo (needs a certificate purchase) |
 | S4 | Public, reproducible benchmark (harness, apps, graders, raw results in a repo) | todo |
 | S5 | Benchmark with a second model family (e.g. GPT or Gemini through Codex/Antigravity, or Haiku) | todo |
-| S6 | Per-tab "agent was here" marker and an agent activity list (in the chrome, never over the tab) | done, untested on Windows |
+| S6 | Per-tab "agent was here" marker and an agent activity list (in the chrome, never over the tab) | done (activity panel tested on Windows; tab marker not checked) |
 
 ## 3. The moat: what a headless tool can't copy
 
@@ -52,12 +52,12 @@ Each item below leans on that.
 
 | # | Feature | Why a headless tool can't do it | Status |
 |---|---|---|---|
-| M1 | **Flag for agent**: press a key (Ctrl+Shift+E) or use the palette, click an element, type a note; the agent's next reply on that tab starts with it and the element's ref (`Developer flagged e15 button "Apply": does nothing on mobile`). Queued, counted in the status bar, clearable, delivered once. See [agent-interface.md](agent-interface.md#flag-for-agent). | The agent sees what the person points at, in the page they're looking at. | done, untested on Windows |
-| M2 | **Show the agent what I did**: record the developer's own clicks and typing in a tab as `act` steps plus the errors and requests each caused; the agent replays or reads them (`recording` tool, palette command and status-bar Record/Stop) | Bug reproduction straight from a human session, no "steps to reproduce" typed out. | done, untested on Windows |
-| M3 | **Evidence from before the agent arrived**: errors and failed requests the page logged while the developer was using it, kept per tab across page loads and offered, grouped, under `Before you connected:` in the first `check`/`open`/`errors` | A browser the agent launches only sees from launch onward. | done, untested on Windows |
+| M1 | **Flag for agent**: press a key (Ctrl+Shift+E) or use the palette, click an element, type a note; the agent's next reply on that tab starts with it and the element's ref (`Developer flagged e15 button "Apply": does nothing on mobile`). Queued, counted in the status bar, clearable, delivered once. See [agent-interface.md](agent-interface.md#flag-for-agent). | The agent sees what the person points at, in the page they're looking at. | done, tested on Windows |
+| M2 | **Show the agent what I did**: record the developer's own clicks and typing in a tab as `act` steps plus the errors and requests each caused; the agent replays or reads them (`recording` tool, palette command and status-bar Record/Stop) | Bug reproduction straight from a human session, no "steps to reproduce" typed out. | done, tested on Windows |
+| M3 | **Evidence from before the agent arrived**: errors and failed requests the page logged while the developer was using it, kept per tab across page loads and offered, grouped, under `Before you connected:` in the first `check`/`open`/`errors` | A browser the agent launches only sees from launch onward. | done, tested on Windows |
 | M4 | **Dev state the agent can use**: workspaces, environments (local/staging), mocks, header rules, saved API requests, all one tool call away | Lives in the developer's ZYNLEX, not in a fresh profile. | partly done (P10 mocks and header rules) |
-| M5 | **Shared control**: the developer sees every agent action live, can take over mid-flow (agent pauses, resumes after) and stop it | Headless runs are invisible. | done, untested on Windows |
-| M6 | **Agent-aware error grouping**: identical errors collapsed across reloads with counts and first-seen time, so every reply stays short as a session gets long; one already shown repeats only as `(+N)` | Built on ZYNLEX's always-on capture. | done, untested on Windows |
+| M5 | **Shared control**: the developer sees every agent action live, can take over mid-flow (agent pauses, resumes after) and stop it | Headless runs are invisible. | done, tested on Windows |
+| M6 | **Agent-aware error grouping**: identical errors collapsed across reloads with counts and first-seen time, so every reply stays short as a session gets long; one already shown repeats only as `(+N)` | Built on ZYNLEX's always-on capture. | done, tested on Windows |
 
 The benchmark is the proof, and publishing it (S4) is the marketing: the
 claim is checkable.
