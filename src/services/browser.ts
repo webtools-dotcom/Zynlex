@@ -616,6 +616,20 @@ export function onDialog(callback: (e: DialogEvent) => void): Promise<UnlistenFn
   return listen<DialogEvent>("browser://dialog", (e) => callback(e.payload));
 }
 
+/**
+ * Overlay inspect mode, which "Flag for agent" turns on (src/lib/agentFlags.ts):
+ * the element the developer clicked, or `canceled` — see console.rs.
+ */
+export interface InspectEvent {
+  tabId: string;
+  backendNodeId?: number;
+  canceled?: boolean;
+}
+
+export function onInspect(callback: (e: InspectEvent) => void): Promise<UnlistenFn> {
+  return listen<InspectEvent>("browser://inspect", (e) => callback(e.payload));
+}
+
 export async function getAgentStatus(): Promise<AgentStatus> {
   return invoke<AgentStatus>("agent_status");
 }

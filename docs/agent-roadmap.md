@@ -52,7 +52,7 @@ Each item below leans on that.
 
 | # | Feature | Why a headless tool can't do it | Status |
 |---|---|---|---|
-| M1 | **Flag for agent**: right-click an element (or press a key), type a note; the agent's next reply starts with it and the element's ref ("user flagged e15, button 'Apply': does nothing on mobile") | The agent sees what the person points at, in the page they're looking at. | todo |
+| M1 | **Flag for agent**: press a key (Ctrl+Shift+E) or use the palette, click an element, type a note; the agent's next reply on that tab starts with it and the element's ref (`Developer flagged e15 button "Apply": does nothing on mobile`). Queued, counted in the status bar, clearable, delivered once. See [agent-interface.md](agent-interface.md#flag-for-agent). | The agent sees what the person points at, in the page they're looking at. | done, untested on Windows |
 | M2 | **Show the agent what I did**: record the developer's own clicks and typing in a tab as `act` steps plus the errors and requests each caused; the agent replays or reads them | Bug reproduction straight from a human session, no "steps to reproduce" typed out. | todo |
 | M3 | **Evidence from before the agent arrived**: errors and failed requests the page logged while the developer was using it, kept per tab across page loads and offered, grouped, under `Before you connected:` in the first `check`/`open`/`errors` | A browser the agent launches only sees from launch onward. | done, untested on Windows |
 | M4 | **Dev state the agent can use**: workspaces, environments (local/staging), mocks, header rules, saved API requests, all one tool call away | Lives in the developer's ZYNLEX, not in a fresh profile. | partly done (P10 mocks and header rules) |

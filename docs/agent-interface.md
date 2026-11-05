@@ -358,12 +358,57 @@ The agent is untrusted by default, and page content is untrusted always.
 
 MCP is pull-based; ZYNLEX can't push into the agent's conversation. So:
 
-- **Flag for agent** (context menu on an element, or a toolbar action on the
-  page): the developer types a short note. It's queued and appears at the top of
-  the agent's next `check` reply, with the element's ref:
-  `user flagged e15 (button "Apply"): "does nothing on mobile"`.
+- **Flag for agent**: see below. Done, untested on Windows.
 - **Copy for agent**: the existing bug report plus the flagged ref, on the
   clipboard, for pasting into a chat that isn't connected.
+
+### Flag for agent
+
+The developer points at an element in a localhost tab and says what's wrong
+with it; the agent's next reply on that tab starts with it.
+
+1. **Flag Element for Agent** (Ctrl+Shift+E, or the palette) in a localhost
+   tab. Other tabs get a toast: the agent can't see them anyway.
+2. The tab goes into CDP inspect mode (`DOM.enable`, `Overlay.enable`,
+   `Overlay.setInspectMode` `searchForNode`, DevTools' highlight colours), and
+   a bar docked above the content area (like the find bar; nothing can float
+   over the tab) says "Click an element in the page". Escape, the bar's ×, or
+   switching tabs cancels.
+3. The click is the overlay's, not the page's: Chromium sends
+   `Overlay.inspectNodeRequested` with the element's backendNodeId.
+   [console.rs](../src-tauri/src/commands/browser/console.rs) subscribes to it
+   (and `Overlay.inspectModeCanceled`) on the same per-tab CDP receivers as the
+   dialog events, and emits `browser://inspect`. The frontend turns inspect
+   mode off and describes the element from `Accessibility.getPartialAXTree`:
+   the nearest interactive ancestor wins (a click on the icon in a button
+   flags the button, with the button's ref), else the element itself, named
+   by its role or, when that's just `generic`, its tag.
+4. The bar becomes a note input. Enter queues the flag, Escape drops it.
+
+Queued flags show in the status bar ("2 flags queued", with **Clear**; also
+the **Clear Agent Flags** command). They live in `useAgentFlagsStore`
+([stores/agentFlags.ts](../src/stores/agentFlags.ts)), not persisted.
+
+Delivery ([agent.ts](../src/lib/agent.ts) `runAgentTool`): every tool that
+resolves a tab takes that tab's flags and puts them first in its reply, one
+line each:
+
+```
+Developer flagged e15 button "Apply": does nothing on mobile
+http://localhost:5173/cart "Cart" [3f2a9c1b]
+...
+```
+
+`tabs` takes every localhost tab's flags and names the tab
+(`... "Apply" in [3f2a9c1b]: ...`); `open` takes the flags of the tab it lands
+on. Each flag is delivered once. A call that fails delivers nothing, so the
+flag waits for a reply the agent actually reads. MCP is pull-based, so a flag
+waits for the agent's next call; it can't interrupt one. The MCP server's
+instructions ([zynlex-mcp.rs](../src-tauri/src/bin/zynlex-mcp.rs)) say what
+the line means, since everything else in a reply is page data.
+
+The ref is a normal `e<backendDOMNodeId>` ref: `act` and `screenshot ref=`
+take it as they take a snapshot's.
 
 ## Setup
 
@@ -634,7 +679,8 @@ another client" checks, not benchmark runs.
    benchmarks, dialog support (v3), and the agent skill (measured: no
    benefit over the MCP instructions; kept as optional).
 4. **Developer features.** `mock` and console levels done (untested on
-   Windows); `eval`, flag-for-agent, scope grants UI to do.
+   Windows); `eval` and flag-for-agent done (untested on Windows); scope grants UI to
+   do.
 
 ## Not doing
 

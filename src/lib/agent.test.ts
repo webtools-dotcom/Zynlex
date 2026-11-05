@@ -20,6 +20,7 @@ vi.mock("@/services/browser", async (importOriginal) => ({
     return Promise.resolve(() => {});
   },
   onAgentRequest: () => Promise.resolve(() => {}),
+  onInspect: () => Promise.resolve(() => {}),
   onDialog: (cb: typeof hooks.dialog) => {
     hooks.dialog = cb;
     return Promise.resolve(() => {});
@@ -48,6 +49,7 @@ import {
   runAgentTool,
   waitPending,
 } from "./agent";
+import { useAgentFlagsStore } from "@/stores/agentFlags";
 import { useConsoleStore } from "@/stores/console";
 import { useHeadersStore } from "@/stores/headers";
 import { type MockRule, useMocksStore } from "@/stores/mocks";
@@ -192,6 +194,8 @@ describe("agent tools", () => {
   });
 
   it("doesn't list a failed request twice when both logs have it", async () => {
+    // Connected first, so both failures are "since you connected", not split by a clock tick.
+    hooks.status?.({ enabled: true, clients: ["claude-code"] });
     const url = "http://localhost:5173/api/coupon";
     error(url, "network");
     error("http://localhost:5173/api/down", "network");
@@ -208,6 +212,7 @@ describe("agent tools", () => {
     expect(out).toContain("net-7 POST 500");
     expect(out).toContain("/api/down");
     expect(out).not.toContain("favicon");
+    hooks.status?.({ enabled: true, clients: [] });
   });
 
   it("network hides assets unless asked and returns one request by id", async () => {
@@ -312,6 +317,36 @@ describe("agent tools", () => {
 
     hooks.dialog?.({ tabId: "aaaaaaaa-1", open: false });
     await expect(runAgentTool("act", { action: "dismiss" })).rejects.toThrow("No dialog is open");
+  });
+
+  it("starts the next reply on a flagged tab with the flag, once", async () => {
+    const flags = useAgentFlagsStore.getState();
+    flags.clear();
+    const flag = { ref: "e15", role: "button", name: "Apply", note: "does nothing on mobile" };
+    flags.add({ tabId: "aaaaaaaa-1", ...flag });
+    flags.add({ tabId: "bbbbbbbb-2", ...flag, ref: "e9", note: "" });
+
+    // A failed call leaves the flag queued.
+    await expect(runAgentTool("screenshot", { ref: "e4", full: true })).rejects.toThrow();
+    // A call on another tab doesn't take it.
+    const other = await runAgentTool("errors", { tab: "bbbb" });
+    expect(other.split("\n")[0]).toBe('Developer flagged e9 button "Apply"');
+    expect(other).not.toContain("e15");
+
+    const out = await runAgentTool("errors", {});
+    expect(out.split("\n")[0]).toBe('Developer flagged e15 button "Apply": does nothing on mobile');
+    expect(await runAgentTool("errors", {})).not.toContain("Developer flagged");
+    expect(useAgentFlagsStore.getState().flags).toEqual([]);
+  });
+
+  it("delivers every tab's flags to tabs, naming the tab", async () => {
+    const flags = useAgentFlagsStore.getState();
+    flags.clear();
+    flags.add({ tabId: "bbbbbbbb-2", ref: "e3", role: "link", name: "Docs", note: "404s" });
+    const out = await runAgentTool("tabs", {});
+    expect(out.split("\n")[0]).toBe('Developer flagged e3 link "Docs" in [bbbbbbbb]: 404s');
+    expect(out).toContain("Localhost tabs");
+    expect(await runAgentTool("tabs", {})).not.toContain("Developer flagged");
   });
 });
 

@@ -12,6 +12,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { DEVICE_PRESETS, type DevicePreset } from "@/components/panels/ViewportPresets";
 import { getActiveTabId } from "@/hooks/useActiveScope";
 import { clipRect, cutForInline, MAX_BODY, MAX_LINES, uploadPaths } from "@/lib/agentOutput";
+import { listenForFlags, withFlags } from "@/lib/agentFlags";
 import { dropAgentRules, mockTool } from "@/lib/agentRules";
 import {
   type AXNode,
@@ -46,6 +47,7 @@ import {
   webviewReload,
 } from "@/services/browser";
 import { useAgentStore } from "@/stores/agent";
+import { useAgentFlagsStore } from "@/stores/agentFlags";
 import { type ConsoleEntry, useConsoleStore } from "@/stores/console";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useServersStore } from "@/stores/servers";
@@ -940,10 +942,16 @@ async function actTool(args: Args): Promise<string> {
   return [did, ...(await consequences(tab, urlBefore, mark))].join("\n");
 }
 
-async function openTool(args: Args): Promise<string> {
+/** The URL `open` was asked for, scheme added; empty if none was given. */
+function openUrl(args: Args): string {
   const raw = typeof args.url === "string" ? args.url.trim() : "";
-  const url = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
-  if (!raw || !isLoopbackUrl(url)) {
+  if (!raw) return "";
+  return /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+}
+
+async function openTool(args: Args): Promise<string> {
+  const url = openUrl(args);
+  if (!url || !isLoopbackUrl(url)) {
     throw new Error("open only takes localhost URLs (localhost, 127.0.0.1, *.localhost).");
   }
   const existing = scopedTabs().find((t) => t.url === url);
@@ -1320,8 +1328,29 @@ const PAGE_TOOLS = new Set([
   "wait_for",
 ]);
 
+/**
+ * Runs a tool and starts its reply with the developer's flags on the tab(s)
+ * it touched (src/lib/agentFlags.ts). A call that fails leaves them queued for
+ * the next one, so each flag reaches the agent exactly once, in a reply it
+ * reads. `tabs` covers every localhost tab; `open` the tab it lands on.
+ */
 export async function runAgentTool(tool: string, args: Args): Promise<string> {
   connectedAt ??= Date.now();
+  let target: string | undefined;
+  if (tool !== "tabs" && tool !== "open") {
+    try {
+      target = resolveTab(args.tab).id;
+    } catch {
+      // The tool reports it.
+    }
+  }
+  const text = await runTool(tool, args);
+  if (tool === "open") target = scopedTabs().find((t) => t.url === openUrl(args))?.id;
+  const ids = tool === "tabs" ? scopedTabs().map((t) => t.id) : target ? [target] : [];
+  return withFlags(text, useAgentFlagsStore.getState().take(ids), tool === "tabs");
+}
+
+async function runTool(tool: string, args: Args): Promise<string> {
   const answering = tool === "act" && (args.action === "accept" || args.action === "dismiss");
   if (PAGE_TOOLS.has(tool) && !answering) {
     const tab = resolveTab(args.tab);
@@ -1385,6 +1414,7 @@ export function listenForAgents(): Promise<UnlistenFn>[] {
     .catch(() => {});
   return [
     onAgentStatus(setStatus),
+    listenForFlags(),
     onDialog(({ tabId, open, type, message }) => {
       if (open) dialogs.set(tabId, { type: type ?? "alert", message: message ?? "" });
       else dialogs.delete(tabId);
