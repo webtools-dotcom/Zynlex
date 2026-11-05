@@ -878,31 +878,66 @@ async function answerDialog(tab: Tab, accept: boolean, text: string): Promise<st
   return [did, ...(await consequences(tab, urlBefore, mark))].join("\n");
 }
 
-async function actTool(args: Args): Promise<string> {
-  const tab = resolveTab(args.tab);
-  const action = String(args.action ?? "");
-  const text = typeof args.text === "string" ? args.text : "";
-  if (action === "accept" || action === "dismiss") {
-    return answerDialog(tab, action === "accept", text);
-  }
-  const history = action === "back" || action === "forward";
-  const ref = history || (action === "press" && args.ref == null) ? null : parseRef(args.ref);
-  const to = action === "drag" ? parseRef(args.to) : null;
-  const files = action === "upload" ? uploadPaths(args.files) : [];
-  await showTab(tab);
-  if (!snapshots.has(tab.id)) snapshots.set(tab.id, await takePage(tab.id));
-  const labelOf = (r: number | null) =>
-    r == null
-      ? ""
-      : (snapshots
-          .get(tab.id)
-          ?.compact.split("\n")
-          .find((l) => l.includes(`[e${r}]`))
-          ?.trim() ?? `e${r}`);
-  const label = labelOf(ref);
-  const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
-  const mark = popupMark();
+/** One `act` action, checked before anything touches the page. */
+interface Step {
+  action: string;
+  text: string;
+  ref: number | null;
+  to: number | null;
+  files: string[];
+}
 
+const ACTIONS = [
+  "click",
+  "hover",
+  "drag",
+  "type",
+  "select",
+  "press",
+  "upload",
+  "back",
+  "forward",
+  "accept",
+  "dismiss",
+];
+const MAX_STEPS = 10;
+const isAnswer = (s: Step) => s.action === "accept" || s.action === "dismiss";
+
+function parseStep(a: Args): Step {
+  const action = String(a.action ?? "");
+  if (!ACTIONS.includes(action)) {
+    throw new Error(`Unknown action "${action}". Use ${ACTIONS.join(", ")}.`);
+  }
+  const noRef =
+    action === "back" ||
+    action === "forward" ||
+    action === "accept" ||
+    action === "dismiss" ||
+    (action === "press" && a.ref == null);
+  return {
+    action,
+    text: typeof a.text === "string" ? a.text : "",
+    ref: noRef ? null : parseRef(a.ref),
+    to: action === "drag" ? parseRef(a.to) : null,
+    files: action === "upload" ? uploadPaths(a.files) : [],
+  };
+}
+
+/** Does one step and says what it did; the caller reports what it caused. */
+async function doStep(tab: Tab, st: Step, labelOf: (r: number | null) => string): Promise<string> {
+  const { action, text, ref, to, files } = st;
+  if (isAnswer(st)) {
+    const d = dialogs.get(tab.id);
+    if (!d) throw new Error("No dialog is open in this tab.");
+    const accept = action === "accept";
+    await tabCdp(tab.id, "Page.handleJavaScriptDialog", {
+      accept,
+      ...(d.type === "prompt" && accept ? { promptText: text } : {}),
+    });
+    dialogs.delete(tab.id);
+    return `${accept ? "Accepted" : "Dismissed"} the ${d.type} dialog "${d.message}"`;
+  }
+  const label = labelOf(ref);
   try {
     if (action === "click") {
       await click(tab.id, ref as number);
@@ -910,8 +945,8 @@ async function actTool(args: Args): Promise<string> {
       await hover(tab.id, ref as number);
     } else if (action === "drag") {
       await drag(tab.id, ref as number, to as number);
-    } else if (history) {
-      await goHistory(tab.id, action as "back" | "forward");
+    } else if (action === "back" || action === "forward") {
+      await goHistory(tab.id, action);
     } else if (action === "type") {
       await tabCdp(tab.id, "DOM.focus", { backendNodeId: ref });
       await callOn(tab.id, ref as number, SELECT_ALL);
@@ -926,32 +961,89 @@ async function actTool(args: Args): Promise<string> {
       await pressKey(tab.id, text);
     } else if (action === "upload") {
       await upload(tab.id, ref as number, files);
-    } else {
-      throw new Error(
-        `Unknown action "${action}". Use click, hover, drag, type, select, press, upload, back, forward, accept or dismiss.`,
-      );
     }
   } catch (err) {
     await rethrowStale(tab, ref, err, to);
   }
+  return action === "type"
+    ? `Typed ${JSON.stringify(text)} into ${label}`
+    : action === "select"
+      ? `Selected ${JSON.stringify(text)} in ${label}`
+      : action === "press"
+        ? `Pressed ${text}${label ? ` in ${label}` : ""}`
+        : action === "hover"
+          ? `Hovered ${label}`
+          : action === "drag"
+            ? `Dragged ${label} onto ${labelOf(to)}`
+            : action === "upload"
+              ? `Attached ${files.map(baseName).join(", ")} to ${label}`
+              : action === "back" || action === "forward"
+                ? `Went ${action}`
+                : `Clicked ${label}`;
+}
 
-  const did =
-    action === "type"
-      ? `Typed ${JSON.stringify(text)} into ${label}`
-      : action === "select"
-        ? `Selected ${JSON.stringify(text)} in ${label}`
-        : action === "press"
-          ? `Pressed ${text}${label ? ` in ${label}` : ""}`
-          : action === "hover"
-            ? `Hovered ${label}`
-            : action === "drag"
-              ? `Dragged ${label} onto ${labelOf(to)}`
-              : action === "upload"
-                ? `Attached ${files.map(baseName).join(", ")} to ${label}`
-                : history
-                  ? `Went ${action}`
-                  : `Clicked ${label}`;
-  return [did, ...(await consequences(tab, urlBefore, mark))].join("\n");
+/**
+ * One action, or `steps`: several in order in one call (click, type, press
+ * Enter; click then accept the confirm), so a known sequence costs one model
+ * turn instead of one per action. Settles between steps; a dialog a step opens
+ * is answered only if the next step is accept/dismiss, else the batch stops
+ * there. The reply is every step's line, then what they caused together; a
+ * failing step ends the batch with what the page looks like at that point.
+ */
+async function actTool(args: Args): Promise<string> {
+  const tab = resolveTab(args.tab);
+  const batch = Array.isArray(args.steps);
+  // With steps, a stray top-level action (agents sometimes send both) is
+  // ignored rather than refused: the steps say what to do.
+  const raw = batch ? (args.steps as unknown[]) : [args];
+  if (!raw.length || raw.length > MAX_STEPS) {
+    throw new Error(`steps takes 1 to ${MAX_STEPS} actions.`);
+  }
+  const steps = raw.map((r, i) => {
+    try {
+      return parseStep((r ?? {}) as Args);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(batch ? `Step ${i + 1}: ${msg} Nothing was done.` : msg);
+    }
+  });
+  // Answering a dialog: the page is paused, so no snapshot (it can't be read).
+  if (steps.length === 1 && isAnswer(steps[0])) {
+    return answerDialog(tab, steps[0].action === "accept", steps[0].text);
+  }
+  await showTab(tab);
+  if (!snapshots.has(tab.id) && !dialogs.has(tab.id)) {
+    snapshots.set(tab.id, await takePage(tab.id));
+  }
+  const before = snapshots.get(tab.id);
+  const labelOf = (r: number | null) =>
+    r == null
+      ? ""
+      : (before?.compact
+          .split("\n")
+          .find((l) => l.includes(`[e${r}]`))
+          ?.trim() ?? `e${r}`);
+  const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+  const mark = popupMark();
+  const did: string[] = [];
+  for (const [i, st] of steps.entries()) {
+    if (i > 0) {
+      if (dialogs.has(tab.id) && !isAnswer(st)) {
+        did.push(`Stopped before step ${i + 1}: a dialog is open.`);
+        break;
+      }
+      if (!dialogs.has(tab.id)) await settle(tab.id);
+    }
+    try {
+      did.push(await doStep(tab, st, labelOf));
+    } catch (err) {
+      if (!batch) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const page = await consequences(tab, urlBefore, mark).catch(() => []);
+      throw new Error([...did, `Step ${i + 1} (${st.action}) failed: ${msg}`, ...page].join("\n"));
+    }
+  }
+  return [...did, ...(await consequences(tab, urlBefore, mark))].join("\n");
 }
 
 /** The URL `open` was asked for, scheme added; empty if none was given. */
@@ -1544,6 +1636,14 @@ export async function handleAgentCall(
 }
 
 /** Subscribes the dispatcher and the status mirror. */
+/**
+ * Request ids already taken. In dev, React StrictMode mounts the bridge twice
+ * and for a while two `agent://request` listeners exist, so every call ran
+ * twice: text typed twice, a dialog answered by one run and then missing for
+ * the other. Module-level, so every listener shares it.
+ */
+const taken = new Set<number>();
+
 export function listenForAgents(): Promise<UnlistenFn>[] {
   getAgentStatus()
     .then(setStatus)
@@ -1555,6 +1655,10 @@ export function listenForAgents(): Promise<UnlistenFn>[] {
       else dialogs.delete(tabId);
     }),
     onAgentRequest(async ({ id, tool, args }) => {
+      if (taken.has(id)) return;
+      taken.add(id);
+      // ponytail: ids only grow, so a bounded window is enough.
+      if (taken.size > 1000) taken.delete(taken.values().next().value as number);
       const { ok, text } = await handleAgentCall(tool, args ?? {});
       agentReply(id, ok, text).catch(() => {});
     }),

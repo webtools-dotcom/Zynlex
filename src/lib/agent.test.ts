@@ -12,6 +12,8 @@ const hooks = vi.hoisted(() => ({
   cdp: [] as string[],
   writes: [] as { name: string; text: string }[],
   status: null as null | ((s: { enabled: boolean; clients: string[] }) => void),
+  requests: [] as ((r: { id: number; tool: string; args: object | null }) => void)[],
+  replies: [] as number[],
   /** When set, the page's accessibility tree; otherwise every CDP call fails (tab not loaded). */
   ax: null as null | object[],
 }));
@@ -22,7 +24,14 @@ vi.mock("@/services/browser", async (importOriginal) => ({
     hooks.status = cb;
     return Promise.resolve(() => {});
   },
-  onAgentRequest: () => Promise.resolve(() => {}),
+  onAgentRequest: (cb: (typeof hooks.requests)[number]) => {
+    hooks.requests.push(cb);
+    return Promise.resolve(() => {});
+  },
+  agentReply: (id: number) => {
+    hooks.replies.push(id);
+    return Promise.resolve();
+  },
   onDialog: (cb: typeof hooks.dialog) => {
     hooks.dialog = cb;
     return Promise.resolve(() => {});
@@ -298,10 +307,44 @@ describe("agent tools", () => {
     expect(hooks.cdp).toEqual([]);
   });
 
+  it("checks every step of a batch before touching the page", async () => {
+    hooks.cdp.length = 0;
+    const bad = [
+      { ref: "e4", action: "click" },
+      { ref: "e5", action: "smash" },
+    ];
+    await expect(runAgentTool("act", { steps: bad })).rejects.toThrow(
+      'Step 2: Unknown action "smash".',
+    );
+    await expect(
+      runAgentTool("act", { steps: [{ ref: "e4", action: "click" }, { action: "type" }] }),
+    ).rejects.toThrow("Step 2: Expected a ref");
+    // A stray top-level action next to steps is ignored: the steps' own check still runs.
+    await expect(
+      runAgentTool("act", { action: "click", steps: [{ ref: "e4", action: "smash" }] }),
+    ).rejects.toThrow('Step 1: Unknown action "smash".');
+    await expect(runAgentTool("act", { steps: [] })).rejects.toThrow("steps takes 1 to 10");
+    const eleven = Array.from({ length: 11 }, () => ({ ref: "e4", action: "click" }));
+    await expect(runAgentTool("act", { steps: eleven })).rejects.toThrow("steps takes 1 to 10");
+    expect(hooks.cdp).toEqual([]);
+  });
+
   it("takes either an element or the whole page in a screenshot, not both", async () => {
     await expect(runAgentTool("screenshot", { ref: "e4", full: true })).rejects.toThrow(
       "Pass ref or full, not both.",
     );
+  });
+
+  it("answers each request once, even with two listeners (StrictMode's double mount)", async () => {
+    hooks.requests.length = 0;
+    hooks.replies.length = 0;
+    listenForAgents();
+    listenForAgents();
+    expect(hooks.requests).toHaveLength(2);
+    for (const cb of hooks.requests) cb({ id: 4242, tool: "tabs", args: {} });
+    await vi.waitFor(() => expect(hooks.replies).toContain(4242));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(hooks.replies.filter((id) => id === 4242)).toHaveLength(1);
   });
 
   it("reports an open dialog instead of calling into the paused page", async () => {

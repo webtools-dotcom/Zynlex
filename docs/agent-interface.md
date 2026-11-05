@@ -114,7 +114,7 @@ call to find out.
 | `check` | Settles, then new errors + failed requests since the last report, grouped (see [Error grouping](#error-grouping)); `reload` reloads first | Built |
 | `errors` | Every error and failed request on the current page, plus any from earlier page loads not yet shown, grouped; `level` adds `warning`, `info` or `log` (each includes the levels above it; newest 50 log/info lines) | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
-| `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` / `upload` on a ref with real input, `back` / `forward` in history (localhost entries only), then the consequences (including any tab it opened) | Built (hover, drag, back/forward, upload untested on Windows) |
+| `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` / `upload` on a ref with real input, `back` / `forward` in history (localhost entries only), or `steps`: up to 10 of them in one call, settling between steps and stopping at the first that fails; then the consequences (including any tab it opened) | Built (hover, drag, back/forward, upload untested on Windows) |
 | `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
 | `screenshot` | Visible area, one element (`ref`) or the whole page (`full`) to `%TEMP%\zynlex-agent`, returns the path | Built (`ref`, `full` untested on Windows) |
 | `viewport` | Device presets or width×height, touch, mobile UA; `reset` | Built |
@@ -284,6 +284,16 @@ whole page when the diff would be longer than it.
 A stale ref fails with `Stale ref e8: that element is gone` plus the current
 page. WebView2 reports every CDP error as `E_INVALIDARG` and drops CDP's own
 message, so for an element-scoped call that HRESULT is read as "node gone".
+
+`steps` exists because agents send one tool call per turn, and each turn
+re-sends Claude Code's whole context (about 17k tokens in the benchmark):
+reproducing "type, press Enter" or "click Delete, accept the confirm" cost a
+turn per action, twice per task (before and after the fix). A batch settles
+between steps; a dialog a step opens is answered only if the next step is
+accept/dismiss, otherwise the batch stops there and says so; a failing step
+ends the batch with every earlier step's line, the failure and the page as it
+is, as an error. Every step is checked (action, ref, files) before anything
+touches the page.
 
 Acting is real input, not `element.click()`: `DOM.scrollIntoViewIfNeeded` +
 `DOM.getContentQuads` + `Input.dispatchMouseEvent` at the centre for clicks;
