@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZYNLEX — the minimal browser for web developers</title>
-<meta name="description" content="ZYNLEX is a 3.6 MB browser for local web development on Windows. It finds your localhost dev servers, logs network traffic, mocks API responses without a proxy, and emulates devices. Free and open source.">
+<title>ZYNLEX — the browser you share with your AI coding agent</title>
+<meta name="description" content="Claude Code, Codex and other coding agents test your localhost app in the ZYNLEX window you have open: you watch, point at the bug, and take over. 28% fewer tokens than Playwright MCP in our benchmark. Free and open source, for Windows.">
 <link rel="canonical" href="https://webtools-dotcom.github.io/Zynlex/">
 <meta name="google-site-verification" content="9Q4K2e-goWxYj6dtyAuMrmWMlEBoJ6bRvROzd7q3PBM">
 <link rel="icon" type="image/png" href="favicon.png">
@@ -12,8 +12,8 @@
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ZYNLEX">
-<meta property="og:title" content="ZYNLEX — the minimal browser for web developers">
-<meta property="og:description" content="Finds your localhost dev servers, logs their traffic, mocks API responses without a proxy, and emulates devices. 3.6 MB, Rust + Tauri, not Electron.">
+<meta property="og:title" content="ZYNLEX — the browser you share with your AI coding agent">
+<meta property="og:description" content="Your coding agent tests your app in the browser you have open. You watch, flag the bug, take over. A developer’s browser with an MCP server built in.">
 <meta property="og:url" content="https://webtools-dotcom.github.io/Zynlex/">
 <meta property="og:image" content="https://webtools-dotcom.github.io/Zynlex/assets/og.png">
 <meta property="og:image:width" content="1280">
@@ -28,11 +28,11 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "ZYNLEX",
-  "description": "A minimal browser for local web development: localhost dev server detection, network log, API response mocking without a proxy, device viewports, header rules and an API client.",
+  "description": "A browser for local web development with an MCP server built in, so AI coding agents test your localhost app in the window you have open. Also: dev server detection, network log, API mocking without a proxy, device viewports and an API client.",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Windows 10, Windows 11",
-  "softwareVersion": "0.16.1",
-  "fileSize": "3.6MB",
+  "softwareVersion": "0.17.0",
+  "fileSize": "4MB",
   "license": "https://www.apache.org/licenses/LICENSE-2.0",
   "url": "https://webtools-dotcom.github.io/Zynlex/",
   "downloadUrl": "https://github.com/webtools-dotcom/Zynlex/releases/latest",
@@ -52,7 +52,9 @@
     { "@type": "Question", "name": "Do I need a proxy or certificate to mock API responses in ZYNLEX?",
       "acceptedAnswer": { "@type": "Answer", "text": "No. Mocks are answered inside the browser before the request reaches the network, so there is nothing to install or trust. It only mocks requests made by pages open in ZYNLEX." } },
     { "@type": "Question", "name": "Is ZYNLEX built on Electron?",
-      "acceptedAnswer": { "@type": "Answer", "text": "No. It is built with Tauri and Rust and uses the WebView2 runtime that ships with Windows, which is why the installer is 3.6 MB." } },
+      "acceptedAnswer": { "@type": "Answer", "text": "No. It is built with Tauri and Rust and uses the WebView2 runtime that ships with Windows, which is why the installer is about 4 MB." } },
+    { "@type": "Question", "name": "Can AI coding agents use ZYNLEX?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. ZYNLEX has an MCP server, so Claude Code, Codex, Cursor and other MCP clients can open, read and test your localhost app in the ZYNLEX window you have open. Connect Claude Code with: claude mcp add zynlex zynlex-mcp. Agents only reach localhost and staging environments you allow, never production." } },
     { "@type": "Question", "name": "Does ZYNLEX work on macOS or Linux?",
       "acceptedAnswer": { "@type": "Answer", "text": "Not yet. Its developer features are built on WebView2 APIs that only exist on Windows." } }
   ]
@@ -111,17 +113,6 @@ header nav a:hover { color: var(--text); }
 .facts { margin-top: 20px; font-size: 13px; color: var(--muted); }
 
 /* Scanner readout — the new-tab page's job, told as a terminal. */
-.scan { margin-top: 56px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; }
-.scan-bar { display: flex; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle); }
-.scan-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--hover); }
-.scan-body { padding: 18px 20px 22px; font-size: 14px; min-height: 196px; }
-.scan-body .line { white-space: pre; overflow: hidden; text-overflow: ellipsis; opacity: 0; transform: translateY(4px); transition: opacity .35s, transform .35s; }
-.scan-body .line.on { opacity: 1; transform: none; }
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 10px rgba(34,197,94,.45); margin-right: 10px; vertical-align: 1px; }
-.dot.tcp { background: var(--warn); box-shadow: none; }
-.port { color: var(--text); }
-.code2 { color: var(--s2xx); }
-@media (max-width: 560px) { .scan-body { font-size: 12px; padding: 14px; } }
 
 /* ── Sections ── */
 section { padding: 96px 0; border-top: 1px solid var(--border-subtle); }
@@ -174,7 +165,7 @@ section > .wrap > p.intro { color: var(--text-2); max-width: 62ch; margin: 0; }
 
 /* ── Limits ── */
 .limits { display: grid; gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden; margin-top: 40px; }
-@media (min-width: 820px) { .limits { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 820px) { .limits { grid-template-columns: repeat(3, 1fr); } .limits.four { grid-template-columns: repeat(2, 1fr); } }
 .limits div { background: var(--base); padding: 22px; }
 .limits b { display: block; font-weight: 500; margin-bottom: 6px; }
 .limits p { margin: 0; color: var(--muted); font-size: 13px; }
@@ -197,7 +188,6 @@ footer a { color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .scan-body .line { transition: none; }
 }
 </style>
 </head>
@@ -207,6 +197,7 @@ footer a { color: var(--muted); }
   <div class="wrap">
     <a class="brand" href="#top"><img src="assets/logo.png" alt="" width="22" height="22">ZYNLEX</a>
     <nav>
+      <a class="opt" href="#agents">AI agents</a>
       <a class="opt" href="#features">Features</a>
       <a class="opt" href="#workflows">Workflows</a>
       <a class="opt" href="#faq">FAQ</a>
@@ -217,31 +208,49 @@ footer a { color: var(--muted); }
 
 <main id="top">
   <div class="wrap hero">
-    <div class="eyebrow">The browser for localhost</div>
-    <h1>The minimal browser for web developers.</h1>
-    <p class="lede">ZYNLEX finds the dev servers running on your machine and puts the network log, API mocking, device viewports and an API client in the browser itself. The things you'd otherwise open DevTools, Postman, Charles and a responsive tester for.</p>
+    <div class="eyebrow">For you and your AI coding agent</div>
+    <h1>The browser you share with your AI coding agent.</h1>
+    <p class="lede">Claude Code, Codex and other coding agents test your <code>localhost</code> app in the ZYNLEX window you already have open. You watch every click, point at what’s broken, and take over whenever you want. It’s a developer’s browser in its own right, too.</p>
     <div class="cta">
-      <a class="btn primary" href="https://github.com/webtools-dotcom/Zynlex/releases/latest">Download for Windows <small>3.6 MB</small></a>
+      <a class="btn primary" href="https://github.com/webtools-dotcom/Zynlex/releases/latest">Download for Windows <small>4 MB</small></a>
       <a class="btn" href="https://github.com/webtools-dotcom/Zynlex">View source</a>
     </div>
+    <p class="facts">then, in a new terminal: <code>claude mcp add zynlex zynlex-mcp</code></p>
     <p class="facts">Free and open source · Windows 10 &amp; 11 · Rust + Tauri, not Electron · no account, no telemetry</p>
 
-    <div class="scan" aria-label="Example of ZYNLEX detecting local dev servers">
-      <div class="scan-bar" aria-hidden="true"><i></i><i></i><i></i></div>
-      <div class="scan-body" id="scan">
-        <div class="line muted">new tab — scanning localhost…</div>
-        <div class="line"><span class="dot"></span><span class="port">:5173</span>   Vite + React             <span class="code2">200</span></div>
-        <div class="line"><span class="dot"></span><span class="port">:3000</span>   Dashboard — Next.js      <span class="code2">200</span></div>
-        <div class="line"><span class="dot"></span><span class="port">:6006</span>   Storybook                <span class="code2">200</span></div>
-        <div class="line"><span class="dot tcp"></span><span class="port">:8000</span>   api  <span class="muted">(listening, no page)</span></div>
-        <div class="line muted">4 servers · click one to open it</div>
-      </div>
-    </div>
+    <video class="film" controls preload="metadata" playsinline poster="assets/shared-poster.jpg" width="1920" height="1080" aria-label="A 52-second film made from one real recording: the developer clicks Export in a dashboard and nothing happens, flags the button in ZYNLEX and asks Claude Code to fix it; Claude Code finds that data.order should be data.orders, fixes it, reloads and clicks Export in the same window, and it works">
+      <source src="assets/zynlex-shared.mp4" type="video/mp4">
+      <a href="assets/zynlex-shared.mp4">Watch the film (MP4)</a>
+    </video>
+    <p class="facts">One real take: ZYNLEX 0.17.0 and Claude Code, sped up where marked.</p>
   </div>
+
+  <section id="agents">
+    <div class="wrap">
+      <div class="eyebrow">For AI coding agents</div>
+      <h2>Your agent tests in a browser you can’t see. Unless it’s this one.</h2>
+      <p class="intro">Ask a coding agent to check your app and it usually launches a browser of its own: a fresh profile, not logged in, an empty console, off screen. ZYNLEX gives it yours instead, through a built-in MCP server.</p>
+      <div class="limits">
+        <div><b>Point instead of describing</b><p>Press <code>Ctrl+Shift+E</code>, click the broken element, type a note. The agent’s next reply starts with it.</p></div>
+        <div><b>Show it the bug</b><p>Record yourself reproducing it. The agent reads each click and key, and the error each one caused.</p></div>
+        <div><b>It already knows what broke</b><p>Errors and failed requests from before it connected come first, so it doesn’t start from scratch.</p></div>
+        <div><b>Watch, pause, take over</b><p>Every action happens in the page in front of you. Pause holds the agent while you use the page.</p></div>
+        <div><b>The fix stays fixed</b><p>Your recording becomes a Playwright test, with your mocks, for CI.</p></div>
+        <div><b>Safe by default</b><p>Only <code>localhost</code> and staging you allow. Never production. Page text reaches the agent as data, not instructions.</p></div>
+      </div>
+      <div class="nums">
+        <div class="num"><b>25/25</b><span>bugs fixed, same as Playwright MCP</span></div>
+        <div class="num"><b>28% fewer</b><span>tokens per bug: 173k vs 240k</span></div>
+        <div class="num"><b>36% less</b><span>cost per bug: $0.119 vs $0.187</span></div>
+        <div class="num"><b>10</b><span>turns per bug, vs 12</span></div>
+      </div>
+      <p class="muted" style="font-size:13px;margin-top:16px">Claude Code (Sonnet) fixing five held-out bugs, five runs each, both tools on the same day. Our harness on one machine, so <a href="https://github.com/webtools-dotcom/Zynlex/tree/main/benchmark">the data and harness are public</a>. Keep Playwright for CI, headless runs and other browsers.</p>
+    </div>
+  </section>
 
   <section class="tour" aria-label="Video tour">
     <div class="wrap">
-      <div class="eyebrow">See it work · real footage</div>
+      <div class="eyebrow">The developer tools · real footage</div>
       <video controls preload="none" playsinline poster="assets/tour-poster.jpg" width="1920" height="1080" aria-label="A 70-second tour made from real recordings of ZYNLEX: dev servers on the new tab, the network log, a mocked 500 and the dashboard's error state, empty and slow responses, an iPhone viewport and the API client">
         <source src="assets/zynlex-tour.mp4" type="video/mp4">
         <a href="assets/zynlex-tour.mp4">Watch the tour (MP4)</a>
@@ -358,12 +367,12 @@ footer a { color: var(--muted); }
       <h2>No bundled Chromium. No sync. No extension host.</h2>
       <p class="intro">Tabs render with WebView2, the Chromium runtime that already ships with Windows, so heavy pages cost the same as in Chrome. The savings come from everything ZYNLEX doesn't run, graphics kept in one process, and background tabs that suspend themselves.</p>
       <div class="nums">
-        <div class="num"><b>3.6 MB</b><span>installer</span></div>
+        <div class="num"><b>4 MB</b><span>installer</span></div>
         <div class="num"><b>152 MB</b><span>idle with one tab, vs 348 MB for Chrome</span></div>
         <div class="num"><b>21% less</b><span>than Chrome with three tabs open</span></div>
         <div class="num"><b>0</b><span>accounts, trackers or telemetry</span></div>
       </div>
-      <p class="muted" style="font-size:13px;margin-top:16px">Measured on one Windows 11 machine with clean profiles. <a href="https://github.com/webtools-dotcom/Zynlex#size-and-memory">Method and numbers</a>.</p>
+      <p class="muted" style="font-size:13px;margin-top:16px">Measured on one Windows 11 machine with clean profiles. <a href="https://github.com/webtools-dotcom/Zynlex/blob/main/docs/performance.md">Method and numbers</a>.</p>
     </div>
   </section>
 
@@ -371,9 +380,10 @@ footer a { color: var(--muted); }
     <div class="wrap">
       <div class="eyebrow">Before you download</div>
       <h2>What it doesn't do.</h2>
-      <div class="limits">
+      <div class="limits four">
         <div><b>Windows only, for now</b><p>Every developer feature sits on WebView2 APIs that only exist on Windows. macOS and Linux are on the roadmap.</p></div>
         <div><b>One device at a time</b><p>If you need many viewports side by side or accessibility audits, Polypane and Responsively do that well.</p></div>
+        <div><b>Agents: localhost and staging only</b><p>For other websites, headless runs or CI, use Playwright. ZYNLEX is for the loop where you and an agent build and fix your app together.</p></div>
         <div><b>Its own tabs only</b><p>Mocks and header rules apply to pages open in ZYNLEX, not to other apps on your machine. WebSocket handshakes aren't covered.</p></div>
       </div>
     </div>
@@ -385,6 +395,8 @@ footer a { color: var(--muted); }
       <h2>Questions people ask.</h2>
       <div class="faq">
         <details><summary>Can I use it as my everyday browser?</summary><p>You can browse in it like any browser, and it is minimal: no sync, no extensions, no account. It's built around development work, so most people keep it open next to their editor rather than replacing their main browser.</p></details>
+        <details><summary>Which AI agents work with it?</summary><p>Any MCP client. After installing, connect Claude Code with <code>claude mcp add zynlex zynlex-mcp</code>; Settings → AI agents has the setup for Codex, Cursor, Antigravity and OpenCode. Agents see only <code>localhost</code> tabs and staging environments you tick, never production.</p></details>
+        <details><summary>Should I stop using Playwright?</summary><p>No. Keep it for CI, headless runs and other browsers. ZYNLEX is where you and your agent find and fix bugs together, and it can turn a recording into a Playwright test so the fix stays fixed.</p></details>
         <details><summary>Will websites work in it?</summary><p>Yes. Tabs render with WebView2, Microsoft's packaging of Chromium, the same engine as Chrome and Edge. Pages look and behave the same.</p></details>
         <details><summary>How is it different from Chrome DevTools?</summary><p>DevTools is a drawer inside a general browser. ZYNLEX puts the network log, device viewports and header rules in the browser's own sidebar, per tab and per project, and adds what DevTools doesn't have: localhost server detection, response mocking without a proxy, environment switching, one-command bug reports and an API client. <code>F12</code> still opens full DevTools when you need it.</p></details>
         <details><summary>Do I need a proxy or certificate to mock responses?</summary><p>No. Mocks are answered inside the browser before the request reaches the network, so there's nothing to install or trust. Cross-origin requests work too.</p></details>
@@ -396,9 +408,9 @@ footer a { color: var(--muted); }
 
   <section class="end">
     <div class="wrap">
-      <h2>Open localhost in something built for it.</h2>
+      <h2>Give your agent the browser you’re already looking at.</h2>
       <div class="cta">
-        <a class="btn primary" href="https://github.com/webtools-dotcom/Zynlex/releases/latest">Download for Windows <small>3.6 MB</small></a>
+        <a class="btn primary" href="https://github.com/webtools-dotcom/Zynlex/releases/latest">Download for Windows <small>4 MB</small></a>
         <a class="btn" href="https://github.com/webtools-dotcom/Zynlex">Star on GitHub</a>
       </div>
     </div>
@@ -413,16 +425,6 @@ footer a { color: var(--muted); }
 </footer>
 
 <script>
-// Scanner readout: reveal one line at a time when it scrolls into view.
-(() => {
-  const lines = [...document.querySelectorAll("#scan .line")];
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const show = () => lines.forEach((l, i) => setTimeout(() => l.classList.add("on"), reduce ? 0 : 250 + i * 420));
-  if (!("IntersectionObserver" in window)) return show();
-  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { show(); io.disconnect(); } }, { threshold: 0.3 });
-  io.observe(document.getElementById("scan"));
-})();
-
 // Mock demo: same request, four answers.
 (() => {
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
