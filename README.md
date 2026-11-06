@@ -4,270 +4,257 @@
 
 # ZYNLEX
 
-**The minimal browser for web developers. 3.6 MB, built in Rust and Tauri, not Electron.**
+**The browser you share with your AI coding agent.**
 
-ZYNLEX is a lightweight browser for local web development on Windows: the browser for `localhost`. It finds the dev servers running on your machine, and puts a network log, API response mocking, device viewports, request header rules and an API client in the sidebar. Those are the things you'd otherwise open DevTools, Postman, Charles and a responsive tester for. And AI coding agents like Claude Code can test your app in it over MCP, at [about a third less cost](#for-ai-coding-agents) than with Playwright MCP.
+Claude Code, Codex and other coding agents test your `localhost` app in the ZYNLEX window you already have open.<br>
+You watch every click, point at what's broken, and take over whenever you want.<br>
+It costs the agent less than Playwright MCP, and it's a developer's browser in its own right.
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![CI](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml/badge.svg)](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/webtools-dotcom/Zynlex)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
+[![CI](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml/badge.svg)](https://github.com/webtools-dotcom/Zynlex/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-blue)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
-
-<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4"><img src=".github/assets/hero.gif" alt="From the ZYNLEX tour, made from real recordings: the network log opens a dashboard's /api/orders response, Mock this turns it into a 500 so the dashboard shows its error state, a 1 appears on the tab, and Copy Bug Report is one toolbar click" width="880" /></a>
-
-<sub>[Watch the full tour in 1080p](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4) · [Website](https://webtools-dotcom.github.io/Zynlex/)</sub>
 
 ### [Download for Windows →](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
-3.6 MB installer · less than half Chrome's RAM at idle · no account, no telemetry · free and open source
-
-</div>
-
----
-
-## What it does
-
-New tab shows your running dev servers. ZYNLEX scans localhost, reads the page titles, and lists them. Click one to open it.
-
-The sidebar has the things you'd otherwise keep four apps around for:
-
-- **Network log**: per-tab capture with filters, URL search, pause, and response bodies
-- **Console**: each tab's JS errors, console warnings and failed requests, with a count on the tab itself so you notice them. F12 opens full DevTools
-- **Mock responses**: fake any API response (status, body, delay) by URL pattern, or click "Mock this" on a captured request and edit it. No proxy, no certificate
-- **Device viewports**: one device at a time, rendered at its real pixel size
-- **Header rules**: add, override or strip request headers, matched per URL pattern
-- **API client**: saved collections, cURL import, runs through Rust so page CORS doesn't apply
-- **Inspector**: meta tags, Open Graph previews, and cookies including HttpOnly
-- **Environments**: list a project's addresses (local, staging, production) and switch the page you're on between them in one click, same path and query. Production is marked in red and asks before you go there
-- **Clear site data**: one command wipes the site's cookies, storage, IndexedDB and service workers, then reloads, for testing a first visit
-- **Copy bug report**: one command puts a Markdown report of the tab on the clipboard (URL, environment, device, recent errors and failed requests) and saves a screenshot to Downloads
-- **Snippets**: your own JavaScript, saved in Settings and run on the current tab from `Ctrl+K`, a shortcut or a toolbar button. Errors show in the Console
-- **Network throttling**: Slow 3G, Fast 3G or offline for the current tab, from `Ctrl+K`
-- **Screenshots and colours**: full-page or visible-area screenshots to Downloads, and a colour picker that copies the hex, both on the toolbar from the start
-- JWT decoder, Base64, user-agent switcher
-
-Workspaces keep each project's tabs, bookmarks, header rules and saved requests apart. `Ctrl+K` finds all of it, and every command can be given your own shortcut or pinned to the toolbar (**Settings → Shortcuts**). Out of the box the toolbar has Screenshot, Copy Bug Report and Pick Colour, the ones that work on any page with no setup.
-
-Background tabs get out of the way on their own: after a few minutes hidden they're suspended, and later discarded, with timers you set in **Settings → Memory**. Your `localhost` tabs are never suspended, so hot reload keeps working.
-
-No account. No telemetry. The only network call it makes on its own is an update check against this repo's GitHub releases.
-
-## Workflows
-
-The things you'd otherwise switch apps for, each one a command you can run from `Ctrl+K`, give a shortcut, or pin to the toolbar.
-
-<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-one-key.mp4"><img src=".github/assets/one-key.jpg" alt="One Key, a 73-second film of the four workflows made from real recordings of ZYNLEX: here the Copy Bug Report chapter, with the tab's error badge and the Console panel" width="820" /></a>
-
-<sub>[Watch the workflows film (73 s)](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-one-key.mp4)</sub>
-
-**The same page on local, staging and production.** Add a project's addresses in **Settings → Environments**. While you're on one of them, the toolbar lists them all; one click opens the same path and query on another (`Alt+Shift+1`–`4` from the keyboard). Production turns the toolbar's edge red and asks before you go there.
-
-<img src=".github/assets/environments.png" alt="The Orbit dashboard on staging.localhost, with local, staging and prod in the toolbar; prod was clicked and asks Open prod? before switching" width="820" />
-
-**Catch an error and hand it off.** A tab with JS errors or failed requests shows a count on the tab itself. Click it for the Console panel, then run **Copy Bug Report**: the URL, environment, device, browser and the recent errors and failed requests go to your clipboard as Markdown, and a screenshot of the page goes to Downloads. Paste it into the issue.
-
-<img src=".github/assets/bug-report.png" alt="The dashboard failing to load orders, a 1 on its tab, the Console panel showing the 500, and Bug report copied in the status bar" width="820" />
-
-**Your own one-click actions.** Save a bit of JavaScript in **Settings → Snippets**, such as filling a test login, turning on a feature flag, or outlining every element to check the layout. It becomes a command like any other, so it can have its own shortcut or a toolbar button.
-
-<img src=".github/assets/snippets.png" alt="A Show layout grid snippet run from its pinned toolbar button, outlining every element of the dashboard; the button's tooltip shows its Ctrl+Alt+G shortcut" width="820" />
-
-**The slow and broken network.** **Throttle Network: Slow 3G**, **Fast 3G** or **Offline** applies to the current tab and survives reloads, so you can see your loading and offline states. **Clear Site Data and Reload** wipes the site's cookies and storage for a first-visit test.
-
-## For AI coding agents
-
-ZYNLEX has an MCP server, so Claude Code, Codex, Cursor and other MCP clients can check your app in the browser you already have open: read the page, click and type, read its console errors and network requests, mock an API, emulate a phone. After installing, open a new terminal and connect it with one line:
+then, in a new terminal:
 
 ```bash
 claude mcp add zynlex zynlex-mcp
 ```
 
-**Settings → AI agents** has the snippet for each agent.
+<img src=".github/assets/benchmark.svg" alt="Median tokens Claude Code used per bug fixed: ZYNLEX 186k, Playwright MCP 278k, agent-browser 323k, playwright-cli 365k, Chrome DevTools MCP 396k. Every tool fixed all 25 runs." width="760" />
 
-**It costs the agent less.** Claude Code fixing the same five bugs, same model, same day, five runs each ([benchmark, data and harness](benchmark/README.md)):
+<sub>[How this was measured, with every run's data](benchmark/README.md)</sub>
+
+</div>
+
+---
+
+## Your agent tests in a browser you can't see
+
+Ask a coding agent to check your app today and it launches a browser of its own: a fresh profile, not logged in, empty console, somewhere off screen. It doesn't know about the error you hit five minutes ago. You can't point at the button that's wrong; you describe it in words and hope. It clicks around, finds the bug again from scratch, and hands you a summary of what it did.
+
+ZYNLEX turns that around. The agent works in **your** browser, on the tab in front of you. You both see the same page at the same time.
+
+## What that changes
+
+**You point instead of describing.** Press `Ctrl+Shift+E`, click the broken element, type a note. The agent's next reply starts with it, and with the element's ref so it can act on it straight away:
+
+```
+Developer flagged e15 button "Apply": does nothing on mobile
+```
+
+**You show it the bug instead of writing steps.** Start **Record Steps for Agent**, reproduce the bug the way you found it, stop. The agent reads every click and key, and the error or failed request each one caused:
+
+```
+2. press Enter in textbox "New task" [e2] → ReferenceError: addTsk is not defined
+5. click button "Load tasks" [e8] → GET /api/tasks 404
+```
+
+**It already knows what broke.** ZYNLEX records errors and failed requests the whole time you use it. When an agent connects, its first look at a tab starts with what happened **before it arrived**, grouped and counted, so it doesn't have to reproduce what you already saw.
+
+**You can watch it, stop it, or take over.** Every action happens in the visible page, and the **Agent Activity** panel lists each call. **Pause** in the status bar holds the agent while you use the page yourself; on **Resume** it's told what changed. **Stop** disconnects it.
+
+**The fix stays fixed.** Once the bug is fixed, the agent turns your recording into a Playwright test, with your mocks, so it runs in CI from then on. ZYNLEX finds the bug; Playwright keeps it from coming back.
+
+**It's already logged in, because you are.** No test accounts, no saved cookies, no passwords in a prompt. The agent uses the session you have open.
+
+## Cheaper, too
+
+Each action already returns what changed on the page and any new errors, so the agent rarely needs a second look. Steps it already knows (type, then press Enter; click Delete, then accept the confirm) go in a single call. Claude Code re-sends its whole context on every turn, so fewer turns means fewer tokens.
+
+The latest run on the same day as Playwright MCP: Claude Code fixing five bugs it had never seen, five runs each.
 
 | | ZYNLEX | Playwright MCP |
 |---|---|---|
 | Bugs fixed | 25/25 | 25/25 |
-| Input tokens per bug (median) | **173k** | 240k |
+| Tokens per bug (median) | **173k** | 240k |
 | Cost per bug (median) | **$0.119** | $0.187 |
+| Turns per bug (median) | **10** | 12 |
 
-That's 28% fewer tokens and 36% lower cost. Each action's reply already says what changed on the page and any new errors, so the agent rarely needs a second look, and a known sequence (type, press Enter; click Delete, accept the confirm) goes in one call.
+That's 28% fewer tokens and 36% lower cost. It's our own harness, on one machine, with one model family, which is why the harness, the buggy apps, the graders and every run's result are in [benchmark/](benchmark/README.md) for you to rerun.
 
-**It's your browser, not a headless one**, so the agent works alongside you:
+## What a session looks like
 
-- **Flag for agent** (`Ctrl+Shift+E`): click an element and type a note; the agent's next reply starts with it, and with the element's ref so it can act on it.
-- **Record steps**: record yourself reproducing a bug; the agent reads your clicks and typing, and the errors each one caused. Password values are never recorded.
-- **Keep it fixed**: the agent can turn your recording into a Playwright test, with your mocks included, and add it to your test suite once the bug is fixed.
-- **Take over**: **Pause** in the status bar holds the agent's page actions while you use the page; on **Resume** it's told what changed.
-- **What happened before it arrived**: errors and failed requests from before the agent connected come first, grouped, so it doesn't have to reproduce what you already saw.
+Real replies from the v0.17.0 release, word for word. The agent calls `open` with `http://localhost:7720/`:
 
-**What it can reach.** `localhost` only, plus any staging environment you tick **agent** on in **Settings → Environments**. Production never, even if ticked. Page text, console messages and response bodies are passed to the agent as data, not instructions. The status bar shows when an agent is connected, with **Stop**.
-
-## Who it's for
-
-Frontend and full-stack developers who spend the day on `localhost`. ZYNLEX is meant to be the browser you keep open next to your editor while you build: open your app, watch its requests, fake the API responses you can't easily reproduce (a 500, an empty list, a slow endpoint), check it on a phone-sized viewport, and move on.
-
-It's a normal browser too — you can browse in it — but it isn't trying to replace Chrome or Firefox as your everyday browser.
-
-## How it compares
-
-| If you use… | For… | ZYNLEX |
-|---|---|---|
-| Chrome DevTools | Network tab, device mode | Same data, kept in the sidebar per tab, alongside the tools below |
-| Charles / Proxyman / Requestly | Mocking and rewriting responses | Built in, no proxy or root certificate. Covers the page's own requests, not other apps |
-| Postman / Insomnia | Sending API requests | A lighter API client with collections and cURL import, saved per workspace |
-| Polypane / Responsively | Multi-device testing | One device at a time at real size. Use those if you need many side by side or accessibility audits |
-
-## Why it exists
-
-Two months ago I was watching [a video by @crynta](https://youtu.be/kykgXa7sm1g) and got stuck on a comment thread underneath it, where people were asking for a lightweight, telemetry-free browser. I wanted one too. But the version I actually needed was for development work, so that's the one I built.
-
-Chrome DevTools is good and lives in the wrong place. It is a drawer inside a browser that has no idea what you're working on. Responsively and Polypane lead with device frames and aren't browsers you'd actually browse in. So the four things I check constantly (which port is that, what did that request return, how does this look on a phone, what happens with this header) lived in four separate windows.
-
-ZYNLEX puts them in the browser chrome instead.
-
-## Size and memory
-
-### Compared with Chrome
-
-Release builds on one Windows 11 machine. Clean profiles, identical pages, same 1280×800 window, 30 seconds after the pages load, median of 3 runs. Memory is summed over the app and every browser process it starts:
-
-| | ZYNLEX 0.14 | Chrome | |
-|---|---|---|---|
-| Idle, one blank tab | **152 MB** | 348 MB | **56% less** |
-| Three tabs (GitHub, YouTube, localhost) | **546 MB** | 692 MB | **21% less** |
-
-That's committed (private) memory, the RAM a process has actually claimed. Working set, what's resident right now, shows the same picture: 410 vs 703 MB idle, 946 vs 1160 MB with three tabs.
-
-### Where the memory goes, and what ZYNLEX does about it
-
-Your tabs run on WebView2, which is Chromium, the same engine Chrome uses, so a heavy page costs about the same in both. The ZYNLEX app itself is about 10 MB. Everything else is WebView2's processes: one that coordinates, one per site, and helpers for networking and storage. ZYNLEX saves memory in four ways:
-
-1. **It runs less.** No sync, no Safe Browsing, no prerendering, no extension host, no update service.
-2. **Graphics run in the main browser process.** Chromium normally keeps a separate GPU process, and most of its 140–290 MB is fixed overhead. Moving it in saves 100–200 MB in every scenario, including an empty window.
-3. **Hidden tabs are suspended** after 5 minutes. A suspended tab's scripts stop, and Windows pages its memory out of RAM. With 10 tabs open, resident memory drops by about 60%. Click the tab and it picks up where it was.
-4. **Hidden tabs are discarded** after 10 minutes. The page is closed and reloads when you click it, with scroll position and form fields restored.
-
-Before and after this work, on the same machine (ZYNLEX 0.13 → 0.14, private memory):
-
-| | 0.13 | 0.14 | 0.14, hidden tabs suspended | 0.14 + low-memory process model |
-|---|---|---|---|---|
-| One blank tab | 267 MB | **152 MB** (−43%) | 170 MB | 167 MB |
-| Three tabs | 758 MB | **546 MB** (−28%) | 496 MB (−35%) | 418 MB (−45%) |
-| Ten tabs | 1577 MB | **1341 MB** (−15%) | 1277 MB (−19%) | **776 MB** (−51%) |
-
-### Memory settings
-
-All in **Settings → Memory**:
-
-| Setting | Default | Trade-off |
-|---|---|---|
-| Suspend hidden tabs | After 5 min | A suspended tab stops updating (chat, dashboards, live logs) until you switch back. `localhost` tabs and tabs playing audio are never suspended. |
-| Discard hidden tabs | After 10 min | The page reloads when you return to it. In-page state that isn't in a form field or the URL is lost. |
-| GPU in main process | On | If your graphics driver crashes, the whole app closes instead of Chromium quietly restarting its GPU process. Turn it off if that happens to you. |
-| Low-memory process model | Off | Turns off site isolation and shares two processes across all tabs: up to half the memory with many tabs open. Sites are less protected from each other (Spectre-class attacks), and one heavy tab can slow the rest. Fine for local development; leave it off for banking and similar. |
-
-The last two take effect after a restart; the panel has a button for it.
-
-The installer is 3.6 MB because WebView2 already ships with Windows, so there's no bundled copy of Chromium to download. That's also why there's no macOS or Linux build yet.
-
-If you need macOS, several viewports side by side, or accessibility audits, [Responsively](https://responsively.app) and [Polypane](https://polypane.app) do those and ZYNLEX doesn't.
-
-## Install
-
-Download the installer from the [latest release](https://github.com/webtools-dotcom/Zynlex/releases/latest) and run it.
-
-Windows 10 or 11. You need the WebView2 runtime, which is already on Windows 11 and most Windows 10 machines; the installer adds it if it's missing.
-
-From source:
-
-```bash
-pnpm install
-pnpm tauri dev
+```
+http://localhost:7720/ "Tasks" [dfc7d5cc]
+Page:
+h1 "Tasks"
+textbox "New task" [e2] value=""
+button "Add" [e6]
+combobox "Sort" [e3] value="Oldest" collapsed
+  option "Oldest" [e22] selected
+  option "Newest" [e25]
+button "Load tasks" [e8]
+No new errors or failed requests.
 ```
 
-## A look around
+Then one `act` with two steps, typing into `e2` and pressing Enter in it:
+
+```
+Typed "Release check" into textbox "New task" [e2] value=""
+Pressed Enter in textbox "New task" [e2] value=""
+Page changes:
++ "Release check"
+No new errors or failed requests.
+```
+
+After each code change the agent calls `check`, which waits for the page to settle and lists only what's new.
+
+## ZYNLEX or Playwright MCP?
+
+Both, for different jobs. Keep Playwright for CI.
+
+| | ZYNLEX | Playwright MCP |
+|---|---|---|
+| Where the agent works | Your open browser, in front of you | A browser it launches, or your Chrome through an extension |
+| Point at an element, record a bug, pause and take over | ✅ in the page you're using | Partly: annotate and record, in its own dashboard |
+| Errors from before the agent connected | ✅ kept across page loads | From when it connects |
+| Logged in as you | ✅ | With the extension; otherwise saved state or a login flow |
+| Mocks you can also see and edit in the UI | ✅ | ❌ |
+| Turns a recording into a Playwright test | ✅ | ✅ (codegen) |
+| Any website | ❌ `localhost` and staging you allow | ✅ |
+| Headless, CI, Firefox, WebKit | ❌ | ✅ |
+| macOS and Linux | ❌ Windows only, for now | ✅ |
+
+## Set up
+
+1. [Download the installer](https://github.com/webtools-dotcom/Zynlex/releases/latest) and run it. It puts `zynlex-mcp` on your PATH.
+2. In a new terminal, connect your agent:
+
+   ```bash
+   claude mcp add zynlex zynlex-mcp
+   ```
+
+   **Settings → AI agents** has the snippet for Codex, Cursor, Antigravity, OpenCode and any other MCP client.
+3. Open your app in ZYNLEX and ask your agent to check it: *"The Add button does nothing when I press Enter. Fix it."*
+
+### What the agent can do
+
+| Tool | What it does |
+|---|---|
+| `tabs`, `open` | List your tabs and running dev servers; open or switch to one |
+| `snapshot` | The page's interactive elements, with refs to act on |
+| `act` | Click, type, select, press, hover, drag, upload, go back, answer dialogs; up to 10 steps in one call |
+| `check` | Wait for the page to settle, then list new errors and failed requests |
+| `errors`, `network` | The console at any level; requests with headers and bodies |
+| `screenshot` | The view, one element or the whole page |
+| `viewport` | Emulate a phone or tablet, with touch |
+| `wait_for` | Wait for text to appear or go, or the URL to change |
+| `mock` | Fake API responses or add request headers, shown in your panels too |
+| `eval` | Run JavaScript in the page |
+| `recording` | Your recorded steps, or a Playwright test made from them |
+
+### What it can reach
+
+`localhost`, plus any staging environment you tick **agent** on in **Settings → Environments**. Never production, even if you tick it. Page text, console messages and response bodies are passed to the agent as data, not instructions. The status bar shows when an agent is connected. Every detail is in [docs/agent-interface.md](docs/agent-interface.md).
+
+## It's a developer's browser first
+
+Before agents could use it, ZYNLEX was the browser for `localhost`, and it still is. A new tab lists the dev servers running on your machine. The sidebar has what you'd otherwise open four apps for, and an agent can use all of it too.
+
+<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4"><img src=".github/assets/hero.gif" alt="From the ZYNLEX tour, made from real recordings: the network log opens a dashboard's /api/orders response, Mock this turns it into a 500 so the dashboard shows its error state, a 1 appears on the tab, and Copy Bug Report is one toolbar click" width="880" /></a>
+
+<sub>[Watch the full tour in 1080p](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-tour.mp4) · [Watch the workflows film (73 s)](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-one-key.mp4) · [Website](https://webtools-dotcom.github.io/Zynlex/)</sub>
+
+- **Network log**: per tab, with filters, search and response bodies. No proxy, no certificate.
+- **Mock responses**: make any API return a 500, an empty list or a slow reply, by URL pattern, or click **Mock this** on a captured request.
+- **Console**: each tab's errors and failed requests, with a count on the tab itself so you notice.
+- **Device viewports**: one device at a time, at its real pixel size.
+- **Header rules**: add, override or strip request headers per URL pattern.
+- **API client**: saved collections and cURL import, sent from Rust so page CORS doesn't apply.
+- **Environments**: the same path on local, staging and production in one click. Production is marked red and asks first.
+- **Copy Bug Report**: URL, environment, device, recent errors and a screenshot, ready to paste into an issue.
+- **Snippets**, **network throttling**, **full-page screenshots**, a **colour picker**, and a JWT decoder, Base64 and user-agent switcher.
+
+Workspaces keep each project's tabs, rules and saved requests apart, `Ctrl+K` finds everything, and any command can have a shortcut or a toolbar button.
+
+It's light: a 4 MB installer because it uses the WebView2 (Chromium) runtime already in Windows, and less than half Chrome's memory at idle. Hidden tabs are suspended and then discarded on timers you set, and `localhost` tabs never are, so hot reload keeps working. [The measurements](docs/performance.md).
+
+No account, no telemetry. The only network call it makes on its own is an update check against this repo's releases.
+
+<details>
+<summary><b>Screenshots</b></summary>
 
 Your servers, on the new tab page:
 
 <img src=".github/assets/home.png" alt="New tab page listing three detected local dev servers: a dashboard, its API and a docs site" width="820" />
 
-Network log. Capture goes through WebView2's native COM API, not a proxy, so there's nothing to configure and no certificate to trust.
+Network log, with a response open:
 
 <img src=".github/assets/network.png" alt="Network panel beside a dashboard, with the /api/orders request open and its JSON response pretty-printed" width="820" />
 
-Mock responses. Click "Mock this" on a request, make it a 500, and see how the page handles it:
+A mocked 500, and how the page handles it:
 
 <img src=".github/assets/mocks.png" alt="A mock rule returning 500 for /api/orders, and the dashboard showing its Couldn't load orders error" width="820" />
 
-A device viewport at 1:1, next to the chrome:
+The same page on local, staging and prod:
+
+<img src=".github/assets/environments.png" alt="The Orbit dashboard on staging.localhost, with local, staging and prod in the toolbar; prod was clicked and asks Open prod? before switching" width="820" />
+
+A bug report, one click:
+
+<img src=".github/assets/bug-report.png" alt="The dashboard failing to load orders, a 1 on its tab, the Console panel showing the 500, and Bug report copied in the status bar" width="820" />
+
+A device viewport at 1:1:
 
 <img src=".github/assets/viewport.png" alt="The dashboard rendered in an iPhone 17 Pro viewport at 402x874" width="820" />
 
-API client, saved per workspace:
+</details>
 
-<img src=".github/assets/api.png" alt="API tester calling localhost:8000/api/users with the JSON response below" width="820" />
+## Why I built it
+
+A few months ago I was watching [a video by @crynta](https://youtu.be/kykgXa7sm1g) and got stuck on the comments underneath, where people were asking for a lightweight browser without telemetry. I wanted one too, but the one I needed was for development: the four things I check constantly (which port is that, what did that request return, how does this look on a phone, what happens with this header) lived in four separate windows. So I put them in the browser.
+
+Then I started handing more of the checking to coding agents, and watched them work in a browser I couldn't see. They'd launch a clean Chrome, miss the error I'd just been looking at, and spend half the run getting back to where I already was. Meanwhile my own browser had already captured all of it: every error, every request, the page I was pointing at.
+
+So ZYNLEX gave the agent a way in, to the browser I'm already using, with me able to see every step.
 
 ## Limitations
 
-Worth knowing before you download:
-
-- **Windows only.** Tabs, cookies, network capture, header injection and viewport emulation are written against WebView2 COM APIs. There's no WebKit equivalent yet, so there is no macOS or Linux build. macOS and Linux are planned, see [ROADMAP.md](ROADMAP.md).
-- Downloads show started and finished, not a percentage. Tauri's download event has no progress callback.
-- Header rules don't apply to WebSocket handshakes. WebView2 never raises its request event for them.
-- The network log records every request type, but only keeps response bodies for text resources. Images, fonts and media show status, size and timing only. Use the type filter or the API chip to cut the asset noise.
-- JWT signatures are decoded, never verified.
+- **Windows only.** Tabs, network capture, mocking and viewports are built on WebView2's Windows APIs. macOS and Linux are on the [roadmap](ROADMAP.md), and they're a real port, not a recompile.
+- **Agents reach `localhost` and staging you allow, nothing else.** For other sites, use Playwright.
+- **Not signed yet.** Windows shows "Unknown publisher" and some antivirus software quarantines new builds until signing is approved ([policy](CODE_SIGNING_POLICY.md)).
+- The benchmark is one machine and one model family, on small apps written for it. The data is there so you can check it.
+- Header rules don't apply to WebSocket handshakes; the network log keeps bodies only for text responses; downloads show no progress percentage.
 
 ## FAQ
 
-**Is ZYNLEX a minimal browser I can use every day?**
-You can browse in it like any browser, and it is minimal: no sync, no extensions, no account. But it's built around development work, so it isn't trying to be your only browser. Most people keep it open next to their editor.
+**Should I uninstall Playwright?**
+No. Keep it for CI, headless runs and other browsers. ZYNLEX is for the loop where you and an agent build and fix your app together; the tests it writes run on Playwright.
+
+**Which agents work with it?**
+Any MCP client. **Settings → AI agents** has setup for Claude Code, Codex, Cursor, Antigravity and OpenCode. The benchmark uses Claude Code.
+
+**Can the agent see my other tabs, or my banking site?**
+No. It only sees `localhost` tabs and staging environments you've ticked **agent** on. Production is refused even if ticked.
 
 **Will websites work in it?**
-Yes. Tabs render with WebView2, which is Microsoft's packaging of Chromium, the same engine as Chrome and Edge. Pages look and behave the same.
+Yes. Tabs render with WebView2, Microsoft's packaging of Chromium, the same engine as Chrome and Edge.
 
-**How is it different from Chrome DevTools?**
-DevTools is a drawer inside a general browser. ZYNLEX puts the network log, device viewports and header rules in the browser's own sidebar, per tab and per project workspace, and adds things DevTools doesn't have: localhost server detection, response mocking without a proxy, and an API client.
+**Is it Electron?**
+No. It's Tauri and Rust on the WebView2 runtime that ships with Windows, which is why the installer is 4 MB.
 
-**Do I need a proxy or a certificate to mock API responses?**
-No. Mocks are answered inside the browser, before the request reaches the network, so there's nothing to install or trust. Cross-origin requests work too. The trade-off: it only mocks requests made by pages open in ZYNLEX, not other apps on your machine.
-
-**Why is it so small? Is it Electron?**
-It's not Electron. It's built with Tauri and Rust, and uses the WebView2 runtime that already ships with Windows instead of bundling its own copy of Chromium. That's why the installer is 3.6 MB.
-
-**Why does it use less RAM than Chrome if it's the same engine?**
-It runs fewer background services, keeps graphics in one process instead of two, and suspends and discards tabs you aren't looking at. See [Size and memory](#size-and-memory) for the numbers and the trade-offs.
-
-**Why did a background tab reload, or show old data when I came back?**
-Hidden tabs are suspended after 5 minutes and discarded after 10, to keep memory down. A suspended tab catches up when you switch back to it; a discarded one reloads. Change either timer, or turn them off, in Settings → Memory. Pinned tabs and `localhost` tabs are never suspended.
-
-**Does it work on macOS or Linux?**
-Not yet. Every developer feature is built on WebView2 APIs that only exist on Windows. See [ROADMAP.md](ROADMAP.md).
-
-**Can AI coding agents use it?**
-Yes, over MCP: `claude mcp add zynlex zynlex-mcp` after installing. See [For AI coding agents](#for-ai-coding-agents). Agents only see your `localhost` tabs and staging environments you allow, never production.
-
-**Is it free? Does it collect any data?**
-Free and open source under Apache-2.0. No account, no telemetry, and it makes no network calls of its own apart from checking GitHub for updates.
+**Is it free?**
+Free and open source under Apache-2.0. No account, no telemetry.
 
 ## Docs
 
-- [docs/architecture.md](docs/architecture.md): process model, bounds and resize, viewport emulation, security boundary
-- [docs/design-system.md](docs/design-system.md): tokens, typography, layout rules
-- [docs/agent-interface.md](docs/agent-interface.md): the MCP server, every agent tool, safety model
-- [benchmark/README.md](benchmark/README.md): the agent benchmark, with its data and harness
-- [CONTRIBUTING.md](CONTRIBUTING.md): build commands and the checks CI runs
-- [ROADMAP.md](ROADMAP.md): what's open
+- [docs/agent-interface.md](docs/agent-interface.md): the MCP server, every agent tool, the safety model
+- [benchmark/README.md](benchmark/README.md): the agent benchmark, its data and harness
+- [docs/performance.md](docs/performance.md): memory compared with Chrome, and the settings that trade it off
+- [docs/architecture.md](docs/architecture.md): process model, network capture, security boundary
+- [CONTRIBUTING.md](CONTRIBUTING.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md)
 - [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md): how releases are signed. Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
 
 ## Contributing
 
-If ZYNLEX saves you a window or two, a star helps other developers find it.
+If ZYNLEX saves your agent tokens, or you a few windows, a star helps other developers find it.
 
-Issues and pull requests welcome. If you're picking up something non-trivial, open an issue first so we don't both write it.
-
-Built with [Tauri](https://tauri.app), React and Rust.
+Issues and pull requests are welcome. For anything non-trivial, open an issue first so we don't both write it. From source: `pnpm install`, then `pnpm tauri dev`.
 
 ## License
 
