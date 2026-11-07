@@ -486,6 +486,22 @@ export function onNetworkEntry(
   return listen<NetworkEntryPayload>("browser://network-entry", (e) => callback(e.payload));
 }
 
+/** One WebSocket event from a tab (see `ws_event` in net.rs). */
+export interface WebSocketEvent {
+  tabId: string;
+  /** CDP's requestId for the socket. */
+  socket: string;
+  kind: "created" | "open" | "sent" | "received" | "error" | "closed";
+  url?: string;
+  status?: number;
+  /** Frame payload (cut at 1000 chars; binary described), or the error message. */
+  data?: string;
+}
+
+export function onWebSocket(callback: (e: WebSocketEvent) => void): Promise<UnlistenFn> {
+  return listen<WebSocketEvent>("browser://websocket", (e) => callback(e.payload));
+}
+
 /** A console error/warning or failed request from a tab (log/info too while an agent is connected) — see console.rs. */
 export interface ConsoleEntryPayload {
   tabId: string;

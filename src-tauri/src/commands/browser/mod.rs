@@ -388,6 +388,7 @@ fn create_webview_for_tab(
         .map_err(|e| e.to_string())?;
 
     register_webview_network_capture(&webview, app, tab_id);
+    register_webview_websocket_capture(&webview, app, tab_id);
     register_webview_native_events(&webview, app, tab_id);
     register_webview_console_capture(&webview, app, tab_id);
 

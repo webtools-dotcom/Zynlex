@@ -1,5 +1,6 @@
 use super::pwstr_to_string;
 use crate::zynlex_log;
+use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -709,6 +710,110 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
     });
 }
 
+// ─── WebSocket capture ────────────────────────────────────────────
+
+/// WebView2 fires no WebResourceRequested for a WebSocket (not even the
+/// handshake), so sockets come from CDP's Network domain instead.
+const WS_EVENTS: [&str; 6] = [
+    "Network.webSocketCreated",
+    "Network.webSocketHandshakeResponseReceived",
+    "Network.webSocketFrameSent",
+    "Network.webSocketFrameReceived",
+    "Network.webSocketFrameError",
+    "Network.webSocketClosed",
+];
+
+/// Longest frame payload kept, in chars.
+const WS_MAX_PAYLOAD: usize = 1000;
+
+/// One socket event as the frontend wants it: `{ socket, kind, … }`, kind
+/// being created (url), open (status), sent/received (data), error, closed.
+/// Binary frames are described, not shipped.
+fn ws_event(event: &str, p: &Value) -> Option<Value> {
+    let socket = p["requestId"].as_str()?;
+    let frame = |kind: &str| {
+        let r = &p["response"];
+        let payload = r["payloadData"].as_str().unwrap_or_default();
+        let data = if r["opcode"].as_u64() == Some(2) {
+            // Binary payloads arrive base64-encoded.
+            format!("(binary, {} bytes)", payload.len() / 4 * 3)
+        } else if payload.chars().count() > WS_MAX_PAYLOAD {
+            let cut: String = payload.chars().take(WS_MAX_PAYLOAD).collect();
+            format!("{cut}… ({} chars)", payload.chars().count())
+        } else {
+            payload.to_string()
+        };
+        json!({ "socket": socket, "kind": kind, "data": data })
+    };
+    Some(match event {
+        "Network.webSocketCreated" => {
+            json!({ "socket": socket, "kind": "created", "url": p["url"].as_str().unwrap_or_default() })
+        }
+        "Network.webSocketHandshakeResponseReceived" => {
+            json!({ "socket": socket, "kind": "open", "status": p["response"]["status"].as_u64().unwrap_or(0) })
+        }
+        "Network.webSocketFrameSent" => frame("sent"),
+        "Network.webSocketFrameReceived" => frame("received"),
+        "Network.webSocketFrameError" => json!({
+            "socket": socket,
+            "kind": "error",
+            "data": p["errorMessage"].as_str().unwrap_or_default(),
+        }),
+        "Network.webSocketClosed" => json!({ "socket": socket, "kind": "closed" }),
+        _ => return None,
+    })
+}
+
+/// Emits `browser://websocket` events for the tab's sockets while capture is
+/// on (Network panel open or an agent connected), like the rest of capture.
+pub fn register_webview_websocket_capture(
+    wv: &tauri::Webview,
+    app: &tauri::AppHandle,
+    tab_id: &str,
+) {
+    let app = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = super::with_core(wv, "websocket capture", move |core| unsafe {
+        use webview2_com::DevToolsProtocolEventReceivedEventHandler;
+        use windows::core::HSTRING;
+
+        for event in WS_EVENTS {
+            let Ok(receiver) = core.GetDevToolsProtocolEventReceiver(&HSTRING::from(event)) else {
+                continue;
+            };
+            let app = app.clone();
+            let tab_id = tab_id.clone();
+            let handler =
+                DevToolsProtocolEventReceivedEventHandler::create(Box::new(move |_wv, args| {
+                    if NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) <= 0 {
+                        return Ok(());
+                    }
+                    let Some(args) = args else { return Ok(()) };
+                    let raw = pwstr_to_string(|p| {
+                        let _ = args.ParameterObjectAsJson(p);
+                    });
+                    let Ok(params) = serde_json::from_str::<Value>(&raw) else {
+                        return Ok(());
+                    };
+                    if let Some(mut e) = ws_event(event, &params) {
+                        e["tabId"] = json!(tab_id);
+                        let _ = app.emit("browser://websocket", e);
+                    }
+                    Ok(())
+                }));
+            let mut token: i64 = 0;
+            let _ = receiver.add_DevToolsProtocolEventReceived(&handler, &mut token);
+        }
+        // The events need the Network domain on. Bodies come from WebView2's
+        // own GetContent, so CDP needn't keep any: zero buffers.
+        super::cdp(
+            &core,
+            "Network.enable",
+            r#"{"maxTotalBufferSize":0,"maxResourceBufferSize":0}"#,
+        );
+    });
+}
+
 /// URLs `tab_id` requested that have no response yet, for the agent's settle
 /// rule. Only tracked while capture is on, which it is while an agent is
 /// connected. Streams never finish, and a request older than 8s is more
@@ -753,7 +858,49 @@ pub async fn browser_set_header_rules(
 }
 #[cfg(test)]
 mod tests {
-    use super::{find_mock, url_matches, MockRule};
+    use super::{find_mock, url_matches, ws_event, MockRule};
+    use serde_json::json;
+
+    #[test]
+    fn websocket_events() {
+        let e = ws_event(
+            "Network.webSocketCreated",
+            &json!({"requestId": "7.1", "url": "ws://localhost:5173/?token=x"}),
+        )
+        .unwrap();
+        assert_eq!(
+            e,
+            json!({"socket": "7.1", "kind": "created", "url": "ws://localhost:5173/?token=x"})
+        );
+        let open = ws_event(
+            "Network.webSocketHandshakeResponseReceived",
+            &json!({"requestId": "7.1", "response": {"status": 101}}),
+        )
+        .unwrap();
+        assert_eq!(open["status"], 101);
+        let text = |op: u64, data: &str| {
+            ws_event(
+                "Network.webSocketFrameReceived",
+                &json!({"requestId": "7.1", "response": {"opcode": op, "payloadData": data}}),
+            )
+            .unwrap()["data"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(text(1, r#"{"type":"update"}"#), r#"{"type":"update"}"#);
+        // Base64 of 6 bytes.
+        assert_eq!(text(2, "AAECAwQF"), "(binary, 6 bytes)");
+        let long = "é".repeat(1500);
+        let cut = text(1, &long);
+        assert!(cut.starts_with(&"é".repeat(1000)) && cut.ends_with("… (1500 chars)"));
+        assert_eq!(
+            ws_event("Network.webSocketClosed", &json!({"requestId": "7.1"})).unwrap()["kind"],
+            "closed"
+        );
+        assert!(ws_event("Network.webSocketClosed", &json!({})).is_none());
+        assert!(ws_event("Network.requestWillBeSent", &json!({"requestId": "1"})).is_none());
+    }
 
     fn mock(pattern: &str, method: &str) -> MockRule {
         MockRule {

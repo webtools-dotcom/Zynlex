@@ -52,7 +52,8 @@ fn tools() -> Value {
             "description": "Wait for the page to settle, then list new JS errors and failed requests. Call after each code change.",
             "inputSchema": { "type": "object", "properties": {
                 "tab": tab,
-                "reload": { "type": "boolean", "description": "Reload first; the reply has the new page." }
+                "reload": { "type": "boolean", "description": "Reload first; the reply has the new page." },
+                "vitals": { "type": "boolean", "description": "Add LCP, CLS, INP, long tasks." }
             } }
         },
         {
@@ -96,7 +97,7 @@ fn tools() -> Value {
         },
         {
             "name": "network",
-            "description": "A tab's requests (id, method, status, URL); assets hidden unless `all`. `id`: one request's headers and body.",
+            "description": "A tab's requests (id, method, status, URL) and WebSockets; assets hidden unless `all`. `id`: one request's headers and body, or a socket's frames.",
             "inputSchema": { "type": "object", "properties": {
                 "tab": tab,
                 "failed": { "type": "boolean", "description": "Only 4xx/5xx and no response." },
@@ -332,6 +333,7 @@ mod tests {
         assert_eq!(schema("screenshot")["ref"]["type"], "string");
         assert_eq!(schema("screenshot")["full"]["type"], "boolean");
         assert_eq!(schema("recording")["playwright"]["type"], "boolean");
+        assert_eq!(schema("check")["vitals"]["type"], "boolean");
         let mock = tools.iter().find(|t| t["name"] == "mock").unwrap();
         assert_eq!(mock["inputSchema"]["required"], json!(["action"]));
 

@@ -7,8 +7,74 @@
  * Eviction happens on the single entry crossing the boundary rather than by
  * rescanning the list, which is what makes the arithmetic worth pinning down.
  */
-import { describe, it, expect, beforeEach } from "vitest";
-import { useNetworkStore, type NetworkLogEntry } from "@/stores/network";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { WebSocketEvent } from "@/services/browser";
+import {
+  applySocketEvent,
+  MAX_FRAMES,
+  type NetworkLogEntry,
+  type SocketLog,
+  useNetworkStore,
+} from "@/stores/network";
+
+describe("WebSocket log", () => {
+  const ev = (
+    kind: WebSocketEvent["kind"],
+    extra: Partial<WebSocketEvent> = {},
+  ): WebSocketEvent => ({
+    tabId: "t",
+    socket: "7.1",
+    kind,
+    ...extra,
+  });
+
+  it("follows a socket from created to closed, counting frames and keeping the latest", () => {
+    let list: SocketLog[] = [];
+    list = applySocketEvent(list, ev("created", { url: "ws://localhost:5173/live" }), 1);
+    expect(list[0]).toMatchObject({ state: "connecting", url: "ws://localhost:5173/live" });
+    list = applySocketEvent(list, ev("open", { status: 101 }), 2);
+    for (let i = 0; i < MAX_FRAMES + 5; i++) {
+      list = applySocketEvent(list, ev(i % 2 ? "sent" : "received", { data: `f${i}` }), 10 + i);
+    }
+    list = applySocketEvent(list, ev("closed"), 99);
+    const [s] = list;
+    expect(list).toHaveLength(1);
+    expect(s).toMatchObject({ state: "closed", sent: 27, received: 28 });
+    expect(s.frames).toHaveLength(MAX_FRAMES);
+    expect(s.frames[s.frames.length - 1]).toEqual({
+      dir: "received",
+      at: 10 + MAX_FRAMES + 4,
+      data: `f${MAX_FRAMES + 4}`,
+    });
+  });
+
+  it("starts a log for a socket first seen mid-stream, and records errors", () => {
+    let list = applySocketEvent([], ev("received", { data: "hi" }), 5);
+    expect(list[0]).toMatchObject({ state: "open", url: "", received: 1 });
+    list = applySocketEvent(list, ev("error", { data: "Invalid frame header" }), 6);
+    expect(list[0]).toMatchObject({ state: "error", error: "Invalid frame header" });
+    // Refused: created, then closed, never open.
+    let refused = applySocketEvent([], ev("created", { url: "ws://localhost:7799/" }), 1);
+    refused = applySocketEvent(refused, ev("closed"), 2);
+    expect(refused[0]).toMatchObject({ state: "error", error: "closed before it opened" });
+    // A server that answers the upgrade with anything but 101.
+    let notFound = applySocketEvent([], ev("open", { status: 404 }), 1);
+    notFound = applySocketEvent(notFound, ev("closed"), 2);
+    expect(notFound[0]).toMatchObject({ state: "error", error: "handshake answered 404" });
+  });
+
+  it("lives with the tab's other entries: cleared with them, ignored while paused", () => {
+    const store = useNetworkStore.getState();
+    store.addSocketEvent(ev("created", { url: "ws://x" }));
+    expect(useNetworkStore.getState().socketsByTab.t).toHaveLength(1);
+    store.clearTab("t");
+    expect(useNetworkStore.getState().socketsByTab.t).toBeUndefined();
+    store.setPaused(true);
+    store.addSocketEvent(ev("created", { url: "ws://x" }));
+    store.setPaused(false);
+    expect(useNetworkStore.getState().socketsByTab.t).toBeUndefined();
+  });
+});
 
 /** Mirrors BODIES_KEPT in the store — not exported, so restated here. */
 const BODIES_KEPT = 50;

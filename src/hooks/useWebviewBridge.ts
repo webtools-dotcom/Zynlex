@@ -42,6 +42,7 @@ import {
   saveTabState,
   restoreTabState,
   onNetworkEntry,
+  onWebSocket,
   onConsoleEntry,
   onDownloadStarted,
   onDownloadFinished,
@@ -899,6 +900,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         });
       }),
     );
+    track(onWebSocket(useNetworkStore.getState().addSocketEvent));
     return dispose;
   }, []);
 

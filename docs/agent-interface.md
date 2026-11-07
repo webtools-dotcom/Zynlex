@@ -111,17 +111,64 @@ call to find out.
 |---|---|---|
 | `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab; `close` closes a tab the agent opened | Built |
 | `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors | Built |
-| `check` | Settles, then new errors + failed requests since the last report, grouped (see [Error grouping](#error-grouping)); `reload` reloads first | Built |
+| `check` | Settles, then new errors + failed requests since the last report, grouped (see [Error grouping](#error-grouping)); `reload` reloads first; `vitals` adds LCP, CLS, INP and long tasks (see [WebSockets and vitals](#websockets-and-vitals)) | Built |
 | `errors` | Every error and failed request on the current page, plus any from earlier page loads not yet shown, grouped; `level` adds `warning`, `info` or `log` (each includes the levels above it; newest 50 log/info lines) | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
 | `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` / `upload` on a ref with real input, `back` / `forward` in history (localhost entries only), or `steps`: up to 10 of them in one call, settling between steps and stopping at the first that fails; then the consequences (including any tab it opened) | Built (hover, drag, back/forward, upload untested on Windows) |
-| `network` | Requests (assets hidden unless `all`); `failed`, `match`; `id` for headers + body | Built |
+| `network` | Requests (assets hidden unless `all`) and WebSockets; `failed`, `match`; `id` for headers + body, or a socket's frames | Built |
 | `screenshot` | Visible area, one element (`ref`) or the whole page (`full`) to `%TEMP%\zynlex-agent`, returns the path | Built (`ref`, `full` untested on Windows) |
 | `viewport` | Device presets or width×height, touch, mobile UA; `reset` | Built |
 | `eval` | `Runtime.evaluate` (`awaitPromise`, `returnByValue`, `replMode`): an expression, or a function body when the code has `return`; value as compact JSON cut at 4 KB, exceptions as `Threw: …`, gives up after 10 s | Built, untested on Windows |
 | `wait_for` | Polls every 250 ms until all given conditions hold: `text` appears, `gone` disappears (full snapshot + `body.innerText`), `url` contains; `timeout` s (default 10, max 30); says what matched or what's pending, then the consequences | Built, untested on Windows |
 | `mock` | `add` a canned response (or, with `header`+`value`, a request-header rule), `list`, `remove` by id, `clear`, through the panels' stores | Built |
 | `recording` | The developer's latest recorded steps (click/type/select/press/upload, with refs) and what each caused; `playwright: true` gives them as a Playwright test instead. See [Recorded steps](#recorded-steps) | Done, tested on Windows |
+
+### WebSockets and vitals
+
+**WebSockets.** WebView2's resource events never see a WebSocket, so
+[net.rs](../src-tauri/src/commands/browser/net.rs) subscribes each tab to
+CDP's `Network.webSocket*` events. It turns the domain on with
+`maxTotalBufferSize: 0`, since bodies come from WebView2 itself. Like the
+rest of capture, events are sent on only while an agent is connected or the
+Network panel is open. A frame is cut at 1,000 chars in Rust, and a binary
+frame is just described (`(binary, 6 bytes)`). The network store keeps the
+last 20 sockets per tab and the last 50 frames per socket, and clears them
+with the tab's requests on a page load. `network` lists each socket on one
+line after the requests:
+
+```
+WebSockets (↑ sent, ↓ received; pass id for the frames):
+  ws-2 open ws://localhost:7713/live ↑1 ↓3
+  ws-3 error: Error in connection establishment: net::ERR_CONNECTION_REFUSED ws://localhost:7799/dead ↑0 ↓0
+```
+
+and `network id=ws-2` its last 20 frames (`all` for 50), one line each, cut
+at 300 chars:
+
+```
+  ↑ 4s ago ping 1794048003125
+  ↓ 4s ago {"type": "echo", "got": "ping 1794048003125"}
+```
+
+A socket is `error` when the browser says so, when the handshake answers
+anything but 101, or when it closes without ever opening; `failed` and
+`match` filter sockets too.
+
+**Vitals.** `check vitals=true` adds one line, read on demand from buffered
+`PerformanceObserver` entries (nothing is installed in the page beforehand):
+
+```
+Vitals: LCP 152 ms (good, h1#hero) · CLS 0.05 (good) · INP 360 ms (needs improvement, worst of 1 slow interaction) · 1 long task, longest 351 ms · TTFB 78 ms, load 131 ms
+```
+
+Ratings use web.dev's thresholds (LCP 2.5/4 s, CLS 0.1/0.25, INP
+200/500 ms). Chromium buffers interactions only when they take over 104 ms,
+so INP is the worst of those (`INP: no interaction over 104 ms` when there
+were none). Ceilings: CLS is the sum of every unexpected shift, not the
+worst 5 s session window, so a long-lived page reads high. LCP isn't
+recorded for a page that loaded while its tab was hidden.
+
+The two cost 112 characters of tool list (5,692 → 5,804).
 
 ### Recorded steps
 

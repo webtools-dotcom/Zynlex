@@ -67,7 +67,12 @@ import {
 import { useAgentFlagsStore } from "@/stores/agentFlags";
 import { type ConsoleEntry, useConsoleStore } from "@/stores/console";
 import { type DownloadItem, useDownloadsStore } from "@/stores/downloads";
-import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
+import {
+  MAX_FRAMES as MAX_WS_FRAMES,
+  type NetworkLogEntry,
+  type SocketLog,
+  useNetworkStore,
+} from "@/stores/network";
 import { useServersStore } from "@/stores/servers";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspacesStore } from "@/stores/workspaces";
@@ -582,13 +587,109 @@ async function checkTool(args: Args): Promise<string> {
     snapshots.set(tab.id, now);
     page = ["Page:", await showPage(tab, now.compact)];
   }
+  const vitals = args.vitals ? [await readVitals(tab.id)] : [];
   return [
     header(useTabsStore.getState().tabs[tab.id] ?? tab),
     ...(unsettled ? [unsettled] : []),
     when,
     ...(body.length ? body : ["No new errors or failed requests."]),
+    ...vitals,
     ...page,
   ].join("\n");
+}
+
+/** What VITALS reports, all times in ms. */
+export interface Vitals {
+  lcp: number | null;
+  lcpEl: string;
+  cls: number;
+  /** Longest interaction among those the browser buffered (over 104 ms), or null. */
+  inp: number | null;
+  slowInteractions: number;
+  longTasks: number;
+  longest: number;
+  ttfb: number | null;
+  load: number | null;
+}
+
+/**
+ * In-page: the current document's web vitals, from buffered
+ * PerformanceObserver entries, so nothing has to be installed beforehand.
+ * Chromium buffers interactions only when slower than 104 ms, so INP here is
+ * the worst of those (none: every interaction was faster). ponytail: CLS is
+ * the sum of every unexpected shift, not the worst 5 s session window, so it
+ * reads high on a long-lived page.
+ */
+const VITALS = `new Promise((resolve) => {
+  const v = { lcp: null, lcpEl: "", cls: 0, inp: null, slowInteractions: 0, longTasks: 0, longest: 0, ttfb: null, load: null };
+  const ids = new Set();
+  const on = {
+    "largest-contentful-paint": (e) => {
+      v.lcp = e.startTime;
+      const el = e.element;
+      v.lcpEl = el ? el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") : "";
+    },
+    "layout-shift": (e) => { if (!e.hadRecentInput) v.cls += e.value; },
+    "event": (e) => {
+      if (!e.interactionId) return;
+      ids.add(e.interactionId);
+      v.inp = Math.max(v.inp || 0, e.duration);
+    },
+    "longtask": (e) => { v.longTasks++; v.longest = Math.max(v.longest, e.duration); },
+  };
+  const supported = PerformanceObserver.supportedEntryTypes || [];
+  const obs = Object.keys(on).filter((t) => supported.includes(t)).map((t) => {
+    const o = new PerformanceObserver((l) => l.getEntries().forEach(on[t]));
+    o.observe({ type: t, buffered: true });
+    return [o, on[t]];
+  });
+  const nav = performance.getEntriesByType("navigation")[0];
+  if (nav) { v.ttfb = nav.responseStart; v.load = nav.loadEventEnd || null; }
+  setTimeout(() => {
+    for (const [o, f] of obs) { o.takeRecords().forEach(f); o.disconnect(); }
+    v.slowInteractions = ids.size;
+    resolve(v);
+  }, 100);
+})`;
+
+const ms = (n: number) => (n < 1000 ? `${Math.round(n)} ms` : `${(n / 1000).toFixed(1)} s`);
+
+/** "good" / "needs improvement" / "poor", by web.dev's thresholds. */
+const rate = (n: number, good: number, poor: number) =>
+  n <= good ? "good" : n <= poor ? "needs improvement" : "poor";
+
+/** One line: LCP, CLS, INP, long tasks, TTFB and load. */
+export function vitalsText(v: Vitals): string {
+  const lcp =
+    v.lcp == null
+      ? "LCP not recorded (the tab was hidden while loading, or nothing painted)"
+      : `LCP ${ms(v.lcp)} (${rate(v.lcp, 2500, 4000)}${v.lcpEl ? `, ${v.lcpEl}` : ""})`;
+  const cls = `CLS ${v.cls.toFixed(2)} (${rate(v.cls, 0.1, 0.25)})`;
+  const inp =
+    v.inp == null
+      ? "INP: no interaction over 104 ms"
+      : `INP ${ms(v.inp)} (${rate(v.inp, 200, 500)}, worst of ${v.slowInteractions} slow interaction${v.slowInteractions === 1 ? "" : "s"})`;
+  const long = v.longTasks
+    ? `${v.longTasks} long task${v.longTasks === 1 ? "" : "s"}, longest ${ms(v.longest)}`
+    : "no long tasks";
+  const nav = [
+    v.ttfb == null ? "" : `TTFB ${ms(v.ttfb)}`,
+    v.load == null ? "" : `load ${ms(v.load)}`,
+  ].filter(Boolean);
+  return `Vitals: ${[lcp, cls, inp, long, nav.join(", ")].filter(Boolean).join(" · ")}`;
+}
+
+async function readVitals(tabId: string): Promise<string> {
+  try {
+    const r = await tabCdp<{ result: { value?: Vitals } }>(tabId, "Runtime.evaluate", {
+      expression: VITALS,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    return r.result.value ? vitalsText(r.result.value) : "Vitals: couldn't read them.";
+  } catch {
+    return "Vitals: couldn't read them (page not loaded?).";
+  }
 }
 
 async function snapshotTool(args: Args): Promise<string> {
@@ -1310,15 +1411,56 @@ async function requestDetail(tab: Tab, n: NetworkLogEntry): Promise<string> {
   ].join("\n");
 }
 
+/** Whitespace collapsed, cut at `max` with the full length noted. */
+const oneLine = (text: string, max: number) => {
+  const t = text.replace(/\s+/g, " ");
+  return t.length > max ? `${t.slice(0, max)}… (${t.length} chars)` : t;
+};
+
+/** `  ws-3 open ws://localhost:5173/live ↑2 ↓14`, plus its last error. */
+function socketLine(s: SocketLog): string {
+  const err = s.state === "error" && s.error ? `: ${oneLine(s.error, 120)}` : "";
+  return `  ${s.id} ${s.state}${err} ${s.url || "(url not seen)"} ↑${s.sent} ↓${s.received}`;
+}
+
+/** Frames shown for one socket, newest last; `all` gives every frame kept. */
+const FRAMES_SHOWN = 20;
+const MAX_FRAME_CHARS = 300;
+
+/** One socket's latest frames, oldest first, each with how long ago. */
+function socketDetail(s: SocketLog, now: number, all = false): string {
+  const frames = all ? s.frames : s.frames.slice(-FRAMES_SHOWN);
+  const total = s.sent + s.received;
+  const more =
+    total > frames.length
+      ? `Last ${frames.length} of ${total} frames${all ? "" : `; all=true shows the last ${MAX_WS_FRAMES}`}.`
+      : "";
+  return [
+    socketLine(s).trim(),
+    ...frames.map(
+      (f) =>
+        `  ${f.dir === "sent" ? "↑" : "↓"} ${Math.round((now - f.at) / 1000)}s ago ${oneLine(f.data, MAX_FRAME_CHARS)}`,
+    ),
+    frames.length ? "" : "  No frames yet.",
+    more,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 async function networkTool(args: Args): Promise<string> {
   const tab = resolveTab(args.tab);
-  const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
+  const { entriesByTab, socketsByTab } = useNetworkStore.getState();
+  const rows = entriesByTab[tab.id] ?? [];
+  const sockets = socketsByTab[tab.id] ?? [];
   if (typeof args.id === "string" && args.id) {
+    const ws = sockets.find((s) => s.id === args.id);
+    if (ws) return `${header(tab)}\n${socketDetail(ws, Date.now(), !!args.all)}`;
     const hit = rows.find((n) => n.id === args.id);
     if (!hit) throw new Error(`No request ${args.id} in this tab.`);
     return requestDetail(tab, hit);
   }
-  if (!rows.length) {
+  if (!rows.length && !sockets.length) {
     return `${header(tab)}\nNo requests recorded. Capture starts when an agent connects; requests the page made before that aren't here (failed ones are, in errors).`;
   }
   const match = typeof args.match === "string" ? args.match.toLowerCase() : "";
@@ -1328,12 +1470,18 @@ async function networkTool(args: Args): Promise<string> {
       (!args.failed || isFailedRow(n)) &&
       (!match || n.url.toLowerCase().includes(match)),
   );
+  const ws = sockets.filter(
+    (s) => (!args.failed || s.state === "error") && (!match || s.url.toLowerCase().includes(match)),
+  );
   const rest = shown.length - MAX_ROWS;
   return [
     header(tab),
     ...(shown.length ? shown.slice(-MAX_ROWS).map(netLine) : ["No matching requests."]),
     rest > 0 ? `(${rest} older not shown; narrow with match)` : "",
     "id method status time type url. Pass id for headers and body.",
+    ...(ws.length
+      ? ["WebSockets (↑ sent, ↓ received; pass id for the frames):", ...ws.map(socketLine)]
+      : []),
   ]
     .filter(Boolean)
     .join("\n");
