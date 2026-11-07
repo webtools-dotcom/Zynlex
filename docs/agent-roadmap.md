@@ -25,9 +25,9 @@ Status: **todo** · **doing** · **done**.
 | P9 | **Large output to a file** (snapshot over 300 lines, bodies over 8 KB written to `%TEMP%`, path returned) | Big pages and payloads without blowing the context. | done, untested on Windows |
 | P10 | **Network mocking and header rules for agents** (`mock` add/list/clear through the existing stores) | Test error states and auth without a backend change. ZYNLEX already has both for people. | done, tested on Windows |
 | P11 | **Console at all levels** (`errors` can include log/info on request) | Debug-print driven debugging. | done, tested on Windows |
+| P12 | **Staging hosts** (per-workspace list of non-localhost hosts the agent may use, granted in the UI): an **agent** checkbox on each environment in Settings → Environments; never production | Test what's deployed, not only localhost. | done, tested on Windows |
 | P13 | **Playwright MCP's most-reported failures**: downloads (now reported in the act reply), shadow DOM, hidden → visible (hidden elements now named as hidden, not stale), icon-button names, several agents at once. See [agent-interface.md](agent-interface.md#snapshot-and-refs). | Where agents most often get stuck with the other tool. | done, tested on Windows |
 | P14 | **Who serves a port**: `tabs` names the process, project folder and uptime behind each localhost tab and idle dev server, so an agent tells its own server from a stale one. Show, never kill. See [agent-interface.md](agent-interface.md#who-serves-a-port). | Agents debug the wrong server when an old one sits on a nearby port. | done, tested on Windows |
-| P12 | **Staging hosts** (per-workspace list of non-localhost hosts the agent may use, granted in the UI): an **agent** checkbox on each environment in Settings → Environments; never production | Test what's deployed, not only localhost. | done, tested on Windows |
 
 Not planned: headless mode, parallel browsers, CI runs, cross-browser
 (Firefox/WebKit). Those are Playwright's and Cloudflare's job; ZYNLEX is the
