@@ -130,6 +130,16 @@ describe("actDid and outcomeOf", () => {
     ).toBe("→ http://localhost:5173/terms · opened a tab · no new errors");
     expect(
       outcomeOf(
+        lines(
+          'Clicked button "Export" [e6]',
+          "Downloaded orders.json to C:\\Downloads\\orders.json",
+          "Page unchanged.",
+          "No new errors or failed requests.",
+        ),
+      ),
+    ).toBe("downloaded orders.json · page unchanged · no new errors");
+    expect(
+      outcomeOf(
         lines('Clicked button "Delete" [e4]', 'A confirm dialog is open: "Sure?". The page'),
       ),
     ).toBe("confirm dialog open");
