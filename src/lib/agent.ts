@@ -66,6 +66,7 @@ import {
 } from "@/stores/agentActivity";
 import { useAgentFlagsStore } from "@/stores/agentFlags";
 import { type ConsoleEntry, useConsoleStore } from "@/stores/console";
+import { type DownloadItem, useDownloadsStore } from "@/stores/downloads";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
 import { useServersStore } from "@/stores/servers";
 import { useTabsStore } from "@/stores/tabs";
@@ -482,17 +483,42 @@ function popupLines(tab: Tab, mark: number | undefined): string[] {
   });
 }
 
+/** Taken before an action, so its reply can name the tabs and downloads it started. */
+interface ActionMark {
+  popups: number;
+  at: number;
+}
+
+const actionMark = (): ActionMark => ({ popups: popupMark(), at: Date.now() });
+
 /**
- * What happened after an action: settle note, URL change, tabs it opened (when
- * given the `popupMark` from before it), page diff, new problems.
+ * Downloads `tabId` started since `since`, oldest first. A click on an export
+ * button changes nothing in the page; this line is its whole result.
  */
-async function consequences(tab: Tab, urlBefore: string, mark?: number): Promise<string[]> {
+export function downloadLines(items: DownloadItem[], tabId: string, since: number): string[] {
+  return items
+    .filter((d) => d.tabId === tabId && d.startedAt >= since)
+    .reverse()
+    .map((d) =>
+      d.status === "done"
+        ? `Downloaded ${d.filename} to ${d.path}`
+        : d.status === "failed"
+          ? `Download failed: ${d.filename} (${d.url})`
+          : `Downloading ${d.filename} to ${d.path} (not finished when this reply was sent)`,
+    );
+}
+
+/**
+ * What happened after an action: settle note, URL change, tabs and downloads
+ * it started (when given the mark from before it), page diff, new problems.
+ */
+async function consequences(tab: Tab, urlBefore: string, mark?: ActionMark): Promise<string[]> {
   const unsettled = await settle(tab.id);
   const now = useTabsStore.getState().tabs[tab.id] ?? tab;
   if (dialogs.has(tab.id)) {
     // The page is paused: its tree can't be read until the dialog is answered.
     const problems = newProblems(now);
-    return [dialogNote(tab.id) as string, ...popupLines(tab, mark), ...problems];
+    return [dialogNote(tab.id) as string, ...started(tab, mark), ...problems];
   }
   const before = snapshots.get(tab.id);
   const after = await takePage(tab.id);
@@ -509,10 +535,17 @@ async function consequences(tab: Tab, urlBefore: string, mark?: number): Promise
   return [
     ...(unsettled ? [unsettled] : []),
     ...(now.url !== urlBefore ? [`Navigated to ${now.url}`] : []),
-    ...popupLines(tab, mark),
+    ...started(tab, mark),
     ...page,
     ...(problems.length ? problems : ["No new errors or failed requests."]),
   ];
+}
+
+/** Tabs and downloads an action started. */
+function started(tab: Tab, mark: ActionMark | undefined): string[] {
+  if (!mark) return [];
+  const downloads = useDownloadsStore.getState().items;
+  return [...popupLines(tab, mark.popups), ...downloadLines(downloads, tab.id, mark.at)];
 }
 
 async function checkTool(args: Args): Promise<string> {
@@ -754,6 +787,9 @@ async function aim(
     cover = await callOn(tabId, backendNodeId, HIT_TEST, p);
   }
   if (cover) {
+    // visibility:hidden lets clicks through to what's behind: not a cover.
+    const why = await hiddenWhy(tabId, backendNodeId);
+    if (why && why !== "gone") throw hiddenError(backendNodeId, why);
     throw new Error(
       `e${backendNodeId} is covered by ${cover} at its centre, so a ${verb} would land on that instead. Nothing was done.`,
     );
@@ -817,6 +853,8 @@ async function drag(tabId: string, from: number, to: number): Promise<void> {
   const q = await centre(tabId, to);
   const cover = await callOn(tabId, to, HIT_TEST, q);
   if (cover) {
+    const why = await hiddenWhy(tabId, to);
+    if (why && why !== "gone") throw hiddenError(to, why);
     throw new Error(
       `Drop target e${to} is covered by ${cover} at its centre (or off screen with the source in view). Nothing was dragged.`,
     );
@@ -881,19 +919,61 @@ const CHOOSE_OPTION = `function (v) {
 }`;
 
 /**
+ * In-page: why input can't reach the element though it's still in the page,
+ * "" when nothing stops it, "gone" when it was removed. checkVisibility sees
+ * display:none on any ancestor, shadow hosts included.
+ */
+export const HIDDEN = `function () {
+  if (!this.isConnected) return "gone";
+  const el = this.nodeType === 1 ? this : this.parentElement;
+  if (!el || !el.checkVisibility) return "";
+  if (!el.checkVisibility()) return "display: none, on it or an ancestor";
+  if (!el.checkVisibility({ visibilityProperty: true })) return "visibility: hidden";
+  const r = el.getBoundingClientRect();
+  return r.width && r.height ? "" : "zero size";
+}`;
+
+/** HIDDEN for a ref; "gone" when it can't even be resolved. */
+async function hiddenWhy(tabId: string, backendNodeId: number): Promise<string> {
+  return callOn(tabId, backendNodeId, HIDDEN).then(
+    (v) => (typeof v === "string" ? v : ""),
+    () => "gone",
+  );
+}
+
+const hiddenError = (backendNodeId: number, why: string) =>
+  new Error(
+    `e${backendNodeId} is hidden (${why}): it's in the page, but input can't reach it. Nothing was done. Do what shows it first, or wait_for its text.`,
+  );
+
+/**
  * WebView2 reports every CDP error as E_INVALIDARG, dropping CDP's own
- * message; for an element-scoped call that almost always means the node is
- * gone (re-render, navigation, reload). Then the agent gets the current page
- * instead; any other error is passed on.
+ * message. For an element-scoped call that means the node is gone
+ * (re-render, navigation, reload), hidden (display:none has no box to aim
+ * at), or refused the action (focus on something that takes none), so ask
+ * the page which. Gone: the agent gets the current page instead. Any other
+ * error is passed on.
  */
 async function rethrowStale(
   tab: Tab,
   ref: number | null,
   err: unknown,
   to: number | null = null,
+  action = "",
 ): Promise<never> {
   const msg = err instanceof Error ? err.message : String(err);
   if (ref != null && /0x80070057|no node|could not find node/i.test(msg)) {
+    const ids = to == null ? [ref] : [ref, to];
+    const whys = await Promise.all(ids.map((id) => hiddenWhy(tab.id, id)));
+    const hidden = whys.findIndex((w) => w && w !== "gone");
+    if (hidden >= 0) throw hiddenError(ids[hidden], whys[hidden]);
+    if (!whys.includes("gone")) {
+      const focus =
+        action === "type" || action === "press" ? " Does it take focus (a text field)?" : "";
+      throw new Error(
+        `The browser refused ${action || "that"} on e${ref}, which is in the page and visible.${focus} Nothing was done.`,
+      );
+    }
     const fresh = await takePage(tab.id);
     snapshots.set(tab.id, fresh);
     const which = to == null ? `e${ref}` : `e${ref} or e${to}`;
@@ -966,7 +1046,7 @@ async function answerDialog(tab: Tab, accept: boolean, text: string): Promise<st
   const d = dialogs.get(tab.id);
   if (!d) throw new Error("No dialog is open in this tab.");
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
-  const mark = popupMark();
+  const mark = actionMark();
   await tabCdp(tab.id, "Page.handleJavaScriptDialog", {
     accept,
     ...(d.type === "prompt" && accept ? { promptText: text } : {}),
@@ -1065,7 +1145,7 @@ async function doStep(tab: Tab, st: Step, labelOf: (r: number | null) => string)
       await upload(tab.id, ref as number, files);
     }
   } catch (err) {
-    await rethrowStale(tab, ref, err, to);
+    await rethrowStale(tab, ref, err, to, action);
   }
   return action === "type"
     ? `Typed ${JSON.stringify(text)} into ${label}`
@@ -1126,7 +1206,7 @@ async function actTool(args: Args): Promise<string> {
           .find((l) => l.includes(`[e${r}]`))
           ?.trim() ?? `e${r}`);
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
-  const mark = popupMark();
+  const mark = actionMark();
   const did: string[] = [];
   for (const [i, st] of steps.entries()) {
     if (i > 0) {

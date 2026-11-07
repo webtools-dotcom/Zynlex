@@ -8,11 +8,13 @@ export interface DownloadItem {
   path: string;
   status: "active" | "done" | "failed";
   startedAt: number;
+  /** The tab that started it (absent on items saved before this was kept). */
+  tabId?: string;
 }
 
 interface DownloadsStore {
   items: DownloadItem[];
-  start: (url: string, destination: string) => void;
+  start: (url: string, destination: string, tabId?: string) => void;
   finish: (url: string, path: string | null, success: boolean) => void;
   clear: () => void;
 }
@@ -28,7 +30,7 @@ export const useDownloadsStore = create<DownloadsStore>()(
     (set) => ({
       items: [],
 
-      start: (url, destination) =>
+      start: (url, destination, tabId) =>
         set((s) => ({
           items: [
             {
@@ -38,6 +40,7 @@ export const useDownloadsStore = create<DownloadsStore>()(
               path: destination,
               status: "active" as const,
               startedAt: Date.now(),
+              tabId,
             },
             ...s.items,
           ],

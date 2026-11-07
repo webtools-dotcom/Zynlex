@@ -925,8 +925,8 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     const { track, dispose } = tracker();
 
     track(
-      onDownloadStarted(({ url, destination }) => {
-        useDownloadsStore.getState().start(url, destination);
+      onDownloadStarted(({ tabId, url, destination }) => {
+        useDownloadsStore.getState().start(url, destination, tabId);
         useUIStore.getState().pushToast(`Downloading ${destination.split(/[\\/]/).pop()}`, "info");
       }),
     );
