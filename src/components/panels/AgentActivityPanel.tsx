@@ -33,14 +33,27 @@ function CallRow({ call }: { call: AgentCall }) {
         <span className="shrink-0 font-medium text-[var(--color-text-primary)]">{call.tool}</span>
         <span
           className="flex-1 min-w-0 truncate text-[var(--color-text-secondary)]"
-          title={call.summary}
+          title={call.what ? `${call.what}\n${call.summary}` : call.summary}
         >
-          {call.summary}
+          {call.what || call.summary}
         </span>
         <span className="shrink-0 text-micro tabular-nums text-[var(--color-text-disabled)]">
-          {call.ms < 1000 ? `${call.ms} ms` : `${Math.round(call.ms / 1000)} s`}
+          {call.ms < 1000 ? `${call.ms} ms` : `${(call.ms / 1000).toFixed(1)} s`}
         </span>
       </div>
+      {call.why && (
+        <div className="mt-0.5 text-micro italic break-words text-[var(--color-text-muted)]">
+          {call.why}
+        </div>
+      )}
+      {call.outcome && (
+        <div
+          className="mt-0.5 text-micro truncate text-[var(--color-text-secondary)]"
+          title={call.outcome}
+        >
+          {call.outcome}
+        </div>
+      )}
       {call.tabLabel &&
         (open && call.tabId ? (
           <button

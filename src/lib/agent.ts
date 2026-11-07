@@ -57,7 +57,13 @@ import {
   webviewReload,
 } from "@/services/browser";
 import { useAgentStore } from "@/stores/agent";
-import { firstLine, summarizeCall, useAgentActivityStore } from "@/stores/agentActivity";
+import {
+  actDid,
+  firstLine,
+  outcomeOf,
+  summarizeCall,
+  useAgentActivityStore,
+} from "@/stores/agentActivity";
 import { useAgentFlagsStore } from "@/stores/agentFlags";
 import { type ConsoleEntry, useConsoleStore } from "@/stores/console";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
@@ -294,12 +300,15 @@ async function orDialog<T>(tabId: string, p: Promise<T>): Promise<T | typeof DIA
  * Installs (once per document) a MutationObserver in the page and reports the
  * load state and how long the DOM has been still. Runs in the page's world, so
  * the page can see `__zynlexQuiet`. ponytail: an isolated world would hide it.
+ * The agent's own action marks (MARK) coming and going don't count.
  */
-const QUIET_PROBE = `(() => {
+export const QUIET_PROBE = `(() => {
   const k = "__zynlexQuiet";
+  const ours = (m) => m.type === "childList" &&
+    [...m.addedNodes, ...m.removedNodes].every((n) => n.__zynlexMark);
   if (!window[k]) {
     window[k] = { t: performance.now() };
-    new MutationObserver(() => { window[k].t = performance.now(); })
+    new MutationObserver((recs) => { if (!recs.every(ours)) window[k].t = performance.now(); })
       .observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
   }
   return { ready: document.readyState, quietMs: performance.now() - window[k].t };
@@ -637,13 +646,16 @@ async function centre(tabId: string, backendNodeId: number): Promise<{ x: number
  * an iframe, elementFromPoint wants the frame's own, so each enclosing
  * frame's content-box offset is taken off.
  */
-const HIT_TEST = `function (p) {
-  let x = p.x, y = p.y;
-  for (let w = this.ownerDocument.defaultView; w && w.frameElement; w = w.parent) {
+/** In-page JS: takes each enclosing frame's content-box offset off `x`, `y`. */
+const INTO_FRAME = `for (let w = this.ownerDocument.defaultView; w && w.frameElement; w = w.parent) {
     const f = w.frameElement, r = f.getBoundingClientRect(), s = getComputedStyle(f);
     x -= r.left + f.clientLeft + parseFloat(s.paddingLeft);
     y -= r.top + f.clientTop + parseFloat(s.paddingTop);
-  }
+  }`;
+
+const HIT_TEST = `function (p) {
+  let x = p.x, y = p.y;
+  ${INTO_FRAME}
   const root = this.getRootNode();
   const t = (root.elementFromPoint ? root : document).elementFromPoint(x, y);
   if (!t) return "nothing (it is off screen)";
@@ -651,6 +663,72 @@ const HIT_TEST = `function (p) {
   const name = (t.getAttribute("aria-label") || t.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 40);
   return t.tagName.toLowerCase() + (t.id ? "#" + t.id : "") + (name ? ' "' + name + '"' : "");
 }`;
+
+/** How long a mark shows, and how long an action waits after drawing it so the developer sees it first. */
+const MARK_MS = 1200;
+const MARK_LEAD_MS = 250;
+
+/**
+ * Draws what the agent is about to do on the element (`this`): an outline, a
+ * label ("agent: click") and, given the input point (top-page viewport), a
+ * dot where the pointer goes. Shown in the element's own document, so the
+ * point gets the frame offsets taken off. Fixed-position in a closed shadow
+ * root on <html>: no layout shift, outside body.innerText, aria-hidden so the
+ * snapshot doesn't see it, pointer-events none so input and elementFromPoint
+ * go through it. Fades by CSS (no DOM changes) and removes itself; the settle
+ * probe ignores the host coming and going. False when the element has no box.
+ */
+export const MARK = `function (o) {
+  if (!this.getBoundingClientRect) return false;
+  const r = this.getBoundingClientRect();
+  if (!r.width && !r.height) return false;
+  const doc = this.ownerDocument, C = "rgb(111,168,220)";
+  const part = (css) => { const e = doc.createElement("div"); e.style.cssText = css; return e; };
+  const host = doc.createElement("zynlex-agent-mark");
+  host.__zynlexMark = true;
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText = "all:initial;position:fixed;inset:0;pointer-events:none;z-index:2147483647";
+  const root = host.attachShadow({ mode: "closed" });
+  const style = doc.createElement("style");
+  style.textContent = "div{position:fixed;pointer-events:none;box-sizing:border-box;" +
+    "animation:f " + o.ms + "ms linear forwards}@keyframes f{0%,75%{opacity:1}100%{opacity:0}}";
+  root.append(style,
+    part("left:" + r.left + "px;top:" + r.top + "px;width:" + r.width + "px;height:" + r.height + "px;" +
+      "outline:2px solid " + C + ";outline-offset:2px;background:rgba(111,168,220,.15);border-radius:3px"));
+  const tag = part("left:" + Math.max(0, r.left) + "px;top:" + (r.top < 24 ? r.bottom + 6 : r.top - 22) + "px;" +
+    "font:600 11px/16px system-ui,sans-serif;color:#0b1a29;background:" + C + ";" +
+    "padding:0 6px;border-radius:3px;white-space:nowrap");
+  tag.textContent = o.label;
+  root.append(tag);
+  if (o.x != null) {
+    let x = o.x, y = o.y;
+    ${INTO_FRAME}
+    root.append(part("left:" + (x - 8) + "px;top:" + (y - 8) + "px;width:16px;height:16px;" +
+      "border-radius:50%;background:" + C + ";border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"));
+  }
+  doc.documentElement.append(host);
+  doc.defaultView.setTimeout(() => host.remove(), o.ms);
+  return true;
+}`;
+
+/** Draws the mark; never fails the action (a stale ref fails in the action itself). */
+async function drawMark(
+  tabId: string,
+  backendNodeId: number,
+  label: string,
+  p?: { x: number; y: number },
+): Promise<boolean> {
+  return callOn(tabId, backendNodeId, MARK, { label, ms: MARK_MS, ...p }).then(
+    (drawn) => drawn === true,
+    () => false,
+  );
+}
+
+/** Shows the mark on an element that takes keyboard or value input, then gives the developer a moment to see it. */
+async function showMark(tabId: string, backendNodeId: number, label: string): Promise<void> {
+  await tabCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId }).catch(() => {});
+  if (await drawMark(tabId, backendNodeId, label)) await sleep(MARK_LEAD_MS);
+}
 
 /**
  * The point to send mouse input to: the element's centre, once the element is
@@ -683,9 +761,25 @@ async function aim(
   return p;
 }
 
+/**
+ * `aim`, with the mark shown first. Aims again after the pause: something
+ * still moving (a CSS transition doesn't count against settle) may be
+ * elsewhere by then, and input goes where the element is now.
+ */
+async function aimShown(
+  tabId: string,
+  backendNodeId: number,
+  verb: string,
+): Promise<{ x: number; y: number }> {
+  const p = await aim(tabId, backendNodeId, verb);
+  if (!(await drawMark(tabId, backendNodeId, `agent: ${verb}`, p))) return p;
+  await sleep(MARK_LEAD_MS);
+  return aim(tabId, backendNodeId, verb);
+}
+
 /** A real mouse click at the element's centre. */
 async function click(tabId: string, backendNodeId: number): Promise<void> {
-  const { x, y } = await aim(tabId, backendNodeId, "click");
+  const { x, y } = await aimShown(tabId, backendNodeId, "click");
   const at = { x, y, button: "left", clickCount: 1 };
   await sendInput(tabId, "Input.dispatchMouseEvent", [
     { type: "mouseMoved", x, y },
@@ -696,7 +790,7 @@ async function click(tabId: string, backendNodeId: number): Promise<void> {
 
 /** Moves the mouse onto the element's centre (hover menus, tooltips). */
 async function hover(tabId: string, backendNodeId: number): Promise<void> {
-  const { x, y } = await aim(tabId, backendNodeId, "hover");
+  const { x, y } = await aimShown(tabId, backendNodeId, "hover");
   await sendInput(tabId, "Input.dispatchMouseEvent", [{ type: "mouseMoved", x, y }]);
 }
 
@@ -719,7 +813,7 @@ export function dragPath(
  */
 async function drag(tabId: string, from: number, to: number): Promise<void> {
   await tabCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId: to });
-  const p = await aim(tabId, from, "drag");
+  const p = await aimShown(tabId, from, "drag");
   const q = await centre(tabId, to);
   const cover = await callOn(tabId, to, HIT_TEST, q);
   if (cover) {
@@ -727,6 +821,7 @@ async function drag(tabId: string, from: number, to: number): Promise<void> {
       `Drop target e${to} is covered by ${cover} at its centre (or off screen with the source in view). Nothing was dragged.`,
     );
   }
+  await drawMark(tabId, to, "agent: drop", q);
   const held = { button: "left", buttons: 1 };
   await sendInput(tabId, "Input.dispatchMouseEvent", [
     { type: "mouseMoved", ...p },
@@ -942,6 +1037,10 @@ async function doStep(tab: Tab, st: Step, labelOf: (r: number | null) => string)
   }
   const label = labelOf(ref);
   try {
+    // Mouse actions mark their element as they aim (aimShown).
+    if (ref != null && ["type", "select", "press", "upload"].includes(action)) {
+      await showMark(tab.id, ref, `agent: ${action === "press" ? `press ${text}` : action}`);
+    }
     if (action === "click") {
       await click(tab.id, ref as number);
     } else if (action === "hover") {
@@ -1252,6 +1351,10 @@ interface LayoutMetrics {
 /** The visible area, the whole page (`full`), or one element (`ref`), as a PNG in %TEMP%\zynlex-agent. */
 async function screenshotTool(args: Args): Promise<string> {
   const tab = resolveTab(args.tab);
+  // The agent wants the page, not its own action marks. ponytail: top document only.
+  await tabCdp(tab.id, "Runtime.evaluate", {
+    expression: `document.querySelectorAll("zynlex-agent-mark").forEach((m) => m.remove())`,
+  }).catch(() => {});
   if (args.ref == null) {
     const path = await captureScreenshot(tab.id, args.full ? "agent-full" : "agent");
     return `${header(tab)}\nSaved ${path}${args.full ? " (whole page)" : ""}`;
@@ -1600,6 +1703,9 @@ function callTab(tool: string, args: Args): { id: string | null; label: string }
   }
 }
 
+/** Tools whose reply ends with what the call caused (consequences, or new problems for `check`). */
+const TELLS_OUTCOME = new Set(["act", "check", "open", "wait_for", "viewport"]);
+
 /** Runs a call and records it in the activity list (roadmap S6). */
 export async function handleAgentCall(
   tool: string,
@@ -1628,6 +1734,9 @@ export async function handleAgentCall(
       tabId: tab.id,
       tabLabel: tab.label,
       summary: summarizeCall(args),
+      what: ok && tool === "act" ? actDid(text) : "",
+      outcome: ok && TELLS_OUTCOME.has(tool) && !paused ? outcomeOf(text) : "",
+      why: typeof args.why === "string" ? firstLine(args.why) : "",
       // A takeover note leads the reply; the error is the line after it.
       error: ok ? null : firstLine(tookOver ? text.split("\n").slice(1).join("\n") : text),
       ms: Date.now() - at,
