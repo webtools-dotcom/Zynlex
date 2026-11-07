@@ -26,6 +26,14 @@ In scope: the Tauri command surface (`src-tauri/src/commands/`), the IPC
 boundary between the frontend and the Rust backend, header rules, mock
 responses, cookie handling, and the API Tester's outbound request path.
 
+Also in scope: the AI-agent bridge. That is the `zynlex-mcp` server, the
+`\\.\pipe\zynlex-agent` named pipe it uses (remote clients are rejected), and
+the agent scope rule: agents may use `localhost` tabs and staging environments
+the developer ticks, never production. A way for an agent to reach a tab or
+host outside that scope, to act while the developer has paused it, or for page
+content to be treated as instructions rather than data, is a high-priority
+report. See [docs/agent-interface.md](docs/agent-interface.md).
+
 Out of scope: vulnerabilities in WebView2 itself, or in sites the browser
 merely renders.
 
