@@ -41,6 +41,7 @@ import {
 import { forgetReported, isFailedRow, report, tabProblems } from "@/lib/errorGroups";
 import { recordingTool } from "@/lib/recorder";
 import { closeTab, openTab } from "@/lib/tabActions";
+import { isLoopbackUrl } from "@/lib/url";
 import {
   type AgentStatus,
   agentReady,
@@ -51,7 +52,9 @@ import {
   onAgentRequest,
   onAgentStatus,
   onDialog,
+  type PortOwner,
   pendingRequests,
+  portOwners,
   revealWindow,
   tabCdp,
   webviewReload,
@@ -176,27 +179,78 @@ const showPage = (tab: Tab, text: string) =>
     " Or pass within=<ref of a landmark> to see one part.",
   );
 
-function tabsTool(args: Args = {}): string {
+/** How long ago, roughly: "40s", "12m", "3h", "2d". */
+function age(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
+
+/**
+ * Who serves a port, so an agent can tell its own project's dev server from
+ * a stale one: `node.exe in D:\work\shop (pid 4120, up 2h)`. Several when
+ * IPv4 and IPv6 are held by different processes.
+ */
+export function ownerText(owners: PortOwner[], now: number): string {
+  return owners
+    .map((o) => {
+      if (!o.name) return `pid ${o.pid} (another user's or elevated, can't read it)`;
+      const up = o.startedMs == null ? "" : `, up ${age(now - o.startedMs)}`;
+      return `${o.name}${o.cwd ? ` in ${o.cwd}` : ""} (pid ${o.pid}${up})`;
+    })
+    .join("; ");
+}
+
+/** The port a URL's server listens on; null for one not on this machine. */
+function localPort(url: string): number | null {
+  if (!isLoopbackUrl(url)) return null;
+  try {
+    const u = new URL(url);
+    return Number(u.port || (u.protocol === "https:" ? 443 : 80));
+  } catch {
+    return null;
+  }
+}
+
+async function tabsTool(args: Args = {}): Promise<string> {
   if (typeof args.close === "string" && args.close) return closeAgentTab(args.close);
   const tabs = scopedTabs();
   const counts = useConsoleStore.getState().countsByTab;
   const activeId = getActiveTabId();
-  const lines = tabs.map((t) => {
+  const open = new Set(tabs.map((t) => new URL(t.url).port));
+  const servers = useServersStore
+    .getState()
+    .servers.filter((s) => s.isAlive && !open.has(String(s.port)));
+  const ports = [...tabs.map((t) => localPort(t.url)), ...servers.map((s) => s.port)];
+  // Show, never kill. A failed lookup just means no "served by" lines.
+  const owners = await portOwners([...new Set(ports.filter((p): p is number => p != null))]).catch(
+    () => [] as PortOwner[],
+  );
+  const now = Date.now();
+  const servedBy = (port: number | null) => {
+    const mine = owners.filter((o) => o.port === port);
+    return mine.length ? [`    served by ${ownerText(mine, now)}`] : [];
+  };
+  const lines = tabs.flatMap((t) => {
     const c = counts[t.id];
     const problems = c && c.errors + c.failed ? ` — ${c.errors} errors, ${c.failed} failed` : "";
     const yours = isAgentOpened(t.id) ? " (opened by you)" : "";
-    return `${t.id === activeId ? "*" : " "} ${header(t)}${yours}${problems}`;
+    return [
+      `${t.id === activeId ? "*" : " "} ${header(t)}${yours}${problems}`,
+      ...servedBy(localPort(t.url)),
+    ];
   });
-  const open = new Set(tabs.map((t) => new URL(t.url).port));
-  const idle = useServersStore
-    .getState()
-    .servers.filter((s) => s.isAlive && !open.has(String(s.port)))
-    .map((s) => `  ${s.protocol}://localhost:${s.port}${s.title ? ` "${s.title}"` : ""}`);
+  const idle = servers.flatMap((s) => [
+    `  ${s.protocol}://localhost:${s.port}${s.title ? ` "${s.title}"` : ""}`,
+    ...servedBy(s.port),
+  ]);
   const hidden = Object.keys(useTabsStore.getState().tabs).length - tabs.length;
   return [
     tabs.length ? "Tabs you can use (* = active):" : `No tabs you can use (${SCOPE}).`,
     ...lines,
-    ...section("dev servers without a tab", idle),
+    ...(servers.length ? [`${servers.length} dev servers without a tab:`, ...idle] : []),
     hidden ? `${hidden} other tabs hidden (out of scope).` : "",
   ]
     .filter(Boolean)
@@ -208,7 +262,7 @@ function tabsTool(args: Args = {}): string {
  * caused). The developer's own tabs are refused. Searches only the agent's
  * tabs, so an id prefix reveals nothing about other tabs.
  */
-function closeAgentTab(arg: string): string {
+async function closeAgentTab(arg: string): Promise<string> {
   const all = Object.values(useTabsStore.getState().tabs);
   const hits = all.filter((t) => isAgentOpened(t.id) && t.id.startsWith(arg));
   if (hits.length > 1) throw new Error(`Tab id "${arg}" is ambiguous.`);
@@ -224,7 +278,7 @@ function closeAgentTab(arg: string): string {
   closeTab(t.id);
   forgetAgentTab(t.id);
   for (const m of [snapshots, cursors, emulated, dialogs]) m.delete(t.id);
-  return `Closed [${shortId(t)}] ${t.url}\n${tabsTool()}`;
+  return `Closed [${shortId(t)}] ${t.url}\n${await tabsTool()}`;
 }
 
 /** Per tab, when its problems were last reported (for "Since last check Ns ago"). */

@@ -109,7 +109,7 @@ call to find out.
 
 | Tool | Does | Status |
 |---|---|---|
-| `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab; `close` closes a tab the agent opened | Built |
+| `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab, each with the process serving it (see [Who serves a port](#who-serves-a-port)); `close` closes a tab the agent opened | Built |
 | `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors | Built |
 | `check` | Settles, then new errors + failed requests since the last report, grouped (see [Error grouping](#error-grouping)); `reload` reloads first | Built |
 | `errors` | Every error and failed request on the current page, plus any from earlier page loads not yet shown, grouped; `level` adds `warning`, `info` or `log` (each includes the levels above it; newest 50 log/info lines) | Built |
@@ -122,6 +122,34 @@ call to find out.
 | `wait_for` | Polls every 250 ms until all given conditions hold: `text` appears, `gone` disappears (full snapshot + `body.innerText`), `url` contains; `timeout` s (default 10, max 30); says what matched or what's pending, then the consequences | Built, untested on Windows |
 | `mock` | `add` a canned response (or, with `header`+`value`, a request-header rule), `list`, `remove` by id, `clear`, through the panels' stores | Built |
 | `recording` | The developer's latest recorded steps (click/type/select/press/upload, with refs) and what each caused; `playwright: true` gives them as a Playwright test instead. See [Recorded steps](#recorded-steps) | Done, tested on Windows |
+
+### Who serves a port
+
+An agent working in `D:\work\shop` needs to know whether `localhost:5173` is
+its own dev server or one left running from another checkout, and old
+servers often sit on the next port over with the same title. So `tabs` names
+the process under each localhost tab and each dev server without a tab:
+
+```
+* http://localhost:5173/ "Shop" [630846b4]
+    served by node.exe in D:\work\shop (pid 13680, up 2h)
+1 dev servers without a tab:
+  http://localhost:5174 "Shop"
+    served by node.exe in D:\old\shop (pid 25812, up 3d)
+```
+
+`port_owners` in [ports.rs](../src-tauri/src/commands/ports.rs):
+`GetExtendedTcpTable` (IPv4 and IPv6 listeners) gives port → pid;
+`QueryFullProcessImageNameW` the executable, `GetProcessTimes` the start
+time (both need only `PROCESS_QUERY_LIMITED_INFORMATION`); the working
+directory is read from the process's PEB (`ProcessParameters` →
+`CurrentDirectory`), since Windows has no API for another process's working
+directory. That needs `PROCESS_VM_READ`, so a process of another user or an
+elevated one shows as `pid 7 (another user's or elevated, can't read it)`.
+When IPv4 and IPv6 on one port are held by different processes, both are
+listed. Read only: nothing stops or kills a process. A tab whose server isn't
+running gets no line. Ceiling: a 32-bit process's folder comes from its
+64-bit PEB copy, which may be stale.
 
 ### Recorded steps
 
