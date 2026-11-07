@@ -68,10 +68,12 @@ import { withoutAgentRules } from "@/stores/workspaceRules";
 import type { Tab } from "@/types";
 import {
   cut,
+  downloadLines,
   dragPath,
   evalSource,
   findDevice,
   formatEvalValue,
+  HIDDEN,
   handleAgentCall,
   historyTarget,
   listenForAgents,
@@ -833,5 +835,58 @@ describe("take over (pause) and activity", () => {
     const [c] = useAgentActivityStore.getState().calls;
     expect(c.note).toBe("paused, not run");
     expect(useAgentActivityStore.getState().touched).toEqual({});
+  });
+});
+
+describe("downloads an action started", () => {
+  const item = (tabId: string, startedAt: number, status: "active" | "done" | "failed") => ({
+    id: String(startedAt),
+    url: "http://localhost:5173/report.csv",
+    filename: "report.csv",
+    path: "C:\\Downloads\\report.csv",
+    status,
+    startedAt,
+    tabId,
+  });
+
+  it("names this tab's downloads since the action, oldest first, with where they went", () => {
+    // The store keeps the newest first.
+    const items = [
+      item("t1", 30, "active"),
+      item("t2", 25, "done"),
+      item("t1", 20, "done"),
+      item("t1", 5, "done"),
+    ];
+    expect(downloadLines(items, "t1", 10)).toEqual([
+      "Downloaded report.csv to C:\\Downloads\\report.csv",
+      "Downloading report.csv to C:\\Downloads\\report.csv (not finished when this reply was sent)",
+    ]);
+    expect(downloadLines([item("t1", 20, "failed")], "t1", 10)).toEqual([
+      "Download failed: report.csv (http://localhost:5173/report.csv)",
+    ]);
+    expect(downloadLines(items, "t3", 0)).toEqual([]);
+  });
+});
+
+describe("hidden elements", () => {
+  const why = (el: object) => new Function(`return ${HIDDEN}`)().call(el);
+  const el = (o: { shown?: boolean; visible?: boolean; w?: number; connected?: boolean }) => ({
+    isConnected: o.connected ?? true,
+    nodeType: 1,
+    checkVisibility: (opts?: { visibilityProperty?: boolean }) =>
+      opts?.visibilityProperty ? (o.shown ?? true) && (o.visible ?? true) : (o.shown ?? true),
+    getBoundingClientRect: () => ({ width: o.w ?? 10, height: 10 }),
+  });
+
+  it("tells hidden from gone, so the agent isn't sent to re-snapshot for nothing", () => {
+    expect(why(el({}))).toBe("");
+    expect(why(el({ connected: false }))).toBe("gone");
+    expect(why(el({ shown: false }))).toBe("display: none, on it or an ancestor");
+    expect(why(el({ visible: false }))).toBe("visibility: hidden");
+    expect(why(el({ w: 0 }))).toBe("zero size");
+    // A text node asks its element.
+    expect(why({ isConnected: true, nodeType: 3, parentElement: el({ visible: false }) })).toBe(
+      "visibility: hidden",
+    );
   });
 });

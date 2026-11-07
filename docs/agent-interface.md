@@ -311,7 +311,14 @@ whole page when the diff would be longer than it.
 
 A stale ref fails with `Stale ref e8: that element is gone` plus the current
 page. WebView2 reports every CDP error as `E_INVALIDARG` and drops CDP's own
-message, so for an element-scoped call that HRESULT is read as "node gone".
+message, so on that HRESULT the element itself is asked (`HIDDEN` in
+[agent.ts](../src/lib/agent.ts)): removed means stale; still in the page but
+`display: none` (on it or an ancestor, through shadow hosts) or
+`visibility: hidden` gives `e8 is hidden (visibility: hidden): it's in the
+page, but input can't reach it. Nothing was done.`; in the page and visible
+gives `The browser refused type on e8…` (focus on something that takes none).
+A click on a `visibility: hidden` element used to say it was covered by
+whatever is behind it; that's checked the same way now.
 
 `steps` exists because agents send one tool call per turn, and each turn
 re-sends Claude Code's whole context (about 17k tokens in the benchmark):
@@ -339,6 +346,31 @@ before anything is pressed). `back`/`forward` read `Page.getNavigationHistory`
 and go to the neighbouring entry with `Page.navigateToHistoryEntry`, refusing
 an entry that isn't on localhost. An action brings its tab to the front so the
 developer sees it happen.
+
+**Downloads.** An action that starts a download (a `download` link, a blob
+"Export" button) says so in its reply, after the action line:
+`Downloaded report.csv to C:\Users\me\Downloads\report.csv`, or `Downloading
+… (not finished when this reply was sent)`, or `Download failed: …`. Taken
+from the Downloads store (each item now keeps its tab), for downloads that
+tab started since the action began. Nothing about a download stops or
+crashes the agent bridge.
+
+Checked on Windows (2026-11-07, fixtures in
+`D:\PROJECT-TESTINGS\agent-robustness`), against the failures most reported
+for Playwright MCP:
+
+| Case | Result |
+|---|---|
+| Click that starts a download (link, blob) | Works; now reported in the reply (was silent: `Page unchanged.`) |
+| Shadow DOM: open, nested, closed roots | Snapshot shows the controls; type and click work (the AX tree crosses shadow roots, refs are backend node ids) |
+| Hidden → visible | A control revealed by a click shows in that click's diff; `wait_for` catches a later one. Acting on a hidden one now says hidden (was "stale" or "covered") |
+| Button name with an `aria-hidden` SVG | `button "Save"`; `aria-label` wins; an SVG `<title>` counts (`"star Favourite"`), as accessible-name rules say; an icon-only button with no name is `button [e41]` |
+| Several agents at once | Each `zynlex-mcp` gets its own pipe instance; 3 clients × 12 interleaved calls all got their own replies, concurrently |
+
+Ceiling with several agents: per-tab state (the last snapshot a diff is
+taken against, which errors were already reported) is shared, so two agents
+on the **same** tab see each other's changes in their diffs and only the
+first to look gets a new error. Agents on different tabs don't interfere.
 
 Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`);
 cross-origin iframes aren't walked; a snapshot over 300 lines spills to a
