@@ -347,6 +347,24 @@ and go to the neighbouring entry with `Page.navigateToHistoryEntry`, refusing
 an entry that isn't on localhost. An action brings its tab to the front so the
 developer sees it happen.
 
+**Action marks.** Before each element action (in `steps` too) the developer
+sees what's coming: an outline on the element, a label (`agent: click`,
+`agent: type`, `agent: press Enter`…) and, for click/hover/drag, a dot where
+the pointer goes (`agent: drop` on a drag's target). The action waits 250 ms
+(`MARK_LEAD_MS`) so the mark is seen first; the mark fades and removes itself
+after 1.2 s. It's `MARK` in [agent.ts](../src/lib/agent.ts), run with
+`Runtime.callFunctionOn` on the element (app-initiated, no page IPC; not the
+Overlay domain, which broke clicks for the flag picker). It draws in a closed
+shadow root on a `position: fixed`, `pointer-events: none`, `aria-hidden`
+host on `<html>`: no layout shift, nothing in the snapshot or
+`body.innerText`, and input and the covered-element hit test go straight
+through it. It fades by CSS, so the only DOM changes are the host coming and
+going, which the settle probe ignores. Mouse actions aim again after the
+pause, so an element still moving (a CSS transition doesn't hold up settle)
+is hit where it is then. `screenshot` removes marks first. An element with no
+box (a hidden file input) gets no mark and no wait. Ceiling: `screenshot`
+clears marks in the top document only.
+
 **Downloads.** An action that starts a download (a `download` link, a blob
 "Export" button) says so in its reply, after the action line:
 `Downloaded report.csv to C:\Users\me\Downloads\report.csv`, or `Downloading
@@ -528,8 +546,18 @@ agent; the indicator then shows `❚❚ Agent paused 12 s · 1 waiting` and
 
 **Activity.** Every call the dispatcher answers is recorded, newest first, last
 50 (`MAX_CALLS`): time, tool, tab (`[short id] url`, a link while the tab is
-open), the arguments on one line (`action=click ref=e12`), duration, the first
-line of any error, and `ran after takeover` / `paused, not run`. It's the
+open), what it acted on by role and name for `act` (`Clicked button "Export"`,
+one per step; other tools show their arguments, `action=add url=…`), the
+agent's `why` when it gave one, what it caused in a few words for actions,
+`check`, `open`, `wait_for` and `viewport` (`+ status "Exported 6 orders"
+(+2 more) · 1 new error`, `→ http://…/terms`, `page unchanged`, `confirm
+dialog open`), duration, the first line of any error, and `ran after
+takeover` / `paused, not run`. The words come from the reply the agent got
+(`actDid`, `outcomeOf` in [agentActivity.ts](../src/stores/agentActivity.ts)),
+so the panel shows what the agent was told.
+
+`why` is an optional string on `act` (top level, one per call). It costs 73
+characters of tool list, about 18 tokens per turn (5,619 → 5,692 chars). It's the
 **Agent Activity** sidebar panel (robot icon), opened from the indicator's
 agent name, from a tab's marker, or from the palette; not a popover, because
 nothing may float over the tab. **Agent was here**: a small robot glyph in the
