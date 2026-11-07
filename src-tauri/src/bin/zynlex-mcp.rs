@@ -79,6 +79,8 @@ fn tools() -> Value {
                 "to": r,
                 "text": text,
                 "files": files,
+                // Optional; shown in the developer's activity panel.
+                "why": { "type": "string", "description": "Shown to the developer watching." },
                 "steps": { "type": "array", "maxItems": 10, "items": { "type": "object", "properties": {
                     "action": action, "ref": r, "to": r, "text": text, "files": files
                 }, "required": ["action"] } }
@@ -326,6 +328,7 @@ mod tests {
             .unwrap()
             .contains(&json!("upload")));
         assert_eq!(schema("act")["files"]["type"], "array");
+        assert_eq!(schema("act")["why"]["type"], "string");
         assert_eq!(schema("screenshot")["ref"]["type"], "string");
         assert_eq!(schema("screenshot")["full"]["type"], "boolean");
         assert_eq!(schema("recording")["playwright"]["type"], "boolean");

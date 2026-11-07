@@ -75,7 +75,9 @@ import {
   handleAgentCall,
   historyTarget,
   listenForAgents,
+  MARK,
   parseWaitFor,
+  QUIET_PROBE,
   resolveTab,
   runAgentTool,
   waitPending,
@@ -685,6 +687,122 @@ describe("drag", () => {
   });
 });
 
+/** Just enough DOM to run the in-page scripts in Node. */
+interface FakeNode {
+  tag: string;
+  style: { cssText: string };
+  attrs: Record<string, string>;
+  textContent: string;
+  __zynlexMark?: boolean;
+  shadow?: { mode: string; kids: FakeNode[] };
+}
+
+function fakePage() {
+  const onPage: FakeNode[] = [];
+  const timers: (() => void)[] = [];
+  const createElement = (tag: string) => {
+    const n: FakeNode & Record<string, unknown> = {
+      tag,
+      style: { cssText: "" },
+      attrs: {},
+      textContent: "",
+      setAttribute: (k: string, v: string) => {
+        n.attrs[k] = v;
+      },
+      attachShadow: ({ mode }: { mode: string }) => {
+        const kids: FakeNode[] = [];
+        n.shadow = { mode, kids };
+        return { append: (...k: FakeNode[]) => kids.push(...k) };
+      },
+      remove: () => onPage.splice(onPage.indexOf(n), 1),
+    };
+    return n;
+  };
+  const doc = {
+    createElement,
+    documentElement: { append: (n: FakeNode) => onPage.push(n) },
+    defaultView: { frameElement: null, setTimeout: (f: () => void) => timers.push(f) },
+  };
+  const element = (rect: object) => ({ ownerDocument: doc, getBoundingClientRect: () => rect });
+  return { onPage, timers, element };
+}
+
+describe("action marks", () => {
+  const mark = (el: object, o: object) => new Function(`return ${MARK}`)().call(el, o);
+  const rect = { left: 10, top: 50, width: 80, height: 20, bottom: 70 };
+
+  it("draws an outline, a label and the pointer, out of the page's way, then removes itself", () => {
+    const page = fakePage();
+    expect(mark(page.element(rect), { label: "agent: click", ms: 1200, x: 50, y: 60 })).toBe(true);
+    const [host] = page.onPage;
+    expect(host.tag).toBe("zynlex-agent-mark");
+    expect(host.__zynlexMark).toBe(true);
+    // Hidden from the snapshot, no layout, input goes through.
+    expect(host.attrs["aria-hidden"]).toBe("true");
+    expect(host.style.cssText).toContain("position:fixed");
+    expect(host.style.cssText).toContain("pointer-events:none");
+    expect(host.shadow?.mode).toBe("closed");
+    const [style, box, label, dot] = host.shadow?.kids ?? [];
+    expect(style.textContent).toContain("pointer-events:none");
+    expect(box.style.cssText).toContain("left:10px;top:50px;width:80px;height:20px");
+    expect(label.textContent).toBe("agent: click");
+    expect(label.style.cssText).toContain("top:28px");
+    expect(dot.style.cssText).toContain("left:42px;top:52px");
+    expect(page.timers).toHaveLength(1);
+    page.timers[0]();
+    expect(page.onPage).toEqual([]);
+  });
+
+  it("puts the label under an element at the top, and no pointer for keyboard actions", () => {
+    const page = fakePage();
+    mark(page.element({ ...rect, top: 4, bottom: 24 }), { label: "agent: type", ms: 1200 });
+    const kids = page.onPage[0].shadow?.kids ?? [];
+    expect(kids).toHaveLength(3);
+    expect(kids[2].style.cssText).toContain("top:30px");
+  });
+
+  it("draws nothing for an element with no box", () => {
+    const page = fakePage();
+    expect(mark(page.element({ ...rect, width: 0, height: 0 }), { label: "x", ms: 1 })).toBe(false);
+    expect(mark({}, { label: "x", ms: 1 })).toBe(false);
+    expect(page.onPage).toEqual([]);
+  });
+
+  it("doesn't let a mark coming and going hold up settling", () => {
+    let now = 0;
+    let observe: (recs: object[]) => void = () => {};
+    class Observer {
+      constructor(cb: typeof observe) {
+        observe = cb;
+      }
+      observe() {}
+    }
+    const win: Record<string, unknown> = {};
+    const probe = () =>
+      new Function(
+        "window",
+        "document",
+        "MutationObserver",
+        "performance",
+        `return ${QUIET_PROBE}`,
+      )(win, { readyState: "complete" }, Observer, { now: () => now }) as { quietMs: number };
+    probe();
+    now = 100;
+    const ours = { __zynlexMark: true };
+    observe([{ type: "childList", addedNodes: [ours], removedNodes: [] }]);
+    observe([{ type: "childList", addedNodes: [], removedNodes: [ours] }]);
+    expect(probe().quietMs).toBe(100);
+    observe([
+      { type: "childList", addedNodes: [], removedNodes: [ours] },
+      { type: "attributes", addedNodes: [], removedNodes: [] },
+    ]);
+    now = 150;
+    expect(probe().quietMs).toBe(50);
+    observe([{ type: "childList", addedNodes: [{}], removedNodes: [] }]);
+    expect(probe().quietMs).toBe(0);
+  });
+});
+
 describe("wait_for", () => {
   it("validates conditions and caps the timeout", () => {
     expect(() => parseWaitFor({})).toThrow("Pass text");
@@ -803,12 +921,18 @@ describe("take over (pause) and activity", () => {
   it("records each call: tool, tab, summary, errors, and marks tabs it acted on", async () => {
     await handleAgentCall("errors", {});
     await handleAgentCall("mock", { action: "add", url: "localhost:5173/api/a", status: 404 });
-    const bad = await handleAgentCall("act", { action: "click", ref: "e1", tab: "zz" });
+    const bad = await handleAgentCall("act", {
+      action: "click",
+      ref: "e1",
+      tab: "zz",
+      why: "open the menu",
+    });
     expect(bad.ok).toBe(false);
     const calls = useAgentActivityStore.getState().calls;
     expect(calls.map((c) => c.tool)).toEqual(["act", "mock", "errors"]);
     expect(calls[0]).toMatchObject({ tabId: null, error: 'No tab "zz" you can use. Call tabs.' });
     expect(calls[0].summary).toBe("action=click ref=e1");
+    expect(calls[0]).toMatchObject({ why: "open the menu", what: "", outcome: "" });
     expect(calls[1]).toMatchObject({
       tabId: "aaaaaaaa-1",
       tabLabel: "[aaaaaaaa] http://localhost:5173/",
