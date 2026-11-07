@@ -84,13 +84,14 @@ import {
   HIDDEN,
   handleAgentCall,
   historyTarget,
-  ownerText,
   listenForAgents,
   MARK,
+  ownerText,
   parseWaitFor,
   QUIET_PROBE,
   resolveTab,
   runAgentTool,
+  vitalsText,
   waitPending,
 } from "./agent";
 import { cancelPause, PAUSE_HOLD_MS, PAUSED_REPLY, pauseAgent, resumeAgent } from "./agentPause";
@@ -335,6 +336,56 @@ describe("agent tools", () => {
     await runAgentTool("tabs", { close: "eeee" });
     expect(useTabsStore.getState().tabs["eeeeeeee-5"]).toBeUndefined();
     await expect(runAgentTool("tabs", { close: "dddd" })).rejects.toThrow("No tab you opened");
+  });
+
+  it("lists WebSockets with their frame counts, and a socket's id gives its frames", async () => {
+    const now = Date.now();
+    useNetworkStore.setState({
+      socketsByTab: {
+        "aaaaaaaa-1": [
+          {
+            id: "ws-4",
+            socket: "7.1",
+            url: "ws://localhost:5173/live",
+            state: "open",
+            error: "",
+            openedAt: now - 10_000,
+            sent: 1,
+            received: 2,
+            frames: [
+              { dir: "sent", at: now - 3000, data: '{"subscribe":"orders"}' },
+              { dir: "received", at: now - 2000, data: '{"orders":\n 6}' },
+              { dir: "received", at: now, data: "x".repeat(400) },
+            ],
+          },
+          {
+            id: "ws-5",
+            socket: "7.2",
+            url: "ws://localhost:5173/bad",
+            state: "error",
+            error: "Invalid frame header",
+            openedAt: now,
+            sent: 0,
+            received: 0,
+            frames: [],
+          },
+        ],
+      },
+    });
+    const list = await runAgentTool("network", {});
+    expect(list).toContain("WebSockets (↑ sent, ↓ received; pass id for the frames):");
+    expect(list).toContain("  ws-4 open ws://localhost:5173/live ↑1 ↓2");
+    expect(await runAgentTool("network", { failed: true })).toContain(
+      "  ws-5 error: Invalid frame header ws://localhost:5173/bad ↑0 ↓0",
+    );
+    expect(await runAgentTool("network", { match: "live" })).not.toContain("ws-5");
+    const frames = await runAgentTool("network", { id: "ws-4" });
+    expect(frames).toContain('  ↑ 3s ago {"subscribe":"orders"}');
+    // One line per frame, cut.
+    expect(frames).toContain('  ↓ 2s ago {"orders": 6}');
+    expect(frames).toContain(`  ↓ 0s ago ${"x".repeat(300)}…`);
+    expect(await runAgentTool("network", { id: "ws-5" })).toContain("No frames yet.");
+    useNetworkStore.setState({ socketsByTab: {} });
   });
 
   it("writes a body over 8 KB to a file and returns its head and the path", async () => {
@@ -720,6 +771,45 @@ describe("back/forward", () => {
       "Nothing to go forward",
     );
     expect(() => historyTarget(h, "forward", isLoopbackUrl)).toThrow("would leave your scope");
+  });
+});
+
+describe("vitalsText", () => {
+  const base = {
+    lcp: 1240,
+    lcpEl: "img#hero",
+    cls: 0.031,
+    inp: null,
+    slowInteractions: 0,
+    longTasks: 0,
+    longest: 0,
+    ttfb: 38,
+    load: 910,
+  };
+
+  it("rates each number by web.dev's thresholds, on one line", () => {
+    expect(vitalsText(base)).toBe(
+      "Vitals: LCP 1.2 s (good, img#hero) · CLS 0.03 (good) · INP: no interaction over 104 ms · no long tasks · TTFB 38 ms, load 910 ms",
+    );
+    expect(
+      vitalsText({
+        ...base,
+        lcp: 4600,
+        lcpEl: "",
+        cls: 0.2,
+        inp: 260,
+        slowInteractions: 1,
+        longTasks: 3,
+        longest: 412,
+        ttfb: null,
+        load: null,
+      }),
+    ).toBe(
+      "Vitals: LCP 4.6 s (poor) · CLS 0.20 (needs improvement) · INP 260 ms (needs improvement, worst of 1 slow interaction) · 3 long tasks, longest 412 ms",
+    );
+    expect(vitalsText({ ...base, lcp: null })).toContain(
+      "LCP not recorded (the tab was hidden while loading, or nothing painted)",
+    );
   });
 });
 
