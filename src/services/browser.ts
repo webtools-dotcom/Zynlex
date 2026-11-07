@@ -220,6 +220,23 @@ export async function scanPorts(ports: number[]): Promise<ScannedPort[]> {
   return await invoke<ScannedPort[]>("scan_ports", { ports });
 }
 
+/** A process listening on a port (see `port_owners` in ports.rs). */
+export interface PortOwner {
+  port: number;
+  pid: number;
+  /** "node.exe"; empty when the process couldn't be opened. */
+  name: string;
+  exe: string | null;
+  /** Its working directory: usually the project folder. */
+  cwd: string | null;
+  startedMs: number | null;
+}
+
+/** Who listens on each port; ports with no listener are left out. */
+export function portOwners(ports: number[]): Promise<PortOwner[]> {
+  return invoke<PortOwner[]>("port_owners", { ports });
+}
+
 // ─── Events ──────────────────────────────────────────────────────────
 
 export function onUrlChanged(callback: (tabId: string, url: string) => void): Promise<UnlistenFn> {

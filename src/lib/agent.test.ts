@@ -18,6 +18,9 @@ const hooks = vi.hoisted(() => ({
   ready: [] as number[],
   /** When set, the page's accessibility tree; otherwise every CDP call fails (tab not loaded). */
   ax: null as null | object[],
+  /** What `port_owners` answers, and the ports it was last asked about. */
+  owners: [] as object[],
+  ownerPorts: [] as number[],
 }));
 vi.mock("@/services/browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -47,6 +50,10 @@ vi.mock("@/services/browser", async (importOriginal) => ({
     hooks.writes.push({ name, text });
     return Promise.resolve(`C:\\Temp\\zynlex-agent\\zynlex-${name}.txt`);
   },
+  portOwners: (ports: number[]) => {
+    hooks.ownerPorts = ports;
+    return Promise.resolve(hooks.owners);
+  },
   tabCdp: (_tab: string, method: string) => {
     hooks.cdp.push(method);
     if (hooks.ax && method === "Accessibility.getFullAXTree") {
@@ -63,6 +70,7 @@ import { useConsoleStore } from "@/stores/console";
 import { useHeadersStore } from "@/stores/headers";
 import { type MockRule, useMocksStore } from "@/stores/mocks";
 import { type NetworkLogEntry, useNetworkStore } from "@/stores/network";
+import { useServersStore } from "@/stores/servers";
 import { useTabsStore } from "@/stores/tabs";
 import { withoutAgentRules } from "@/stores/workspaceRules";
 import type { Tab } from "@/types";
@@ -76,6 +84,7 @@ import {
   HIDDEN,
   handleAgentCall,
   historyTarget,
+  ownerText,
   listenForAgents,
   MARK,
   parseWaitFor,
@@ -159,6 +168,46 @@ describe("agent tools", () => {
     expect(out).toContain("http://localhost:5173/");
     expect(out).not.toContain("mail.example.com");
     expect(out).toContain("1 other tabs hidden");
+  });
+
+  it("says which process and folder serve each tab and idle dev server", async () => {
+    useServersStore.setState({
+      servers: [
+        { port: 5174, isAlive: true, protocol: "http", title: "Vite" } as never,
+        { port: 5173, isAlive: true, protocol: "http", title: "Shop" } as never,
+      ],
+    });
+    const now = Date.now();
+    hooks.owners = [
+      {
+        port: 5173,
+        pid: 41,
+        name: "node.exe",
+        exe: "C:\\node.exe",
+        cwd: "D:\\work\\shop",
+        startedMs: now - 2 * 3600_000,
+      },
+      {
+        port: 5174,
+        pid: 9,
+        name: "node.exe",
+        exe: "C:\\node.exe",
+        cwd: "D:\\old\\shop",
+        startedMs: now - 3 * 86400_000,
+      },
+    ];
+    const out = await runAgentTool("tabs", {});
+    hooks.owners = [];
+    useServersStore.setState({ servers: [] });
+    expect(hooks.ownerPorts).toEqual([5173, 3000, 5174]);
+    expect(out).toContain(
+      '"aaaaaaaa-1" [aaaaaaaa]\n    served by node.exe in D:\\work\\shop (pid 41, up 2h)',
+    );
+    // The tab on :3000 has no listener: no line, no guess.
+    expect(out).toContain("[bbbbbbbb]\n1 dev servers without a tab:");
+    expect(out).toContain(
+      'http://localhost:5174 "Vite"\n    served by node.exe in D:\\old\\shop (pid 9, up 3d)',
+    );
   });
 
   it("check reports only what's new since the previous check", async () => {
@@ -671,6 +720,24 @@ describe("back/forward", () => {
       "Nothing to go forward",
     );
     expect(() => historyTarget(h, "forward", isLoopbackUrl)).toThrow("would leave your scope");
+  });
+});
+
+describe("ownerText", () => {
+  it("says so when a process can't be read, and lists both owners of a split port", () => {
+    const o = { port: 80, exe: null, cwd: null, startedMs: null };
+    expect(ownerText([{ ...o, pid: 7, name: "" }], 0)).toBe(
+      "pid 7 (another user's or elevated, can't read it)",
+    );
+    expect(
+      ownerText(
+        [
+          { ...o, pid: 4, name: "System" },
+          { ...o, pid: 8, name: "python.exe", startedMs: 0 },
+        ],
+        45_000,
+      ),
+    ).toBe("System (pid 4); python.exe (pid 8, up 45s)");
   });
 });
 
