@@ -237,9 +237,279 @@ pub async fn scan_ports(ports: Vec<u16>) -> Result<Vec<ScannedPort>, String> {
     Ok(results)
 }
 
+/// A process listening on a loopback port, so an agent can tell its own
+/// project's dev server from a stale one on a nearby port. Read only:
+/// nothing here stops a process.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortOwner {
+    pub port: u16,
+    pub pid: u32,
+    /// Executable file name ("node.exe"); empty when the process can't be opened.
+    pub name: String,
+    pub exe: Option<String>,
+    /// Its working directory: for a dev server, usually the project folder.
+    pub cwd: Option<String>,
+    /// When it started, in ms since the Unix epoch.
+    pub started_ms: Option<u64>,
+}
+
+/// Owners of the given ports; a port with no listener is left out. Two
+/// processes can hold one port (one on IPv4, one on IPv6): both are listed.
+#[tauri::command]
+pub async fn port_owners(ports: Vec<u16>) -> Vec<PortOwner> {
+    owners_of(&ports)
+}
+
+fn owners_of(ports: &[u16]) -> Vec<PortOwner> {
+    let listeners = listening_pids();
+    let mut out = Vec::new();
+    for &port in ports {
+        let mut pids: Vec<u32> = listeners
+            .iter()
+            .filter(|(p, _)| *p == port)
+            .map(|&(_, pid)| pid)
+            .collect();
+        pids.dedup();
+        out.extend(pids.into_iter().map(|pid| owner(port, pid)));
+    }
+    out
+}
+
+/// (port, pid) for every listening TCP socket, IPv4 first, then IPv6.
+fn listening_pids() -> Vec<(u16, u32)> {
+    use windows::Win32::NetworkManagement::IpHelper::{
+        GetExtendedTcpTable, MIB_TCP6TABLE_OWNER_PID, MIB_TCPTABLE_OWNER_PID,
+        TCP_TABLE_OWNER_PID_LISTENER,
+    };
+    use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6};
+
+    // dwLocalPort holds the port in network byte order, in its low 16 bits.
+    let port_of = |dw: u32| u16::from_be(dw as u16);
+    let mut out = Vec::new();
+    for af in [AF_INET.0 as u32, AF_INET6.0 as u32] {
+        // The table can grow between the size query and the read; retry.
+        let mut size = 0u32;
+        let mut buf: Vec<u64> = Vec::new();
+        let mut ok = false;
+        for _ in 0..3 {
+            // u64s: the table's rows want 8-byte alignment at most.
+            buf.resize((size as usize).div_ceil(8), 0);
+            let ptr = (!buf.is_empty()).then(|| buf.as_mut_ptr().cast());
+            let rc = unsafe {
+                GetExtendedTcpTable(ptr, &mut size, false, af, TCP_TABLE_OWNER_PID_LISTENER, 0)
+            };
+            if rc == 0 && !buf.is_empty() {
+                ok = true;
+                break;
+            }
+        }
+        if !ok {
+            continue;
+        }
+        // SAFETY: GetExtendedTcpTable filled `buf` with a table of this class
+        // and family: a row count followed by that many rows.
+        unsafe {
+            if af == AF_INET.0 as u32 {
+                let t = &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID);
+                let rows = std::slice::from_raw_parts(t.table.as_ptr(), t.dwNumEntries as usize);
+                out.extend(rows.iter().map(|r| (port_of(r.dwLocalPort), r.dwOwningPid)));
+            } else {
+                let t = &*(buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID);
+                let rows = std::slice::from_raw_parts(t.table.as_ptr(), t.dwNumEntries as usize);
+                out.extend(rows.iter().map(|r| (port_of(r.dwLocalPort), r.dwOwningPid)));
+            }
+        }
+    }
+    out
+}
+
+/// A process handle, closed on drop.
+struct Process(windows::Win32::Foundation::HANDLE);
+
+impl Process {
+    fn open(
+        pid: u32,
+        access: windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS,
+    ) -> Option<Self> {
+        unsafe { windows::Win32::System::Threading::OpenProcess(access, false, pid) }
+            .ok()
+            .map(Process)
+    }
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        let _ = unsafe { windows::Win32::Foundation::CloseHandle(self.0) };
+    }
+}
+
+fn owner(port: u16, pid: u32) -> PortOwner {
+    use windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+    let limited = Process::open(pid, PROCESS_QUERY_LIMITED_INFORMATION);
+    let exe = limited.as_ref().and_then(image_path);
+    let name = match (&exe, pid) {
+        (Some(p), _) => std::path::Path::new(p)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        (None, 4) => "System".into(),
+        _ => String::new(),
+    };
+    PortOwner {
+        port,
+        pid,
+        name,
+        exe,
+        cwd: working_dir(pid),
+        started_ms: limited.as_ref().and_then(start_time),
+    }
+}
+
+fn image_path(p: &Process) -> Option<String> {
+    use windows::Win32::System::Threading::{QueryFullProcessImageNameW, PROCESS_NAME_WIN32};
+    let mut buf = [0u16; 1024];
+    let mut len = buf.len() as u32;
+    unsafe {
+        QueryFullProcessImageNameW(
+            p.0,
+            PROCESS_NAME_WIN32,
+            windows::core::PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        )
+    }
+    .ok()?;
+    Some(String::from_utf16_lossy(&buf[..len as usize]))
+}
+
+fn start_time(p: &Process) -> Option<u64> {
+    use windows::Win32::Foundation::FILETIME;
+    let (mut created, mut exited, mut kernel, mut user) = (
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+        FILETIME::default(),
+    );
+    unsafe {
+        windows::Win32::System::Threading::GetProcessTimes(
+            p.0,
+            &mut created,
+            &mut exited,
+            &mut kernel,
+            &mut user,
+        )
+    }
+    .ok()?;
+    // 100 ns ticks since 1601 → ms since 1970.
+    let ticks = ((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64;
+    (ticks / 10_000).checked_sub(11_644_473_600_000)
+}
+
+/// Copies a `T` out of another process's memory.
+unsafe fn read_remote<T: Copy>(p: &Process, addr: usize) -> Option<T> {
+    let mut value = std::mem::MaybeUninit::<T>::uninit();
+    let mut read = 0usize;
+    windows::Win32::System::Diagnostics::Debug::ReadProcessMemory(
+        p.0,
+        addr as *const _,
+        value.as_mut_ptr().cast(),
+        std::mem::size_of::<T>(),
+        Some(&mut read),
+    )
+    .ok()?;
+    (read == std::mem::size_of::<T>()).then(|| value.assume_init())
+}
+
+/// The process's current directory, read from its PEB: Windows has no API
+/// for another process's working directory. Needs PROCESS_VM_READ, so a
+/// process of another user or an elevated one gives None. The offsets are
+/// the 64-bit layout (PEB.ProcessParameters at 0x20,
+/// RTL_USER_PROCESS_PARAMETERS.CurrentDirectory.DosPath at 0x38), unchanged
+/// since Windows XP x64 and what every process explorer reads. ponytail: a
+/// 32-bit (WOW64) process reports its 64-bit PEB's copy, which may be stale.
+fn working_dir(pid: u32) -> Option<String> {
+    use windows::Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation};
+    use windows::Win32::System::Threading::{
+        PROCESS_BASIC_INFORMATION, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+    };
+    let p = Process::open(pid, PROCESS_QUERY_INFORMATION | PROCESS_VM_READ)?;
+    // SAFETY: plain data; all zeroes is a valid value.
+    let mut info: PROCESS_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
+    let mut len = 0u32;
+    unsafe {
+        NtQueryInformationProcess(
+            p.0,
+            ProcessBasicInformation,
+            (&mut info as *mut PROCESS_BASIC_INFORMATION).cast(),
+            std::mem::size_of::<PROCESS_BASIC_INFORMATION>() as u32,
+            &mut len,
+        )
+    }
+    .ok()
+    .ok()?;
+    let peb = info.PebBaseAddress as usize;
+    if peb == 0 {
+        return None;
+    }
+    unsafe {
+        let params: usize = read_remote(&p, peb + 0x20)?;
+        // UNICODE_STRING: Length (bytes), MaximumLength, padding, Buffer.
+        let length: u16 = read_remote(&p, params + 0x38)?;
+        let buffer: usize = read_remote(&p, params + 0x38 + 8)?;
+        if length == 0 || length > 2048 || buffer == 0 {
+            return None;
+        }
+        let mut wide = vec![0u16; length as usize / 2];
+        let mut read = 0usize;
+        windows::Win32::System::Diagnostics::Debug::ReadProcessMemory(
+            p.0,
+            buffer as *const _,
+            wide.as_mut_ptr().cast(),
+            length as usize,
+            Some(&mut read),
+        )
+        .ok()?;
+        let dir = String::from_utf16_lossy(&wide[..read / 2]);
+        // "C:\work\shop\" → "C:\work\shop", but "C:\" stays.
+        Some(match dir.strip_suffix('\\') {
+            Some(d) if !d.ends_with(':') => d.to_string(),
+            _ => dir,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::looks_like_tls_record;
+
+    #[test]
+    fn finds_who_listens_on_a_port() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let owners = super::owners_of(&[port]);
+        let me = owners
+            .iter()
+            .find(|o| o.pid == std::process::id())
+            .expect("this test process owns the port");
+        let lower = |s: &str| s.to_lowercase();
+        assert_eq!(
+            me.exe.as_deref().map(lower),
+            Some(lower(&std::env::current_exe().unwrap().to_string_lossy()))
+        );
+        assert!(me.name.ends_with(".exe"));
+        assert_eq!(
+            me.cwd.as_deref().map(lower),
+            Some(lower(&std::env::current_dir().unwrap().to_string_lossy()))
+        );
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let started = me.started_ms.expect("start time");
+        assert!(started <= now && now - started < 3_600_000);
+        // Nobody listens on port 1 on a dev machine.
+        assert!(super::owners_of(&[1]).is_empty());
+    }
 
     #[test]
     fn tls_record_detection() {
