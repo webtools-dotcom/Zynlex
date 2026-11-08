@@ -397,6 +397,24 @@ gives `The browser refused type on e8…` (focus on something that takes none).
 A click on a `visibility: hidden` element used to say it was covered by
 whatever is behind it; that's checked the same way now.
 
+Before anything touches the page, every ref an `act` names (both refs of a
+drag, every step of a batch) must be in the page's outline, as the last
+snapshot or reply showed it, or be a ref the developer flagged (a flagged
+element can be one the outline leaves out, like a clickable `<div>`). A ref
+that isn't gets one fresh look at the page, then a reason: hidden, `Stale
+ref` (gone), or `e2 isn't in the page's outline: it's from an older page, or
+not something to act on. Nothing was done.` with the current page. Without
+this, a ref from an older page could name an unrelated node (backend ids
+restart with the renderer) and the click landed on it, replying only
+`Clicked e2`.
+
+`type` first asks the element whether it takes text (`TAKES_TEXT`): a text
+input, a textarea or contenteditable does. Anything else is refused by name
+(`e14 is a button, so type can't put text in it. Nothing was done.`; a
+`<select>` adds `Use action=select.`), as are disabled and read-only fields.
+Before, `Input.insertText` into a button did nothing and the reply still said
+`Typed`.
+
 `steps` exists because agents send one tool call per turn, and each turn
 re-sends Claude Code's whole context (about 17k tokens in the benchmark):
 reproducing "type, press Enter" or "click Delete, accept the confirm" cost a
