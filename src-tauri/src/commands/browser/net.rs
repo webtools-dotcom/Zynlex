@@ -736,7 +736,11 @@ fn ws_event(event: &str, p: &Value) -> Option<Value> {
         let payload = r["payloadData"].as_str().unwrap_or_default();
         let data = if r["opcode"].as_u64() == Some(2) {
             // Binary payloads arrive base64-encoded.
-            format!("(binary, {} bytes)", payload.len() / 4 * 3)
+            let padding = payload.bytes().rev().take_while(|&b| b == b'=').count();
+            format!(
+                "(binary, {} bytes)",
+                (payload.len() / 4 * 3).saturating_sub(padding)
+            )
         } else if payload.chars().count() > WS_MAX_PAYLOAD {
             let cut: String = payload.chars().take(WS_MAX_PAYLOAD).collect();
             format!("{cut}… ({} chars)", payload.chars().count())
@@ -785,7 +789,13 @@ pub fn register_webview_websocket_capture(
             let tab_id = tab_id.clone();
             let handler =
                 DevToolsProtocolEventReceivedEventHandler::create(Box::new(move |_wv, args| {
-                    if NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) <= 0 {
+                    // Frames only while capture is on. A socket opening or
+                    // closing is rare and always passed on: sockets usually
+                    // open at page load, before an agent connects, and
+                    // without this one they show up later with no URL.
+                    if event.contains("Frame")
+                        && NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) <= 0
+                    {
                         return Ok(());
                     }
                     let Some(args) = args else { return Ok(()) };
@@ -891,6 +901,8 @@ mod tests {
         assert_eq!(text(1, r#"{"type":"update"}"#), r#"{"type":"update"}"#);
         // Base64 of 6 bytes.
         assert_eq!(text(2, "AAECAwQF"), "(binary, 6 bytes)");
+        // Padding isn't data: 4 bytes, not 6.
+        assert_eq!(text(2, "AAECAw=="), "(binary, 4 bytes)");
         let long = "é".repeat(1500);
         let cut = text(1, &long);
         assert!(cut.starts_with(&"é".repeat(1000)) && cut.ends_with("… (1500 chars)"));

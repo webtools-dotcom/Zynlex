@@ -138,6 +138,15 @@ describe("actDid and outcomeOf", () => {
         ),
       ),
     ).toBe("downloaded orders.json · page unchanged · no new errors");
+    // Not finished yet is not "downloaded".
+    expect(
+      outcomeOf(
+        lines('Clicked link "Big" [e7]', "Downloading big.zip to C:\\big.zip (not finished)"),
+      ),
+    ).toBe("downloading big.zip");
+    expect(
+      outcomeOf(lines('Clicked link "Bad" [e8]', "Download failed: bad.zip (http://x/bad.zip)")),
+    ).toBe("download failed bad.zip");
     expect(
       outcomeOf(
         lines('Clicked button "Delete" [e4]', 'A confirm dialog is open: "Sure?". The page'),

@@ -863,7 +863,9 @@ const MARK_LEAD_MS = 250;
  * point gets the frame offsets taken off. Fixed-position in a closed shadow
  * root on <html>: no layout shift, outside body.innerText, aria-hidden so the
  * snapshot doesn't see it, pointer-events none so input and elementFromPoint
- * go through it. Fades by CSS (no DOM changes) and removes itself; the settle
+ * go through it. Styles are set from script and the fade is element.animate,
+ * so a page CSP that blocks <style> doesn't break it. Fading changes no DOM
+ * and it removes itself; the settle
  * probe ignores the host coming and going. False when the element has no box.
  */
 export const MARK = `function (o) {
@@ -871,16 +873,17 @@ export const MARK = `function (o) {
   const r = this.getBoundingClientRect();
   if (!r.width && !r.height) return false;
   const doc = this.ownerDocument, C = "rgb(111,168,220)";
-  const part = (css) => { const e = doc.createElement("div"); e.style.cssText = css; return e; };
+  const part = (css) => {
+    const e = doc.createElement("div");
+    e.style.cssText = "position:fixed;pointer-events:none;box-sizing:border-box;" + css;
+    return e;
+  };
   const host = doc.createElement("zynlex-agent-mark");
   host.__zynlexMark = true;
   host.setAttribute("aria-hidden", "true");
   host.style.cssText = "all:initial;position:fixed;inset:0;pointer-events:none;z-index:2147483647";
   const root = host.attachShadow({ mode: "closed" });
-  const style = doc.createElement("style");
-  style.textContent = "div{position:fixed;pointer-events:none;box-sizing:border-box;" +
-    "animation:f " + o.ms + "ms linear forwards}@keyframes f{0%,75%{opacity:1}100%{opacity:0}}";
-  root.append(style,
+  root.append(
     part("left:" + r.left + "px;top:" + r.top + "px;width:" + r.width + "px;height:" + r.height + "px;" +
       "outline:2px solid " + C + ";outline-offset:2px;background:rgba(111,168,220,.15);border-radius:3px"));
   const tag = part("left:" + Math.max(0, r.left) + "px;top:" + (r.top < 24 ? r.bottom + 6 : r.top - 22) + "px;" +
@@ -895,6 +898,12 @@ export const MARK = `function (o) {
       "border-radius:50%;background:" + C + ";border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"));
   }
   doc.documentElement.append(host);
+  // Fades with the Web Animations API rather than a <style> rule: a page's
+  // CSP can block <style> elements (it can't block styles set from script).
+  if (host.animate) {
+    host.animate([{ opacity: 1 }, { opacity: 1, offset: 0.75 }, { opacity: 0 }],
+      { duration: o.ms, fill: "forwards" });
+  }
   doc.defaultView.setTimeout(() => host.remove(), o.ms);
   return true;
 }`;
@@ -1905,7 +1914,9 @@ async function runPaused(tool: string, args: Args): Promise<string> {
   try {
     return `${lead}\n${await runNow(tool, args)}`;
   } catch (err) {
-    throw new Error(`${lead}\n${err instanceof Error ? err.message : String(err)}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    // `own`: the error without the lead, for the activity list.
+    throw Object.assign(new Error(`${lead}\n${msg}`), { own: msg });
   }
 }
 
@@ -1988,6 +1999,14 @@ function callTab(tool: string, args: Args): { id: string | null; label: string }
 /** Tools whose reply ends with what the call caused (consequences, or new problems for `check`). */
 const TELLS_OUTCOME = new Set(["act", "check", "open", "wait_for", "viewport"]);
 
+/**
+ * The line of a failed reply that says what went wrong: a failed `steps`
+ * batch lists the steps that worked before its `Step N (…) failed:` line.
+ */
+export function errorLine(text: string): string {
+  return firstLine(text.split("\n").find((l) => /^Step \d+ \(\w+\) failed: /.test(l)) ?? text);
+}
+
 /** Runs a call and records it in the activity list (roadmap S6). */
 export async function handleAgentCall(
   tool: string,
@@ -1999,11 +2018,14 @@ export async function handleAgentCall(
   let tab = tool === "open" ? { id: null, label: "" } : callTab(tool, args);
   let ok = true;
   let text: string;
+  // The error itself, without a takeover lead (runPaused).
+  let own = "";
   try {
     text = await runAgentTool(tool, args);
   } catch (err) {
     ok = false;
     text = err instanceof Error ? err.message : String(err);
+    own = (err as { own?: string }).own ?? text;
   }
   if (tool === "open" && ok) tab = callTab(tool, {});
   // Flags may lead the reply (withFlags), so look past them.
@@ -2016,11 +2038,11 @@ export async function handleAgentCall(
       tabId: tab.id,
       tabLabel: tab.label,
       summary: summarizeCall(args),
-      what: ok && tool === "act" ? actDid(text) : "",
+      // A failed batch still did its earlier steps.
+      what: tool === "act" ? actDid(text) : "",
       outcome: ok && TELLS_OUTCOME.has(tool) && !paused ? outcomeOf(text) : "",
       why: typeof args.why === "string" ? firstLine(args.why) : "",
-      // A takeover note leads the reply; the error is the line after it.
-      error: ok ? null : firstLine(tookOver ? text.split("\n").slice(1).join("\n") : text),
+      error: ok ? null : errorLine(own),
       ms: Date.now() - at,
       note: paused ? "paused, not run" : tookOver ? "ran after takeover" : null,
     },
