@@ -217,6 +217,43 @@ describe("agent tools", () => {
     );
   });
 
+  it("gives each connected agent its own view of a shared tab", async () => {
+    // Two agents (pipe sessions 1 and 2) on the same tab.
+    error("TypeError: seen by both");
+    expect(await runAgentTool("check", {}, 1)).toContain("TypeError: seen by both");
+    // Agent 1 looking doesn't use it up for agent 2.
+    expect(await runAgentTool("check", {}, 2)).toContain("TypeError: seen by both");
+    expect(await runAgentTool("check", {}, 1)).toContain("No new errors");
+    error("TypeError: second");
+    expect(await runAgentTool("check", {}, 2)).toContain("TypeError: second");
+    expect(await runAgentTool("check", {}, 1)).toContain("TypeError: second");
+
+    // "Unchanged since your last snapshot" means *your* last snapshot.
+    hooks.ax = [
+      { nodeId: "1", role: { value: "RootWebArea" }, name: { value: "App" }, childIds: ["2"] },
+      {
+        nodeId: "2",
+        role: { value: "button" },
+        name: { value: "Save" },
+        childIds: [],
+        backendDOMNodeId: 12,
+      },
+    ];
+    try {
+      expect(await runAgentTool("snapshot", {}, 1)).toContain('button "Save" [e12]');
+      expect(await runAgentTool("snapshot", {}, 2)).toContain('button "Save" [e12]');
+      expect(await runAgentTool("snapshot", {}, 1)).toContain(
+        "Unchanged since your last snapshot.",
+      );
+      (hooks.ax[1] as { name: { value: string } }).name.value = "Saved!";
+      // Agent 1 sees the change; agent 2 still does after that.
+      expect(await runAgentTool("snapshot", {}, 1)).toContain('button "Saved!"');
+      expect(await runAgentTool("snapshot", {}, 2)).toContain('button "Saved!"');
+    } finally {
+      hooks.ax = null;
+    }
+  });
+
   it("check reports only what's new since the previous check", async () => {
     error("TypeError: first");
     const first = await runAgentTool("check", {});

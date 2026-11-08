@@ -240,6 +240,7 @@ fn create_webview_for_tab(
 
     let tab_id_nav = tab_id.to_string();
     let app_for_nav = app.clone();
+    let label_for_nav = webview_label_for_tab(tab_id);
     let tab_id_load = tab_id.to_string();
     let app_for_load = app.clone();
     let app_for_new_window = app.clone();
@@ -305,6 +306,10 @@ fn create_webview_for_tab(
             let allowed = matches!(scheme, "http" | "https" | "" | "tauri");
             if !allowed {
                 return false;
+            }
+            // Before the request goes out, so the new page's sockets are seen.
+            if let Some(wv) = app_for_nav.get_webview(&label_for_nav) {
+                sync_network_domain(&wv, nav_url.as_str());
             }
             let url_str = nav_url.to_string();
             let _ = app_for_nav.emit(
@@ -397,6 +402,9 @@ fn create_webview_for_tab(
     apply_color_scheme(&webview, state.preferred_scheme.load(Ordering::SeqCst));
 
     // Navigate to the real URL now that network handlers are registered
+    // (the first page's Network domain too: on_navigation may run before the
+    // webview is registered under its label).
+    sync_network_domain(&webview, target_url.as_str());
     let _ = webview.navigate(target_url);
 
     webview.show().map_err(|e| e.to_string())?;

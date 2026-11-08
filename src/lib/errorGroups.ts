@@ -29,15 +29,15 @@ interface Group {
   /** Page loads it appeared in. */
   loads: number;
   lastLoad: number;
-  /** How many of `count` the agent has been shown. */
-  reported: number;
+  /** Per agent (its client id), how many of `count` it has been shown. */
+  reported: Map<number, number>;
 }
 
 interface TabLog {
   /** Page loads so far; groups note the one they were last seen in. */
   load: number;
   groups: Map<string, Group>;
-  /** Failed network rows the agent was shown (rows only exist while capture is on). */
+  /** Failed network rows each agent was shown, by `${client} ${key}` (rows only exist while capture is on). */
   rowsReported: Map<string, number>;
 }
 
@@ -117,7 +117,7 @@ export function recordEntry(e: Recorded, ts = Date.now()): void {
     firstTs: ts,
     loads: 1,
     lastLoad: log.load,
-    reported: 0,
+    reported: new Map(),
   });
   if (log.groups.size > MAX_GROUPS_PER_TAB) {
     log.groups.delete(log.groups.keys().next().value as string);
@@ -138,7 +138,7 @@ export function forgetTab(tabId: string): void {
 export function forgetReported(): void {
   for (const log of logs.values()) {
     log.rowsReported.clear();
-    for (const g of log.groups.values()) g.reported = 0;
+    for (const g of log.groups.values()) g.reported.clear();
   }
 }
 
@@ -169,7 +169,7 @@ function short(url: string, origin: string): string {
   return origin && url.startsWith(`${origin}/`) ? url.slice(origin.length) : url;
 }
 
-function errorProblem(g: Group, log: TabLog, origin: string): Problem {
+function errorProblem(g: Group, log: TabLog, origin: string, client: number): Problem {
   const [first, ...more] = g.text.split("\n");
   // An exception's stack usually already names the file.
   const where =
@@ -184,9 +184,9 @@ function errorProblem(g: Group, log: TabLog, origin: string): Problem {
     firstTs: g.firstTs,
     loads: g.loads,
     current: g.lastLoad === log.load,
-    reported: g.reported,
+    reported: g.reported.get(client) ?? 0,
     markReported: () => {
-      g.reported = g.count;
+      g.reported.set(client, g.count);
     },
   };
 }
@@ -205,7 +205,12 @@ function consoleFailureHead(g: Group, origin: string): string {
  * console group with the same path and status, and its count is the larger of
  * the two, since both usually saw the same requests.
  */
-export function tabProblems(tabId: string, rows: NetworkLogEntry[], origin: string): Problem[] {
+export function tabProblems(
+  tabId: string,
+  rows: NetworkLogEntry[],
+  origin: string,
+  client = 0,
+): Problem[] {
   const log = logFor(tabId);
   const groups = [...log.groups.values()].sort((a, b) => a.firstTs - b.firstTs);
   const failedGroups = groups.filter((g) => g.failed);
@@ -234,21 +239,24 @@ export function tabProblems(tabId: string, rows: NetworkLogEntry[], origin: stri
       firstTs: g?.firstTs ?? null,
       loads: g?.loads ?? 1,
       current: true,
-      reported: Math.max(g?.reported ?? 0, log.rowsReported.get(key) ?? 0),
+      reported: Math.max(
+        g?.reported.get(client) ?? 0,
+        log.rowsReported.get(`${client} ${key}`) ?? 0,
+      ),
       markReported: () => {
-        log.rowsReported.set(key, count);
-        if (g) g.reported = g.count;
+        log.rowsReported.set(`${client} ${key}`, count);
+        g?.reported.set(client, g.count);
       },
     };
   });
 
   return [
-    ...groups.filter((g) => !g.failed).map((g) => errorProblem(g, log, origin)),
+    ...groups.filter((g) => !g.failed).map((g) => errorProblem(g, log, origin, client)),
     ...fromRows,
     ...failedGroups
       .filter((g) => !absorbed.has(g))
       .map((g) => ({
-        ...errorProblem(g, log, origin),
+        ...errorProblem(g, log, origin, client),
         failed: true,
         head: consoleFailureHead(g, origin),
         rest: "",

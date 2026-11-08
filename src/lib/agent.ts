@@ -116,6 +116,31 @@ export function resolveTab(arg: unknown): Tab {
   );
 }
 
+/**
+ * A tab as one agent sees it. Several agents can be connected at once, each
+ * with its own pipe session (`client`); what each was last shown of a tab
+ * (snapshot, check cursor, errors) is its own, so one agent's look never
+ * hides a change or an error from another.
+ */
+type AgentTab = Tab & { client?: number };
+
+/** The agent's id, carried on a call's args under a key that's never shown or logged. */
+const CLIENT = Symbol("client");
+const clientOf = (args: Args) => ((args as Record<symbol, unknown>)[CLIENT] as number) ?? 0;
+
+/** `resolveTab`, as seen by the agent making the call. */
+const tabOf = (args: Args): AgentTab => ({ ...resolveTab(args.tab), client: clientOf(args) });
+
+/** Key for an agent's own view of a tab. */
+const view = (t: AgentTab) => `${t.client ?? 0}:${t.id}`;
+
+/** Drops every agent's view of a tab. */
+function forgetViews(tabId: string): void {
+  for (const m of [snapshots, cursors]) {
+    for (const k of m.keys()) if (k.endsWith(`:${tabId}`)) m.delete(k);
+  }
+}
+
 function header(t: Tab): string {
   const vp = emulated.get(t.id);
   const as = vp ? ` (as ${vp.label}, ${vp.width}×${vp.height})` : "";
@@ -283,7 +308,8 @@ async function closeAgentTab(arg: string): Promise<string> {
   }
   closeTab(t.id);
   forgetAgentTab(t.id);
-  for (const m of [snapshots, cursors, emulated, dialogs, flaggedRefs]) m.delete(t.id);
+  for (const m of [emulated, dialogs, flaggedRefs]) m.delete(t.id);
+  forgetViews(t.id);
   return `Closed [${shortId(t)}] ${t.url}\n${await tabsTool()}`;
 }
 
@@ -310,14 +336,14 @@ function origin(tab: Tab): string {
  * lines, and marked as shown. `delta`: only what's new or grew since the last
  * report; otherwise everything on the current page too.
  */
-function problemReport(tab: Tab, delta: boolean): string[] {
+function problemReport(tab: AgentTab, delta: boolean): string[] {
   const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
-  if (delta) cursors.set(tab.id, { at: Date.now() });
-  return report(tabProblems(tab.id, rows, origin(tab)), delta, connectedAt);
+  if (delta) cursors.set(view(tab), { at: Date.now() });
+  return report(tabProblems(tab.id, rows, origin(tab), tab.client ?? 0), delta, connectedAt);
 }
 
 /** Errors and failed requests since the last report, as lines (none: empty). */
-const newProblems = (tab: Tab) => problemReport(tab, true);
+const newProblems = (tab: AgentTab) => problemReport(tab, true);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -571,17 +597,22 @@ export function downloadLines(items: DownloadItem[], tabId: string, since: numbe
  * What happened after an action: settle note, URL change, tabs and downloads
  * it started (when given the mark from before it), page diff, new problems.
  */
-async function consequences(tab: Tab, urlBefore: string, mark?: ActionMark): Promise<string[]> {
+async function consequences(
+  tab: AgentTab,
+  urlBefore: string,
+  mark?: ActionMark,
+): Promise<string[]> {
   const unsettled = await settle(tab.id);
-  const now = useTabsStore.getState().tabs[tab.id] ?? tab;
+  // The tab as it is now (URL, title), still as this agent sees it.
+  const now: AgentTab = { ...(useTabsStore.getState().tabs[tab.id] ?? tab), client: tab.client };
   if (dialogs.has(tab.id)) {
     // The page is paused: its tree can't be read until the dialog is answered.
     const problems = newProblems(now);
     return [dialogNote(tab.id) as string, ...started(tab, mark), ...problems];
   }
-  const before = snapshots.get(tab.id);
+  const before = snapshots.get(view(tab));
   const after = await takePage(tab.id);
-  snapshots.set(tab.id, after);
+  snapshots.set(view(tab), after);
   const diff = before == null ? [] : diffSnapshot(before.full, after.full);
   // A diff longer than the page itself is worse than just the page.
   const page =
@@ -608,8 +639,8 @@ function started(tab: Tab, mark: ActionMark | undefined): string[] {
 }
 
 async function checkTool(args: Args): Promise<string> {
-  const tab = resolveTab(args.tab);
-  const since = cursors.get(tab.id);
+  const tab = tabOf(args);
+  const since = cursors.get(view(tab));
   let unsettled: string | null;
   if (args.reload) {
     await showTab(tab);
@@ -638,7 +669,7 @@ async function checkTool(args: Args): Promise<string> {
   let page: string[] = [];
   if (args.reload) {
     const now = await takePage(tab.id);
-    snapshots.set(tab.id, now);
+    snapshots.set(view(tab), now);
     page = ["Page:", await showPage(tab, now.compact)];
   }
   const vitals = args.vitals ? [await readVitals(tab.id)] : [];
@@ -747,7 +778,7 @@ async function readVitals(tabId: string): Promise<string> {
 }
 
 async function snapshotTool(args: Args): Promise<string> {
-  const tab = resolveTab(args.tab);
+  const tab = tabOf(args);
   const within = args.within == null ? undefined : parseRef(args.within);
   const full = !!args.full;
   if (full || within != null) {
@@ -756,8 +787,8 @@ async function snapshotTool(args: Args): Promise<string> {
   }
   // "Unchanged" goes by the full text: a total that changed is a change.
   const now = await takePage(tab.id);
-  const unchanged = snapshots.get(tab.id)?.full === now.full;
-  snapshots.set(tab.id, now);
+  const unchanged = snapshots.get(view(tab))?.full === now.full;
+  snapshots.set(view(tab), now);
   const body = unchanged ? "Unchanged since your last snapshot." : await showPage(tab, now.compact);
   return `${header(tab)}\n${body}`;
 }
@@ -1142,7 +1173,7 @@ const hiddenError = (backendNodeId: number, why: string) =>
  * error is passed on.
  */
 async function rethrowStale(
-  tab: Tab,
+  tab: AgentTab,
   ref: number | null,
   err: unknown,
   to: number | null = null,
@@ -1162,7 +1193,7 @@ async function rethrowStale(
       );
     }
     const fresh = await takePage(tab.id);
-    snapshots.set(tab.id, fresh);
+    snapshots.set(view(tab), fresh);
     const which = to == null ? `e${ref}` : `e${ref} or e${to}`;
     throw new Error(
       `Stale ref ${which}: that element is gone. Current page:\n${await showPage(tab, fresh.compact)}`,
@@ -1375,13 +1406,13 @@ const inPage = (seen: Seen | undefined, r: number) => !!seen?.full.includes(`[e$
  * unrelated node (ids restart with the renderer) and the click would land
  * on it.
  */
-async function knownRefs(tab: Tab, refs: number[]): Promise<Seen | undefined> {
+async function knownRefs(tab: AgentTab, refs: number[]): Promise<Seen | undefined> {
   const flagged = flaggedRefs.get(tab.id);
   const ok = (seen: Seen | undefined, r: number) => inPage(seen, r) || !!flagged?.has(r);
-  let seen = snapshots.get(tab.id);
+  let seen = snapshots.get(view(tab));
   if (refs.every((r) => ok(seen, r))) return seen;
   seen = await takePage(tab.id);
-  snapshots.set(tab.id, seen);
+  snapshots.set(view(tab), seen);
   const missing = refs.find((r) => !ok(seen, r));
   if (missing == null) return seen;
   const why = await hiddenWhy(tab.id, missing);
@@ -1403,7 +1434,7 @@ async function knownRefs(tab: Tab, refs: number[]): Promise<Seen | undefined> {
  * failing step ends the batch with what the page looks like at that point.
  */
 async function actTool(args: Args): Promise<string> {
-  const tab = resolveTab(args.tab);
+  const tab = tabOf(args);
   const batch = Array.isArray(args.steps);
   // With steps, a stray top-level action (agents sometimes send both) is
   // ignored rather than refused: the steps say what to do.
@@ -1424,12 +1455,12 @@ async function actTool(args: Args): Promise<string> {
     return answerDialog(tab, steps[0].action === "accept", steps[0].text);
   }
   await showTab(tab);
-  if (!snapshots.has(tab.id) && !dialogs.has(tab.id)) {
-    snapshots.set(tab.id, await takePage(tab.id));
+  if (!snapshots.has(view(tab)) && !dialogs.has(tab.id)) {
+    snapshots.set(view(tab), await takePage(tab.id));
   }
   // A paused page (dialog) can't be read; its steps are answers anyway.
   const before = dialogs.has(tab.id)
-    ? snapshots.get(tab.id)
+    ? snapshots.get(view(tab))
     : await knownRefs(
         tab,
         steps.flatMap((s) => [s.ref, s.to]).filter((r): r is number => r != null),
@@ -1479,10 +1510,10 @@ async function openTool(args: Args): Promise<string> {
   const existing = scopedTabs().find((t) => t.url === url);
   const id = existing?.id ?? openTab({ url });
   if (!existing) markAgentOpened(id);
-  const tab = useTabsStore.getState().tabs[id];
+  const tab: AgentTab = { ...useTabsStore.getState().tabs[id], client: clientOf(args) };
   await showTab(tab);
   // A fresh page: report it whole, not as a diff against an old visit.
-  snapshots.delete(id);
+  snapshots.delete(view(tab));
   const lines = await consequences(tab, url);
   // The header already says where the page is; "Navigated to" would only
   // echo a redirect or a trailing slash.
@@ -1496,7 +1527,7 @@ async function openTool(args: Args): Promise<string> {
 const LEVELS = ["error", "warning", "info", "log"] as const;
 
 function errorsTool(args: Args): string {
-  const tab = resolveTab(args.tab);
+  const tab = tabOf(args);
   const level = args.level ?? (args.warnings ? "warning" : "error");
   const rank = LEVELS.indexOf(level as (typeof LEVELS)[number]);
   if (rank < 0) throw new Error(`level must be one of ${LEVELS.join(", ")}.`);
@@ -1584,7 +1615,7 @@ function socketDetail(s: SocketLog, now: number, all = false): string {
 }
 
 async function networkTool(args: Args): Promise<string> {
-  const tab = resolveTab(args.tab);
+  const tab = tabOf(args);
   const { entriesByTab, socketsByTab } = useNetworkStore.getState();
   const rows = entriesByTab[tab.id] ?? [];
   const sockets = socketsByTab[tab.id] ?? [];
@@ -1629,7 +1660,7 @@ async function networkTool(args: Args): Promise<string> {
  * the developer sees it too. `reset` clears all of it.
  */
 async function viewportTool(args: Args): Promise<string> {
-  const tab = resolveTab(args.tab);
+  const tab = tabOf(args);
   await showTab(tab);
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
   const device = typeof args.device === "string" ? args.device.trim() : "";
@@ -1713,7 +1744,7 @@ interface LayoutMetrics {
 
 /** The visible area, the whole page (`full`), or one element (`ref`), as a PNG in %TEMP%\zynlex-agent. */
 async function screenshotTool(args: Args): Promise<string> {
-  const tab = resolveTab(args.tab);
+  const tab = tabOf(args);
   // The agent wants the page, not its own action marks. ponytail: top document only.
   await tabCdp(tab.id, "Runtime.evaluate", {
     expression: `document.querySelectorAll("zynlex-agent-mark").forEach((m) => m.remove())`,
@@ -1782,7 +1813,7 @@ export function formatEvalValue(r: RemoteObject): string {
 }
 
 async function evalTool(args: Args): Promise<string> {
-  const tab = resolveTab(args.tab);
+  const tab = tabOf(args);
   const code = typeof args.code === "string" ? args.code.trim() : "";
   if (!code)
     throw new Error("Pass code: a JS expression, or a function body that returns a value.");
@@ -1878,7 +1909,7 @@ async function pageText(tabId: string): Promise<string> {
 
 /** Polls until every condition holds or the timeout, then reports what the wait led to. */
 async function waitForTool(args: Args): Promise<string> {
-  const tab = resolveTab(args.tab);
+  const tab = tabOf(args);
   const spec = parseWaitFor(args);
   await showTab(tab);
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
@@ -1930,7 +1961,9 @@ const PAGE_TOOLS = new Set([
  * the next one, so each flag reaches the agent exactly once, in a reply it
  * reads. `tabs` covers every localhost tab; `open` the tab it lands on.
  */
-export async function runAgentTool(tool: string, args: Args): Promise<string> {
+export async function runAgentTool(tool: string, args: Args, client = 0): Promise<string> {
+  // Every tool below finds the agent through its args (tabOf).
+  args = Object.assign({ ...args }, { [CLIENT]: client });
   connectedAt ??= Date.now();
   let target: string | undefined;
   if (tool !== "tabs" && tool !== "open") {
@@ -1961,11 +1994,11 @@ export async function runAgentTool(tool: string, args: Args): Promise<string> {
 async function takeoverDiff(tool: string, args: Args): Promise<string[]> {
   if (tool === "open" || tool === "tabs") return [];
   try {
-    const tab = resolveTab(args.tab);
-    const before = snapshots.get(tab.id);
+    const tab = tabOf(args);
+    const before = snapshots.get(view(tab));
     if (!before || dialogs.has(tab.id)) return [];
     const after = await takePage(tab.id);
-    snapshots.set(tab.id, after);
+    snapshots.set(view(tab), after);
     const diff = diffSnapshot(before.full, after.full);
     if (!diff.length) return ["Page unchanged since your last look."];
     return diff.length > after.compact.split("\n").length
@@ -2053,6 +2086,8 @@ function setStatus(s: AgentStatus): void {
     // The next agent gets the whole story, "before you connected" included.
     connectedAt = null;
     cursors.clear();
+    // Ids aren't reused, so the views of agents that left are dead weight.
+    snapshots.clear();
     forgetReported();
   }
   // A pause nobody can see (the indicator hides with no agent) or that Stop
@@ -2089,6 +2124,7 @@ export function errorLine(text: string): string {
 export async function handleAgentCall(
   tool: string,
   args: Args,
+  client = 0,
 ): Promise<{ ok: boolean; text: string }> {
   const at = Date.now();
   // `open` has no tab until it runs; it brings the one it opened forward, so
@@ -2099,7 +2135,7 @@ export async function handleAgentCall(
   // The error itself, without a takeover lead (runPaused).
   let own = "";
   try {
-    text = await runAgentTool(tool, args);
+    text = await runAgentTool(tool, args, client);
   } catch (err) {
     ok = false;
     text = err instanceof Error ? err.message : String(err);
@@ -2148,12 +2184,12 @@ export function listenForAgents(): Promise<UnlistenFn>[] {
       if (open) dialogs.set(tabId, { type: type ?? "alert", message: message ?? "" });
       else dialogs.delete(tabId);
     }),
-    onAgentRequest(async ({ id, tool, args }) => {
+    onAgentRequest(async ({ id, client, tool, args }) => {
       if (taken.has(id)) return;
       taken.add(id);
       // ponytail: ids only grow, so a bounded window is enough.
       if (taken.size > 1000) taken.delete(taken.values().next().value as number);
-      const { ok, text } = await handleAgentCall(tool, args ?? {});
+      const { ok, text } = await handleAgentCall(tool, args ?? {}, client ?? 0);
       agentReply(id, ok, text).catch(() => {});
     }).then((unlisten) => {
       agentReady().catch(() => {});
