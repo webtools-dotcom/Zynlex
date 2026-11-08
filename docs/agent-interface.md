@@ -129,8 +129,10 @@ call to find out.
 [net.rs](../src-tauri/src/commands/browser/net.rs) subscribes each tab to
 CDP's `Network.webSocket*` events. It turns the domain on with
 `maxTotalBufferSize: 0`, since bodies come from WebView2 itself. Like the
-rest of capture, events are sent on only while an agent is connected or the
-Network panel is open. A frame is cut at 1,000 chars in Rust, and a binary
+rest of capture, frames are sent on only while an agent is connected or the
+Network panel is open. A socket opening and closing is sent on always: those
+events are rare, and sockets usually open at page load, before an agent
+connects, so without them a socket would show up later with no URL. A frame is cut at 1,000 chars in Rust, and a binary
 frame is just described (`(binary, 6 bytes)`). The network store keeps the
 last 20 sockets per tab and the last 50 frames per socket, and clears them
 with the tab's requests on a page load. `network` lists each socket on one
@@ -433,8 +435,10 @@ Overlay domain, which broke clicks for the flag picker). It draws in a closed
 shadow root on a `position: fixed`, `pointer-events: none`, `aria-hidden`
 host on `<html>`: no layout shift, nothing in the snapshot or
 `body.innerText`, and input and the covered-element hit test go straight
-through it. It fades by CSS, so the only DOM changes are the host coming and
-going, which the settle probe ignores. Mouse actions aim again after the
+through it. Every style is set from script and it fades with
+`element.animate`, never a `<style>` element, so a page whose CSP blocks
+inline styles still shows it right. Fading changes no DOM, so the only DOM
+changes are the host coming and going, which the settle probe ignores. Mouse actions aim again after the
 pause, so an element still moving (a CSS transition doesn't hold up settle)
 is hit where it is then. `screenshot` removes marks first. An element with no
 box (a hidden file input) gets no mark and no wait. Ceiling: `screenshot`

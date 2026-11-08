@@ -78,6 +78,7 @@ import {
   cut,
   downloadLines,
   dragPath,
+  errorLine,
   evalSource,
   findDevice,
   formatEvalValue,
@@ -874,6 +875,9 @@ function fakePage() {
         return { append: (...k: FakeNode[]) => kids.push(...k) };
       },
       remove: () => onPage.splice(onPage.indexOf(n), 1),
+      animate: (frames: object[], opts: object) => {
+        n.animation = { frames, opts };
+      },
     };
     return n;
   };
@@ -901,12 +905,20 @@ describe("action marks", () => {
     expect(host.style.cssText).toContain("position:fixed");
     expect(host.style.cssText).toContain("pointer-events:none");
     expect(host.shadow?.mode).toBe("closed");
-    const [style, box, label, dot] = host.shadow?.kids ?? [];
-    expect(style.textContent).toContain("pointer-events:none");
+    // Every style is set from script, none in a <style> element: a page's CSP
+    // can block <style> but not these.
+    const kids = host.shadow?.kids ?? [];
+    expect(kids.map((k) => k.tag)).toEqual(["div", "div", "div"]);
+    const [box, label, dot] = kids;
+    for (const k of kids) expect(k.style.cssText).toMatch(/^position:fixed;pointer-events:none;/);
     expect(box.style.cssText).toContain("left:10px;top:50px;width:80px;height:20px");
     expect(label.textContent).toBe("agent: click");
     expect(label.style.cssText).toContain("top:28px");
     expect(dot.style.cssText).toContain("left:42px;top:52px");
+    expect((host as { animation?: { opts: object } }).animation?.opts).toEqual({
+      duration: 1200,
+      fill: "forwards",
+    });
     expect(page.timers).toHaveLength(1);
     page.timers[0]();
     expect(page.onPage).toEqual([]);
@@ -916,8 +928,8 @@ describe("action marks", () => {
     const page = fakePage();
     mark(page.element({ ...rect, top: 4, bottom: 24 }), { label: "agent: type", ms: 1200 });
     const kids = page.onPage[0].shadow?.kids ?? [];
-    expect(kids).toHaveLength(3);
-    expect(kids[2].style.cssText).toContain("top:30px");
+    expect(kids).toHaveLength(2);
+    expect(kids[1].style.cssText).toContain("top:30px");
   });
 
   it("draws nothing for an element with no box", () => {
@@ -1100,6 +1112,31 @@ describe("take over (pause) and activity", () => {
     });
     // A read doesn't mark the tab; the mock did.
     expect(useAgentActivityStore.getState().touched).toEqual({ "aaaaaaaa-1": calls[1].at });
+  });
+
+  it("records the error itself, not the first step that worked or a takeover note", async () => {
+    expect(
+      errorLine(
+        [
+          'Typed "a" into textbox "Email" [e2]',
+          "Step 2 (click) failed: e9 is hidden (visibility: hidden): it's in the page",
+          "Page changes:",
+        ].join("\n"),
+      ),
+    ).toBe("Step 2 (click) failed: e9 is hidden (visibility: hidden): it's in the page");
+    expect(errorLine("No dialog is open in this tab.")).toBe("No dialog is open in this tab.");
+
+    pauseAgent();
+    const p = handleAgentCall("act", { action: "click", ref: "e1", tab: "zz" });
+    resumeAgent();
+    const { ok, text } = await p;
+    expect(ok).toBe(false);
+    // The agent gets the takeover note first; the panel shows the error.
+    expect(text).toMatch(/^The developer took over/);
+    expect(useAgentActivityStore.getState().calls[0]).toMatchObject({
+      error: 'No tab "zz" you can use. Call tabs.',
+      note: "ran after takeover",
+    });
   });
 
   it("records a held call that timed out as not run, without marking the tab", async () => {

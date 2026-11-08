@@ -86,7 +86,8 @@ export function outcomeOf(reply: string): string {
   if (tabs) out.push(tabs === 1 ? "opened a tab" : `opened ${tabs} tabs`);
   for (const l of lines) {
     const d = /^(Downloaded|Downloading|Download failed:) (\S+)/.exec(l);
-    if (d) out.push(`${d[1] === "Download failed:" ? "download failed" : "downloaded"} ${d[2]}`);
+    if (d)
+      out.push(`${d[1] === "Download failed:" ? "download failed" : d[1].toLowerCase()} ${d[2]}`);
   }
   const dialog = /^A (\w+) dialog is open/m.exec(reply);
   if (dialog) out.push(`${dialog[1]} dialog open`);

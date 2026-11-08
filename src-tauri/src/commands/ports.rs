@@ -265,12 +265,13 @@ fn owners_of(ports: &[u16]) -> Vec<PortOwner> {
     let listeners = listening_pids();
     let mut out = Vec::new();
     for &port in ports {
-        let mut pids: Vec<u32> = listeners
-            .iter()
-            .filter(|(p, _)| *p == port)
-            .map(|&(_, pid)| pid)
-            .collect();
-        pids.dedup();
+        // One process often holds a port on both IPv4 and IPv6: list it once.
+        let mut pids: Vec<u32> = Vec::new();
+        for &(p, pid) in &listeners {
+            if p == port && !pids.contains(&pid) {
+                pids.push(pid);
+            }
+        }
         out.extend(pids.into_iter().map(|pid| owner(port, pid)));
     }
     out
@@ -509,6 +510,15 @@ mod tests {
         assert!(started <= now && now - started < 3_600_000);
         // Nobody listens on port 1 on a dev machine.
         assert!(super::owners_of(&[1]).is_empty());
+
+        // The same process on IPv4 and IPv6 is listed once.
+        if let Ok(_v6) = std::net::TcpListener::bind(("::1", port)) {
+            let mine = super::owners_of(&[port])
+                .into_iter()
+                .filter(|o| o.pid == std::process::id())
+                .count();
+            assert_eq!(mine, 1);
+        }
     }
 
     #[test]
