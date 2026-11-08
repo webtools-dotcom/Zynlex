@@ -127,8 +127,18 @@ call to find out.
 
 **WebSockets.** WebView2's resource events never see a WebSocket, so
 [net.rs](../src-tauri/src/commands/browser/net.rs) subscribes each tab to
-CDP's `Network.webSocket*` events. It turns the domain on with
-`maxTotalBufferSize: 0`, since bodies come from WebView2 itself. Like the
+CDP's `Network.webSocket*` events. The Network domain they need is turned
+on with `maxTotalBufferSize: 0` (bodies come from WebView2 itself), and
+only for a tab that starts loading a localhost page, or any page while an
+agent is connected or the Network panel is open (`sync_network_domain`,
+called before the tab's first navigation and from `on_navigation`, before
+the request goes out). It costs every request a DevTools event: measured
+on 3 × 1,000 parallel fetches, 2.46–2.49 s off against 2.62–2.96 s on
+(about 10%; sequential requests showed no difference). So the developer's
+ordinary browsing doesn't pay for it. It's never turned off again:
+`Network.disable` may reset throttling set through the same domain. Ceiling:
+a granted staging tab that loaded before an agent connected shows its
+sockets from its next load. Like the
 rest of capture, frames are sent on only while an agent is connected or the
 Network panel is open. A socket opening and closing is sent on always: those
 events are rare, and sockets usually open at page load, before an agent
@@ -480,12 +490,23 @@ for Playwright MCP:
 | Shadow DOM: open, nested, closed roots | Snapshot shows the controls; type and click work (the AX tree crosses shadow roots, refs are backend node ids) |
 | Hidden → visible | A control revealed by a click shows in that click's diff; `wait_for` catches a later one. Acting on a hidden one now says hidden (was "stale" or "covered") |
 | Button name with an `aria-hidden` SVG | `button "Save"`; `aria-label` wins; an SVG `<title>` counts (`"star Favourite"`), as accessible-name rules say; an icon-only button with no name is `button [e41]` |
-| Several agents at once | Each `zynlex-mcp` gets its own pipe instance; 3 clients × 12 interleaved calls all got their own replies, concurrently |
+| Several agents at once | Each `zynlex-mcp` gets its own pipe instance; 3 clients × 12 interleaved calls all got their own replies, concurrently. On one tab, each keeps its own view (below) |
 
-Ceiling with several agents: per-tab state (the last snapshot a diff is
-taken against, which errors were already reported) is shared, so two agents
-on the **same** tab see each other's changes in their diffs and only the
-first to look gets a new error. Agents on different tabs don't interfere.
+Several agents on the **same** tab each keep their own view of it. Every
+request carries its pipe session's id (`client` in `agent://request`,
+[agent.rs](../src-tauri/src/agent.rs)), and the dispatcher keys what each
+agent was last shown by it:
+- the snapshot its diffs and `Unchanged` are taken against;
+- its `check` cursor ("Since last check");
+- the errors and failed requests it was already shown (`reported`, per
+  client, in [errorGroups.ts](../src/lib/errorGroups.ts)).
+
+So one agent's look never hides a page change or an error from another.
+Before this, two agents shared one view. When agent A acted, agent B's next
+snapshot said `Unchanged` though the page had changed, and an error A
+checked first never reached B. Tab state that really is shared stays
+shared: an emulated viewport, an open dialog, the developer's flags (each
+flag is delivered once, to whichever agent calls first).
 
 Ceilings: canvas UIs expose nothing to the AX tree (use `screenshot`);
 cross-origin iframes aren't walked; a snapshot over 300 lines spills to a

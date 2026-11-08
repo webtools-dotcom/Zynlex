@@ -175,7 +175,7 @@ async fn session(app: AppHandle, pipe: NamedPipeServer) {
         }
         let tool = req["tool"].as_str().unwrap_or_default();
         let reply = if ENABLED.load(Ordering::Relaxed) {
-            forward(&app, tool, req["args"].clone()).await
+            forward(&app, id, tool, req["args"].clone()).await
         } else {
             Err("The user turned off agent access in ZYNLEX (status bar). Ask them to turn it back on.".into())
         };
@@ -201,7 +201,9 @@ async fn session(app: AppHandle, pipe: NamedPipeServer) {
     emit_status(&app);
 }
 
-async fn forward(app: &AppHandle, tool: &str, args: Value) -> Reply {
+/// `client` is the session's id: the frontend keeps each agent's own view of
+/// a tab (its last snapshot, the errors it was shown) by it.
+async fn forward(app: &AppHandle, client: u64, tool: &str, args: Value) -> Reply {
     if !wait_until_ready(STARTUP_WAIT).await {
         return Err(format!(
             "ZYNLEX is still starting (no answer from its window after {}s). Try again in a moment.",
@@ -217,7 +219,7 @@ async fn forward(app: &AppHandle, tool: &str, args: Value) -> Reply {
     let _ = app.emit_to(
         "main",
         "agent://request",
-        json!({ "id": id, "tool": tool, "args": args }),
+        json!({ "id": id, "client": client, "tool": tool, "args": args }),
     );
     match tokio::time::timeout(REPLY_TIMEOUT, rx).await {
         Ok(Ok(reply)) => reply,

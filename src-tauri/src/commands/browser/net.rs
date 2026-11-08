@@ -814,8 +814,47 @@ pub fn register_webview_websocket_capture(
             let mut token: i64 = 0;
             let _ = receiver.add_DevToolsProtocolEventReceived(&handler, &mut token);
         }
-        // The events need the Network domain on. Bodies come from WebView2's
-        // own GetContent, so CDP needn't keep any: zero buffers.
+        // The events need the Network domain, which sync_network_domain turns
+        // on per page load.
+    });
+}
+
+/// Loopback hosts, as `isLoopbackUrl` (src/lib/url.ts) counts them.
+fn is_loopback(url: &str) -> bool {
+    let Some(host) = url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
+    else {
+        return false;
+    };
+    host == "localhost"
+        || host.ends_with(".localhost")
+        || host == "[::1]"
+        || host.starts_with("127.")
+}
+
+/// Whether a page load should have CDP's Network domain on: a localhost page
+/// (where agents work, so its sockets are known from the start), or any page
+/// while capture is on (an agent connected, or the Network panel open).
+fn wants_network_domain(url: &str) -> bool {
+    is_loopback(url) || NETWORK_CAPTURE_ACTIVE.load(Ordering::Relaxed) > 0
+}
+
+/// Turns the Network domain on for the page `wv` starts loading when it's
+/// wanted. It costs every request a DevTools event (measured: about 10% on
+/// 1,000 parallel fetches), so the developer's ordinary browsing doesn't pay
+/// for a feature only agents use. Called at navigation start, before the page
+/// can open a socket. Never turned off again: `Network.disable` may reset the
+/// throttling a developer set (`emulateNetworkConditions`, same domain), so a
+/// tab that once loaded a localhost page keeps it. Ceiling: a granted staging
+/// tab already loaded when an agent connects shows its sockets only from its
+/// next load.
+pub fn sync_network_domain(wv: &tauri::Webview, url: &str) {
+    if !wants_network_domain(url) {
+        return;
+    }
+    let _ = super::with_core(wv, "network domain", |core| {
+        // Bodies come from WebView2's own GetContent: CDP keeps none.
         super::cdp(
             &core,
             "Network.enable",
@@ -870,6 +909,29 @@ pub async fn browser_set_header_rules(
 mod tests {
     use super::{find_mock, url_matches, ws_event, MockRule};
     use serde_json::json;
+
+    #[test]
+    fn network_domain_only_on_localhost_pages() {
+        use super::is_loopback;
+        for url in [
+            "http://localhost:5173/",
+            "http://run7201.localhost:7201/x",
+            "http://127.0.0.1:8080",
+            "http://[::1]:3000/",
+            "HTTP://LOCALHOST/",
+        ] {
+            assert!(is_loopback(url), "{url}");
+        }
+        for url in [
+            "https://www.youtube.com/",
+            "http://localhost.evil.com/",
+            "https://staging.example.com/",
+            "about:blank",
+            "not a url",
+        ] {
+            assert!(!is_loopback(url), "{url}");
+        }
+    }
 
     #[test]
     fn websocket_events() {

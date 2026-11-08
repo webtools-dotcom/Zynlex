@@ -598,6 +598,8 @@ export interface AgentStatus {
 
 export interface AgentRequest {
   id: number;
+  /** Which connected agent sent it (its pipe session); absent from an older app. */
+  client?: number;
   tool: string;
   args: Record<string, unknown> | null;
 }
