@@ -283,7 +283,7 @@ async function closeAgentTab(arg: string): Promise<string> {
   }
   closeTab(t.id);
   forgetAgentTab(t.id);
-  for (const m of [snapshots, cursors, emulated, dialogs]) m.delete(t.id);
+  for (const m of [snapshots, cursors, emulated, dialogs, flaggedRefs]) m.delete(t.id);
   return `Closed [${shortId(t)}] ${t.url}\n${await tabsTool()}`;
 }
 
@@ -1071,6 +1071,29 @@ const SELECT_ALL = `function () {
   s.addRange(r);
 }`;
 
+/**
+ * In-page: "" when `type` can put text in the element (a text-like input, a
+ * textarea, contenteditable), else what it is ("a button", "an input of
+ * type checkbox", "a <select>", "disabled", "read-only"). By tag name, not
+ * instanceof, so it holds inside iframes too.
+ */
+export const TAKES_TEXT = `function () {
+  if (this.isContentEditable) return "";
+  const tag = (this.localName || "").toLowerCase();
+  const field = () => this.disabled ? "disabled" : this.readOnly ? "read-only" : "";
+  if (tag === "textarea") return field();
+  if (tag === "input") {
+    const t = (this.type || "text").toLowerCase();
+    const none = ["button", "submit", "reset", "checkbox", "radio", "file", "image", "range", "color", "hidden"];
+    return none.includes(t) ? "an input of type " + t : field();
+  }
+  if (tag === "select") return "a <select>";
+  if (!tag) return "not an element";
+  const role = this.getAttribute("role");
+  if (tag === "button" || role === "button") return "a button";
+  return "a <" + tag + ">" + (role ? " (role " + role + ")" : "") + " that isn't editable";
+}`;
+
 /** Picks a <select> option by value or label, firing the events frameworks listen for. */
 const CHOOSE_OPTION = `function (v) {
   const opts = [...(this.options || [])];
@@ -1281,6 +1304,17 @@ async function doStep(tab: Tab, st: Step, labelOf: (r: number | null) => string)
   }
   const label = labelOf(ref);
   try {
+    if (action === "type") {
+      // insertText into something that takes no text does nothing, and the
+      // reply would still say "Typed".
+      const not = await callOn(tab.id, ref as number, TAKES_TEXT);
+      if (not) {
+        const hint = String(not).includes("select") ? " Use action=select." : "";
+        throw new Error(
+          `e${ref} is ${not}, so type can't put text in it. Nothing was done.${hint}`,
+        );
+      }
+    }
     // Mouse actions mark their element as they aim (aimShown).
     if (ref != null && ["type", "select", "press", "upload"].includes(action)) {
       await showMark(tab.id, ref, `agent: ${action === "press" ? `press ${text}` : action}`);
@@ -1328,6 +1362,38 @@ async function doStep(tab: Tab, st: Step, labelOf: (r: number | null) => string)
                 : `Clicked ${label}`;
 }
 
+/** Per tab, refs the developer flagged: they can be elements the outline leaves out (a clickable div). */
+const flaggedRefs = new Map<string, Set<number>>();
+
+const inPage = (seen: Seen | undefined, r: number) => !!seen?.full.includes(`[e${r}]`);
+
+/**
+ * The tab's page, once every ref a call names is in it (or was flagged by
+ * the developer). A ref missing from the last snapshot gets one fresh look,
+ * then a reason, before anything is touched: hidden, gone, or not in the
+ * outline at all. Without this, a ref from an older page could name an
+ * unrelated node (ids restart with the renderer) and the click would land
+ * on it.
+ */
+async function knownRefs(tab: Tab, refs: number[]): Promise<Seen | undefined> {
+  const flagged = flaggedRefs.get(tab.id);
+  const ok = (seen: Seen | undefined, r: number) => inPage(seen, r) || !!flagged?.has(r);
+  let seen = snapshots.get(tab.id);
+  if (refs.every((r) => ok(seen, r))) return seen;
+  seen = await takePage(tab.id);
+  snapshots.set(tab.id, seen);
+  const missing = refs.find((r) => !ok(seen, r));
+  if (missing == null) return seen;
+  const why = await hiddenWhy(tab.id, missing);
+  if (why && why !== "gone") throw hiddenError(missing, why);
+  const page = await showPage(tab, seen.compact);
+  throw new Error(
+    why === "gone"
+      ? `Stale ref e${missing}: that element is gone. Current page:\n${page}`
+      : `e${missing} isn't in the page's outline: it's from an older page, or not something to act on. Nothing was done. Use a ref from this page:\n${page}`,
+  );
+}
+
 /**
  * One action, or `steps`: several in order in one call (click, type, press
  * Enter; click then accept the confirm), so a known sequence costs one model
@@ -1361,11 +1427,17 @@ async function actTool(args: Args): Promise<string> {
   if (!snapshots.has(tab.id) && !dialogs.has(tab.id)) {
     snapshots.set(tab.id, await takePage(tab.id));
   }
-  const before = snapshots.get(tab.id);
+  // A paused page (dialog) can't be read; its steps are answers anyway.
+  const before = dialogs.has(tab.id)
+    ? snapshots.get(tab.id)
+    : await knownRefs(
+        tab,
+        steps.flatMap((s) => [s.ref, s.to]).filter((r): r is number => r != null),
+      );
   const labelOf = (r: number | null) =>
     r == null
       ? ""
-      : (before?.compact
+      : (before?.full
           .split("\n")
           .find((l) => l.includes(`[e${r}]`))
           ?.trim() ?? `e${r}`);
@@ -1871,7 +1943,13 @@ export async function runAgentTool(tool: string, args: Args): Promise<string> {
   const text = await runPaused(tool, args);
   if (tool === "open") target = scopedTabs().find((t) => t.url === openUrl(args))?.id;
   const ids = tool === "tabs" ? scopedTabs().map((t) => t.id) : target ? [target] : [];
-  return withFlags(text, useAgentFlagsStore.getState().take(ids), tool === "tabs");
+  const flags = useAgentFlagsStore.getState().take(ids);
+  for (const f of flags) {
+    const set = flaggedRefs.get(f.tabId) ?? new Set<number>();
+    set.add(parseRef(f.ref));
+    flaggedRefs.set(f.tabId, set);
+  }
+  return withFlags(text, flags, tool === "tabs");
 }
 
 /**

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isLoopbackUrl } from "@/lib/url";
 
 vi.mock("@/hooks/useActiveScope", () => ({ getActiveTabId: () => null }));
@@ -18,6 +18,8 @@ const hooks = vi.hoisted(() => ({
   ready: [] as number[],
   /** When set, the page's accessibility tree; otherwise every CDP call fails (tab not loaded). */
   ax: null as null | object[],
+  /** When set, answers other CDP calls (undefined: fail as "tab not loaded"). */
+  answer: null as null | ((method: string, params: { functionDeclaration?: string }) => unknown),
   /** What `port_owners` answers, and the ports it was last asked about. */
   owners: [] as object[],
   ownerPorts: [] as number[],
@@ -54,11 +56,13 @@ vi.mock("@/services/browser", async (importOriginal) => ({
     hooks.ownerPorts = ports;
     return Promise.resolve(hooks.owners);
   },
-  tabCdp: (_tab: string, method: string) => {
+  tabCdp: (_tab: string, method: string, params?: { functionDeclaration?: string }) => {
     hooks.cdp.push(method);
     if (hooks.ax && method === "Accessibility.getFullAXTree") {
       return Promise.resolve({ nodes: hooks.ax });
     }
+    const answer = hooks.answer?.(method, params ?? {});
+    if (answer !== undefined) return Promise.resolve(answer);
     return Promise.reject(new Error("tab not loaded"));
   },
 }));
@@ -92,6 +96,7 @@ import {
   QUIET_PROBE,
   resolveTab,
   runAgentTool,
+  TAKES_TEXT,
   vitalsText,
   waitPending,
 } from "./agent";
@@ -405,6 +410,90 @@ describe("agent tools", () => {
       `… ${big.length - 8000} more chars; all of it is in C:\\Temp\\zynlex-agent\\`,
     );
     expect(out.length).toBeLessThan(8500);
+  });
+
+  describe("refs and text fields, checked before acting", () => {
+    // A page with one button, e12 "Save". `hidden` is what the page says
+    // about a ref that isn't in it (null: it can't even be resolved);
+    // `takesText` what it says when asked whether e12 takes text.
+    const fake = (hidden: string | null, takesText = "") => {
+      hooks.cdp.length = 0;
+      hooks.ax = [
+        { nodeId: "1", role: { value: "RootWebArea" }, name: { value: "App" }, childIds: ["2"] },
+        {
+          nodeId: "2",
+          role: { value: "button" },
+          name: { value: "Save" },
+          childIds: [],
+          backendDOMNodeId: 12,
+        },
+      ];
+      hooks.answer = (method, p) => {
+        if (method === "Runtime.evaluate") return { result: { value: 1 } };
+        if (method === "DOM.resolveNode")
+          return hidden == null ? undefined : { object: { objectId: "o" } };
+        if (method === "Runtime.callFunctionOn") {
+          const fn = p.functionDeclaration ?? "";
+          if (fn.includes("isContentEditable")) return { result: { value: takesText } };
+          if (fn.includes("isConnected")) return { result: { value: hidden } };
+        }
+        return undefined;
+      };
+    };
+    const clicked = () => hooks.cdp.includes("Input.dispatchMouseEvent");
+    afterEach(() => {
+      hooks.ax = null;
+      hooks.answer = null;
+      useAgentFlagsStore.setState({ flags: [] });
+    });
+
+    it("won't click a ref that isn't in the page, and says why", async () => {
+      fake("");
+      await expect(runAgentTool("act", { action: "click", ref: "e99" })).rejects.toThrow(
+        /^e99 isn't in the page's outline: it's from an older page, or not something to act on\. Nothing was done\.[\s\S]*button "Save" \[e12\]/,
+      );
+      fake("visibility: hidden");
+      await expect(runAgentTool("act", { action: "click", ref: "e99" })).rejects.toThrow(
+        "e99 is hidden (visibility: hidden)",
+      );
+      fake(null);
+      await expect(
+        runAgentTool("act", {
+          steps: [
+            { action: "click", ref: "e12" },
+            { action: "click", ref: "e99" },
+          ],
+        }),
+      ).rejects.toThrow(/^Stale ref e99: that element is gone\. Current page:/);
+      // Checked before anything touched the page, the good first step included.
+      expect(clicked()).toBe(false);
+    });
+
+    it("lets through a ref the developer flagged, even one the outline leaves out", async () => {
+      fake("");
+      useAgentFlagsStore
+        .getState()
+        .add({ tabId: "aaaaaaaa-1", ref: "e99", role: "div", name: "", note: "this does nothing" });
+      expect(await runAgentTool("snapshot", {})).toContain("Developer flagged e99");
+      // Past the ref check: it fails later, aiming at a box the fake page lacks.
+      await expect(runAgentTool("act", { action: "click", ref: "e99" })).rejects.not.toThrow(
+        /outline/,
+      );
+    });
+
+    it("won't type into something that takes no text", async () => {
+      fake("", "a button");
+      await expect(runAgentTool("act", { action: "type", ref: "e12", text: "hi" })).rejects.toThrow(
+        "e12 is a button, so type can't put text in it. Nothing was done.",
+      );
+      fake("", "a <select>");
+      await expect(
+        runAgentTool("act", { action: "type", ref: "e12", text: "Pro" }),
+      ).rejects.toThrow(
+        "e12 is a <select>, so type can't put text in it. Nothing was done. Use action=select.",
+      );
+      expect(hooks.cdp).not.toContain("Input.insertText");
+    });
   });
 
   it("rejects upload paths that aren't absolute before touching the page", async () => {
@@ -1183,6 +1272,33 @@ describe("downloads an action started", () => {
       "Download failed: report.csv (http://localhost:5173/report.csv)",
     ]);
     expect(downloadLines(items, "t3", 0)).toEqual([]);
+  });
+});
+
+describe("TAKES_TEXT", () => {
+  const takes = (el: object) => new Function(`return ${TAKES_TEXT}`)().call(el);
+  const el = (localName: string, extra: object = {}) => ({
+    localName,
+    isContentEditable: false,
+    getAttribute: () => null,
+    ...extra,
+  });
+
+  it("lets text fields through and names everything else", () => {
+    expect(takes(el("input"))).toBe("");
+    expect(takes(el("input", { type: "email" }))).toBe("");
+    expect(takes(el("textarea"))).toBe("");
+    expect(takes(el("div", { isContentEditable: true }))).toBe("");
+    expect(takes(el("input", { type: "checkbox" }))).toBe("an input of type checkbox");
+    expect(takes(el("input", { readOnly: true }))).toBe("read-only");
+    expect(takes(el("textarea", { disabled: true }))).toBe("disabled");
+    expect(takes(el("select"))).toBe("a <select>");
+    expect(takes(el("button"))).toBe("a button");
+    expect(takes(el("div", { getAttribute: () => "button" }))).toBe("a button");
+    expect(takes(el("div", { getAttribute: () => "textbox" }))).toBe(
+      "a <div> (role textbox) that isn't editable",
+    );
+    expect(takes({})).toBe("not an element");
   });
 });
 
