@@ -23,6 +23,7 @@ const hooks = vi.hoisted(() => ({
   /** What `port_owners` answers, and the ports it was last asked about. */
   owners: [] as object[],
   ownerPorts: [] as number[],
+  reloads: [] as string[],
 }));
 vi.mock("@/services/browser", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -48,6 +49,11 @@ vi.mock("@/services/browser", async (importOriginal) => ({
     return Promise.resolve(() => {});
   },
   closeTabWebview: () => Promise.resolve(),
+  pendingRequests: () => Promise.resolve([]),
+  webviewReload: (tabId: string) => {
+    hooks.reloads.push(tabId);
+    return Promise.resolve();
+  },
   agentWriteTemp: (name: string, text: string) => {
     hooks.writes.push({ name, text });
     return Promise.resolve(`C:\\Temp\\zynlex-agent\\zynlex-${name}.txt`);
@@ -101,7 +107,7 @@ import {
   waitPending,
 } from "./agent";
 import { cancelPause, PAUSE_HOLD_MS, PAUSED_REPLY, pauseAgent, resumeAgent } from "./agentPause";
-import { notePopup, popupMark, takePopups } from "./agentTabs";
+import { forgetAgentTab, markAgentOpened, notePopup, popupMark, takePopups } from "./agentTabs";
 import { forgetTab, notePageLoad } from "./errorGroups";
 
 const tab = (id: string, url: string, lastActiveAt = 0): Tab => ({
@@ -215,6 +221,33 @@ describe("agent tools", () => {
     expect(out).toContain(
       'http://localhost:5174 "Vite"\n    served by node.exe in D:\\old\\shop (pid 9, up 3d)',
     );
+  });
+
+  it("reloads a tab it opened when it opens it again, but not the developer's", async () => {
+    hooks.reloads.length = 0;
+    // A loaded, settled page with one button.
+    hooks.ax = [
+      { nodeId: "1", role: { value: "RootWebArea" }, name: { value: "App" }, childIds: ["2"] },
+      { nodeId: "2", role: { value: "button" }, name: { value: "Save" }, childIds: [], backendDOMNodeId: 12 },
+    ];
+    hooks.answer = (method) =>
+      method === "Runtime.evaluate" ? { result: { value: { ready: "complete", quietMs: 1000 } } } : undefined;
+    // The developer's own tab: switched to, not reloaded, and the reply says so.
+    const mine = await runAgentTool("open", { url: "http://localhost:3000/" });
+    expect(hooks.reloads).toEqual([]);
+    expect(mine).toContain("without reloading it");
+    expect(mine).not.toContain("Reloaded");
+    // A tab the agent opened: opening it again reloads it, to show changed code.
+    markAgentOpened("bbbbbbbb-2");
+    try {
+      const again = await runAgentTool("open", { url: "http://localhost:3000/" });
+      expect(hooks.reloads).toEqual(["bbbbbbbb-2"]);
+      expect(again).toContain("Reloaded: it was already open.");
+    } finally {
+      forgetAgentTab("bbbbbbbb-2");
+      hooks.ax = null;
+      hooks.answer = null;
+    }
   });
 
   it("gives each connected agent its own view of a shared tab", async () => {

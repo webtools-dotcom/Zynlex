@@ -22,7 +22,7 @@
     "lint:fix": "biome lint --write ./src",
     "format": "biome format --write ./src",
     "format:check": "biome format ./src",
-    "test": "vitest run",
+    "test": "vitest run --dir src",
     "test:watch": "vitest",
     "knip": "knip"
   },

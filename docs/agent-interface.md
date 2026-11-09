@@ -110,7 +110,7 @@ call to find out.
 | Tool | Does | Status |
 |---|---|---|
 | `tabs` | Localhost tabs (id prefix, URL, title, error counts) + running dev servers with no tab, each with the process serving it (see [Who serves a port](#who-serves-a-port)); `close` closes a tab the agent opened | Built |
-| `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors | Built |
+| `open` | Opens a localhost URL (or switches to its tab), settles, returns the page and errors. Opening a tab the agent opened again reloads it, so a code change shows; the developer's own tab is only switched to, and the reply says to use `check reload=true` | Built |
 | `check` | Settles, then new errors + failed requests since the last report, grouped (see [Error grouping](#error-grouping)); `reload` reloads first; `vitals` adds LCP, CLS, INP and long tasks (see [WebSockets and vitals](#websockets-and-vitals)) | Built |
 | `errors` | Every error and failed request on the current page, plus any from earlier page loads not yet shown, grouped; `level` adds `warning`, `info` or `log` (each includes the levels above it; newest 50 log/info lines) | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
