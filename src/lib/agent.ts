@@ -1512,6 +1512,16 @@ async function openTool(args: Args): Promise<string> {
   if (!existing) markAgentOpened(id);
   const tab: AgentTab = { ...useTabsStore.getState().tabs[id], client: clientOf(args) };
   await showTab(tab);
+  // Agents call `open` again to look at a fix, expecting a fresh load (as a
+  // navigate would give). A tab the agent opened is reloaded; the developer's
+  // own tab isn't, since that would lose what they typed, so the reply says so.
+  // Without either, agents tested the old script and chased a fixed bug for
+  // several turns (benchmark, 2026-11-09).
+  const reload = !!existing && isAgentOpened(id);
+  if (reload) {
+    newProblems(tab);
+    await webviewReload(id);
+  }
   // A fresh page: report it whole, not as a diff against an old visit.
   snapshots.delete(view(tab));
   const lines = await consequences(tab, url);
@@ -1519,6 +1529,12 @@ async function openTool(args: Args): Promise<string> {
   // echo a redirect or a trailing slash.
   return [
     header(useTabsStore.getState().tabs[id] ?? tab),
+    ...(reload ? ["Reloaded: it was already open."] : []),
+    ...(existing && !reload
+      ? [
+          "Switched to the developer's open tab without reloading it. After a code change, use check reload=true.",
+        ]
+      : []),
     ...lines.filter((l) => !l.startsWith("Navigated to ")),
   ].join("\n");
 }
