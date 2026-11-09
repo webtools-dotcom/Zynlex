@@ -68,16 +68,16 @@ Developer flagged e15 button "Apply": does nothing on mobile
 
 Each action already returns what changed on the page and any new errors, so the agent rarely needs a second look. Steps it already knows (type, then press Enter; click Delete, then accept the confirm) go in a single call. Claude Code re-sends its whole context on every turn, so fewer turns means fewer tokens.
 
-The latest run on the same day as Playwright MCP: Claude Code fixing five bugs it had never seen, five runs each.
+The latest run (2026-11-09, ZYNLEX 0.18), on the same day as Playwright MCP: Claude Code fixing five bugs it had never seen, five runs each.
 
 | | ZYNLEX | Playwright MCP |
 |---|---|---|
 | Bugs fixed | 25/25 | 25/25 |
-| Tokens per bug (median) | **173k** | 240k |
-| Cost per bug (median) | **$0.119** | $0.187 |
-| Turns per bug (median) | **10** | 12 |
+| Tokens per bug (median) | **176k** | 262k |
+| Cost per bug (median) | **$0.124** | $0.196 |
+| Turns per bug (median) | **10** | 13 |
 
-That's 28% fewer tokens and 36% lower cost. It's our own harness, on one machine, with one model family, which is why the harness, the buggy apps, the graders and every run's result are in [benchmark/](benchmark/README.md) for you to rerun.
+That's 33% fewer tokens and 37% lower cost, and fewer tokens on every one of the five bugs. It's our own harness, on one machine, with one model family, which is why the harness, the buggy apps, the graders and every run's result are in [benchmark/](benchmark/README.md) for you to rerun.
 
 ## What a session looks like
 
