@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-09
+
+You can now see what your AI agent does in the page, as it does it, and it
+handles the cases that trip agents up elsewhere.
+
+In the same-day benchmark, Claude Code fixed all 25 bugs using 33% fewer
+tokens than with Playwright MCP (benchmark/README.md).
+
+### Added
+
+- **The agent's actions show in the page.** Before each click, key press,
+  hover, drag, choice or upload, the target gets an outline, a label such as
+  "agent: click" and a dot where the pointer goes, for a moment before the
+  action happens. Nothing moves on the page, and the agent's view of the page
+  doesn't change.
+- **A clearer Agent Activity panel.** Each row says what the agent did
+  ("Clicked button "Export""), what it caused ("Exported 6 orders", "1 new
+  error", "page unchanged") and how long it took. Agents can add a short reason
+  for an action, shown in the panel.
+- **Which program serves each port.** The agent's list of tabs and dev servers
+  says which program and project folder serves each localhost port, so it can
+  tell your project's server from an old one on the next port. ZYNLEX only
+  reads this; it never stops anything.
+- **WebSocket messages** for agents: the connections a page opens, and the
+  messages sent and received on each.
+- **Web vitals on request**: loading time (LCP), layout shift (CLS),
+  responsiveness (INP) and long tasks, rated with web.dev's thresholds.
+
+### Fixed
+
+- A click that started a download told the agent nothing happened. It now
+  says what was downloaded and where.
+- Acting on a hidden element told the agent the element was gone, so it went
+  looking for it again. It now says the element is hidden and why.
+- An element reference from an earlier page could click an unrelated element
+  on the new one. Old references are now refused with an explanation, and
+  nothing is done.
+- Typing into something that takes no text, such as a button, reported
+  success. It's now refused, with a hint to use the right action.
+- With two agents on the same tab, one could miss changes and errors the
+  other had caused. Each agent now keeps its own view.
+- Opening a page the agent had already opened switched to it without
+  reloading, so after a code change the agent tested the old version. It now
+  reloads it. Your own tabs are still only switched to, so nothing you typed
+  is lost.
+- Pages loaded about 10% slower when they made many requests, because a
+  network listener was on in every tab. It's now on only for localhost tabs,
+  or while an agent or the Network panel needs it.
+
 ## [0.17.0] - 2026-11-05
 
 AI coding agents can now use ZYNLEX: Claude Code, Codex and other MCP
@@ -387,7 +436,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.18.0
 [0.17.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.17.0
 [0.16.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.16.1
 [0.16.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.16.0

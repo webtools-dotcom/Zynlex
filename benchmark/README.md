@@ -85,6 +85,17 @@ Playwright MCP rerun the same day as ZYNLEX, because the model behind `sonnet` h
 | ZYNLEX, 13 tools | 25/25 | 0 | 198k | 11 | 6 | $0.133 |
 | Playwright MCP | 25/25 | 0 | 240k | 12 | 7 | $0.187 |
 
+### Held-out set, same day (2026-11-09)
+
+`results/heldout-2026-11-09.jsonl`. ZYNLEX 0.18 (release build of `main` at 77a57e7: actions shown in the page, port owners, WebSocket frames, web vitals, per-agent views), with Playwright MCP again the same day.
+
+| Tool | Fixed | Timed out | Tokens | Turns | Browser calls | Cost per task |
+|---|---|---|---|---|---|---|
+| ZYNLEX 0.18 | 25/25 | 0 | 176k | 10 | 5 | $0.124 |
+| Playwright MCP | 25/25 | 0 | 262k | 13 | 8 | $0.196 |
+
+ZYNLEX used fewer tokens on all five bugs. Two of its five `loadmore` runs cost about twice the usual (387k and 399k): after fixing the code the agent re-opened its tab with `open`, which switched to it without reloading, so it tested the old script. Since 0.18, `open` reloads a tab the agent opened.
+
 ## Caveats
 
 - One machine, one model family, small apps written for this. Five repeats
