@@ -332,6 +332,7 @@ export async function setMemoryTarget(tabId: string, low: boolean): Promise<void
 /** Chromium switches applied at startup (src-tauri/src/engine.rs). */
 export interface EngineOptions {
   inProcessGpu: boolean;
+  tabProcessModel: boolean;
   lowMemoryProcessModel: boolean;
 }
 

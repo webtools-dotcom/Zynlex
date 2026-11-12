@@ -176,6 +176,22 @@ function EngineToggles() {
       <div className="flex justify-between items-center mt-3">
         <div>
           <span className="text-sm text-[var(--color-text-muted)] block">
+            One process per tab
+          </span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            Saves ~200 MB with many tabs. Turns off site isolation (weaker protection between
+            sites): embedded frames run in their tab's process. Tabs stay separate.
+          </span>
+        </div>
+        {/* The low-memory model already turns site isolation off. */}
+        <CompactToggle
+          value={opts.tabProcessModel || opts.lowMemoryProcessModel}
+          onToggle={() => !opts.lowMemoryProcessModel && toggle("tabProcessModel")}
+        />
+      </div>
+      <div className="flex justify-between items-center mt-3">
+        <div>
+          <span className="text-sm text-[var(--color-text-muted)] block">
             Low-memory process model
           </span>
           <span className="text-xs text-[var(--color-text-disabled)] block">
