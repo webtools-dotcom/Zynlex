@@ -91,6 +91,8 @@ export interface AppSettings {
   suspendHiddenTabsMinutes: number;
   /** Discard (close, reload on click) a hidden tab after this many minutes. 0 = never. */
   discardHiddenTabsMinutes: number;
+  /** Let free RAM move the two timers above: sooner when it runs short, later when there is plenty. */
+  adaptToMemory: boolean;
 }
 
 // ─── Bookmarks ────────────────────────────────────────────────────

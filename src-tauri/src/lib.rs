@@ -308,6 +308,7 @@ pub fn run() {
             commands::browser::browser_set_user_agent,
             commands::browser::browser_set_memory_target,
             commands::browser::browser_suspend_tab,
+            commands::memory::system_memory,
             engine::get_engine_options,
             engine::set_engine_options,
             commands::browser::browser_eval_inspector,
