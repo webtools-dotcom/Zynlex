@@ -30,6 +30,16 @@ Before and after this work, on the same machine (ZYNLEX 0.13 → 0.14, private m
 | Three tabs | 758 MB | **546 MB** (−28%) | 496 MB (−35%) | 418 MB (−45%) |
 | Ten tabs | 1577 MB | **1341 MB** (−15%) | 1277 MB (−19%) | **776 MB** (−51%) |
 
+The three process models on 0.18, same method, median of 3 runs, hidden tabs not yet suspended (private / working set, MB):
+
+| | Default | One process per tab | Low-memory process model |
+|---|---|---|---|
+| One blank tab | 156 / 410 | 152 / 402 | 154 / 405 |
+| Three tabs | 563 / 918 | 547 / 937 | 521 / 816 |
+| Ten tabs | 1288 / 2161 | **1006 / 1567** (−22%) | **774 / 1025** (−40%) |
+
+Ten tabs run as 22 page processes by default, because an embedded frame from another site gets a process of its own. "One process per tab" brings that to 10; the low-memory model to 2.
+
 ## Memory settings
 
 All in **Settings → Memory**:
@@ -39,9 +49,10 @@ All in **Settings → Memory**:
 | Suspend hidden tabs | After 5 min | A suspended tab stops updating (chat, dashboards, live logs) until you switch back. `localhost` tabs and tabs playing audio are never suspended. |
 | Discard hidden tabs | After 10 min | The page reloads when you return to it. In-page state that isn't in a form field or the URL is lost. |
 | GPU in main process | On | If your graphics driver crashes, the whole app closes instead of Chromium quietly restarting its GPU process. Turn it off if that happens to you. |
+| One process per tab | Off | Turns off site isolation: embedded frames from other sites run in their tab's process instead of their own. About 280 MB less with ten tabs open, nothing with one to three. Sites are less protected from each other (Spectre-class attacks), as with the low-memory model below, but each tab keeps its own process, so a heavy tab doesn't slow the rest and a suspended tab still leaves RAM. Fine for local development; leave it off for banking and similar. |
 | Low-memory process model | Off | Turns off site isolation and shares two processes across all tabs: up to half the memory with many tabs open. Sites are less protected from each other (Spectre-class attacks), and one heavy tab can slow the rest. Fine for local development; leave it off for banking and similar. |
 
-The last two take effect after a restart; the panel has a button for it.
+The last three take effect after a restart; the panel has a button for it.
 
 The installer is about 4 MB because WebView2 already ships with Windows, so there's no bundled copy of Chromium to download. That's also why there's no macOS or Linux build yet.
 

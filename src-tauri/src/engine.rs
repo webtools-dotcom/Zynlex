@@ -24,7 +24,7 @@ pub struct EngineOptions {
     pub in_process_gpu: bool,
     /// No site isolation, but still one renderer process per tab: cross-site
     /// iframes run inside their tab's process instead of their own. Saves
-    /// ~200 MB with 10 tabs (nothing with 1-3). Trade-off: the same weaker
+    /// ~280 MB with 10 tabs (nothing with 1-3). Trade-off: the same weaker
     /// cross-site protection as the low-memory model, without its shared
     /// processes (a heavy tab doesn't slow the others, suspend still pages a
     /// tab out). Opt-in. Implied by `low_memory_process_model`.

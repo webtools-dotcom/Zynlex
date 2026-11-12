@@ -179,7 +179,7 @@ function EngineToggles() {
             One process per tab
           </span>
           <span className="text-xs text-[var(--color-text-disabled)] block">
-            Saves ~200 MB with many tabs. Turns off site isolation (weaker protection between
+            Saves ~280 MB with ten tabs. Turns off site isolation (weaker protection between
             sites): embedded frames run in their tab's process. Tabs stay separate.
           </span>
         </div>
