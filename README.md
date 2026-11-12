@@ -127,6 +127,8 @@ Both, for different jobs. Keep Playwright for CI.
 ## Set up
 
 1. [Download the installer](https://github.com/webtools-dotcom/Zynlex/releases/latest) and run it. It puts `zynlex-mcp` on your PATH.
+
+   The installer isn't code-signed yet, so Windows may say **"Windows protected your PC"**: click **More info → Run anyway**. Each release lists its installers' SHA-256 checksums, so you can check the file is the one built here (`Get-FileHash .\ZYNLEX_*_x64-setup.exe` in PowerShell).
 2. In a new terminal, connect your agent:
 
    ```bash
@@ -221,7 +223,7 @@ So ZYNLEX gave the agent a way in, to the browser I'm already using, with me abl
 
 - **Windows only.** Tabs, network capture, mocking and viewports are built on WebView2's Windows APIs. macOS and Linux are on the [roadmap](ROADMAP.md), and they're a real port, not a recompile.
 - **Agents reach `localhost` and staging you allow, nothing else.** For other sites, use Playwright.
-- **Not signed yet.** Windows shows "Unknown publisher" and some antivirus software quarantines new builds until signing is approved ([policy](CODE_SIGNING_POLICY.md)).
+- **Not signed yet.** Windows shows "Unknown publisher" when installing, and some antivirus software holds back new, unsigned builds. Every release is built in public by GitHub Actions and lists its checksums; signing comes once the project qualifies for free open-source signing ([policy](CODE_SIGNING_POLICY.md)).
 - The benchmark is one machine and one model family, on small apps written for it. The data is there so you can check it.
 - Header rules don't apply to WebSocket handshakes; the network log keeps bodies only for text responses; downloads show no progress percentage.
 
@@ -252,7 +254,7 @@ Free and open source under Apache-2.0. No account, no telemetry.
 - [docs/performance.md](docs/performance.md): memory compared with Chrome, and the settings that trade it off
 - [docs/architecture.md](docs/architecture.md): process model, network capture, security boundary
 - [CONTRIBUTING.md](CONTRIBUTING.md) · [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md)
-- [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md): how releases are signed. Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
+- [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md): how releases are built, and how they will be signed
 
 ## Contributing
 

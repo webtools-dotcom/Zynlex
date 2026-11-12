@@ -56,3 +56,16 @@ jobs:
             **Requirements:** Windows 10 or 11. The installer adds the WebView2 runtime if it's missing.
           releaseDraft: true
           prerelease: false
+
+      # Releases aren't code-signed yet (CODE_SIGNING_POLICY.md), so each one lists
+      # its installers' SHA-256, for anyone checking a download against this build.
+      - name: Add installer checksums to the release notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $files = Get-ChildItem src-tauri/target/release/bundle -Recurse -Include *-setup.exe, *.msi
+          $rows = $files | ForEach-Object { "| ``$($_.Name)`` | ``$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())`` |" }
+          $body = gh release view "${{ github.ref_name }}" --json body --jq .body
+          $body += "`n`n### SHA-256`n`n| File | SHA-256 |`n|---|---|`n" + ($rows -join "`n")
+          $body | gh release edit "${{ github.ref_name }}" --notes-file -

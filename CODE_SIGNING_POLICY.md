@@ -1,10 +1,11 @@
 # Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
-
-> **Status:** applied to the SignPath Foundation program. Until it's approved,
-> ZYNLEX releases are unsigned. This page says how signing will work from the
-> first signed release on.
+> **Status: releases are not signed yet.** We applied to the free
+> [SignPath Foundation](https://signpath.org/) program for open-source projects.
+> In November 2026 it was declined because ZYNLEX is still new and not yet widely
+> known; we'll apply again once it is. Until then, every release is built by the
+> public GitHub Actions workflow below and lists the SHA-256 checksum of each
+> installer. This page says how signing will work from the first signed release on.
 
 ## What gets signed
 
