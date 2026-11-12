@@ -1,5 +1,5 @@
 /**
- * FindBar — Ctrl+F search bar for the active webview.
+ * FindBar â€” Ctrl+F search bar for the active webview.
  *
  * Docks as a row above the content area rather than floating over it. It cannot
  * float: the tab is a native child webview composited above this document, so
@@ -10,11 +10,11 @@
  * Search runs through the Rust `browser_find` command, which injects a JS-based
  * find (Tauri 2.11.2 stable exposes no native WebviewWindow::find API). Match
  * counts come back as that command's return value, read out of the page with
- * ExecuteScript — a page cannot invoke IPC back into the app, so the old
+ * ExecuteScript â€” a page cannot invoke IPC back into the app, so the old
  * `browser://find-result` event was never emitted and the counter never moved.
  */
 import { isTauri } from "@tauri-apps/api/core";
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { Search, X, ChevronUp, ChevronDown } from "lucide-react";
 import { webviewFind, webviewFindNext, webviewStopFind, focusAppWebview } from "@/services/browser";
 import { useUIStore, useFindOpen } from "@/stores/ui";
@@ -32,21 +32,25 @@ export function FindBar() {
   const closeFind = useUIStore((s) => s.closeFind);
   const setFindResult = useUIStore((s) => s.setFindResult);
 
+  const [matchCase, setMatchCase] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastQueriedRef = useRef<string>("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runFind = useCallback(
-    async (q: string) => {
+    async (q: string, caseSensitive: boolean, wholeWords: boolean) => {
       if (!IS_TAURI) return;
-      if (q === lastQueriedRef.current) return;
+      const search = JSON.stringify([q, caseSensitive, wholeWords]);
+      if (search === lastQueriedRef.current) return;
       const tabId = getActiveTabId();
       if (!tabId) return;
-      lastQueriedRef.current = q;
+      lastQueriedRef.current = search;
       try {
-        const r = await webviewFind(tabId, q);
+        const r = await webviewFind(tabId, q, caseSensitive, wholeWords);
+        if (lastQueriedRef.current !== search) return;
         setFindResult(r.activeMatch, r.totalMatches);
       } catch (e) {
+        if (lastQueriedRef.current !== search) return;
         setFindResult(0, 0);
         if (import.meta.env.DEV) {
           console.error("[zynlex] webviewFind failed:", e);
@@ -59,12 +63,12 @@ export function FindBar() {
   // Focus the input whenever the bar opens, and clear the highlights on the way
   // out. Stopping the find in a *cleanup* keyed on the searched tab is what
   // matters: the bar is scoped per tab now, so switching tabs unmounts it, and
-  // an `else` branch would never run — leaving the old tab highlighted forever.
+  // an `else` branch would never run â€” leaving the old tab highlighted forever.
   useEffect(() => {
     if (!findTabId) return;
     // Defer one tick so the input is mounted. focusAppWebview() first: Ctrl+F
     // is usually pressed with the page focused, and the tab's child webview
-    // keeps OS keyboard focus until this document asks for it — without it the
+    // keeps OS keyboard focus until this document asks for it â€” without it the
     // bar opens but every keystroke still goes to the page.
     setTimeout(() => {
       void focusAppWebview().then(() => {
@@ -81,19 +85,11 @@ export function FindBar() {
   // Debounced find on query change.
   useEffect(() => {
     if (!findOpen) return;
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    debounceRef.current = setTimeout(() => {
-      runFind(findQuery);
+    const timer = setTimeout(() => {
+      void runFind(findQuery, matchCase, wholeWord);
     }, 150);
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = null;
-      }
-    };
-  }, [findQuery, findOpen, runFind]);
+    return () => clearTimeout(timer);
+  }, [findQuery, findOpen, matchCase, wholeWord, runFind]);
 
   const step = useCallback(
     (forward: boolean) => {
@@ -107,17 +103,12 @@ export function FindBar() {
     [setFindResult],
   );
 
-  // Local keydown handler: Enter cycles matches, Shift+Enter goes back,
-  // Escape closes the bar. Ctrl+F is the find.open command
-  // (src/lib/commands.ts).
+  // Enter cycles matches while focus is in the search input.
+  // Ctrl+F is the find.open command (src/lib/commands.ts).
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
       step(!e.shiftKey);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      closeFind();
     }
   }
 
@@ -138,8 +129,11 @@ export function FindBar() {
         borderColor: "var(--color-border)",
       }}
       onKeyDown={(e) => {
-        // Stop the Escape from bubbling to global shortcuts
-        if (e.key === "Escape") e.stopPropagation();
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          closeFind();
+        }
       }}
     >
       <Search size={14} className="text-[var(--color-text-disabled)] flex-shrink-0" />
@@ -155,6 +149,32 @@ export function FindBar() {
         autoCapitalize="off"
         className="w-[200px] bg-transparent outline-none text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] font-mono"
       />
+      <button
+        type="button"
+        aria-label="Match case"
+        aria-pressed={matchCase}
+        title="Match case"
+        onClick={() => {
+          setMatchCase(!matchCase);
+          void runFind(findQuery, !matchCase, wholeWord);
+        }}
+        className="h-6 px-1 rounded text-xs font-mono text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] aria-pressed:bg-[var(--color-hover)] aria-pressed:underline"
+      >
+        Aa
+      </button>
+      <button
+        type="button"
+        aria-label="Match whole word"
+        aria-pressed={wholeWord}
+        title="Match whole word"
+        onClick={() => {
+          setWholeWord(!wholeWord);
+          void runFind(findQuery, matchCase, !wholeWord);
+        }}
+        className="h-6 px-1 rounded text-xs font-mono text-[var(--color-text-primary)] hover:bg-[var(--color-hover)] aria-pressed:bg-[var(--color-hover)] aria-pressed:underline"
+      >
+        Word
+      </button>
       {matchText && (
         <span
           className="text-micro font-mono text-[var(--color-text-disabled)] min-w-[60px] text-right select-none tabular-nums"

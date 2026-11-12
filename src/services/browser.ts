@@ -174,8 +174,8 @@ export async function showTabWebview(tabId: string, bounds: BrowserBounds): Prom
 
 // ─── Find (per-tab) ──────────────────────────────────────────────────
 
-export async function webviewFind(tabId: string, query: string): Promise<FindResult> {
-  return await invoke<FindResult>("browser_find", { tabId, query });
+export async function webviewFind(tabId: string, query: string, matchCase: boolean, wholeWord: boolean): Promise<FindResult> {
+  return await invoke<FindResult>("browser_find", { tabId, query, matchCase, wholeWord });
 }
 
 export async function webviewFindNext(tabId: string, forward: boolean = true): Promise<FindResult> {

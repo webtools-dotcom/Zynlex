@@ -68,11 +68,18 @@ pub async fn browser_find(
     app: AppHandle,
     tab_id: String,
     query: String,
+    match_case: Option<bool>,
+    whole_word: Option<bool>,
 ) -> Result<FindResult, String> {
     let body = if query.is_empty() {
         "window.__zynlexClearFind()".to_string()
     } else {
-        format!("window.__zynlexFind({})", js_string_literal(&query))
+        format!(
+            "window.__zynlexFind({}, {}, {})",
+            js_string_literal(&query),
+            match_case.unwrap_or(false),
+            whole_word.unwrap_or(false)
+        )
     };
     run_find_script(&app, &tab_id, &body).await
 }

@@ -37,9 +37,14 @@
     }
   }
 
-  function findAll(query) {
+  function findAll(query, matchCase, wholeWord) {
     if (!query) return [];
-    var q = query.toLowerCase();
+    var literal = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (wholeWord) {
+      var word = "[\\p{L}\\p{M}\\p{N}\\p{Pc}]";
+      literal = "(?<!" + word + ")" + literal + "(?!" + word + ")";
+    }
+    var pattern = new RegExp(literal, matchCase ? "gu" : "giu");
     var results = [];
     if (!document.body) return results;
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
@@ -53,19 +58,15 @@
         if (p.closest && p.closest("mark.zynlex-find-hit")) {
           return NodeFilter.FILTER_REJECT;
         }
-        if (!node.nodeValue || node.nodeValue.toLowerCase().indexOf(q) === -1) {
-          return NodeFilter.FILTER_REJECT;
-        }
         return NodeFilter.FILTER_ACCEPT;
       }
     });
     var n;
     outer: while ((n = walker.nextNode())) {
-      var lt = n.nodeValue.toLowerCase();
-      var idx = 0;
-      while ((idx = lt.indexOf(q, idx)) !== -1) {
-        results.push({ node: n, offset: idx, length: query.length });
-        idx += q.length;
+      pattern.lastIndex = 0;
+      var match;
+      while ((match = pattern.exec(n.nodeValue)) !== null) {
+        results.push({ node: n, offset: match.index, length: match[0].length });
         if (results.length >= MAX_MATCHES) break outer;
       }
     }
@@ -109,17 +110,19 @@
     }
   }
 
-  window.__zynlexFind = function(query) {
+  window.__zynlexFind = function(query, matchCase, wholeWord) {
     clearFind();
     if (!query) {
       window.__zynlexFindState = { query: "", matches: [], currentIndex: -1 };
       return result(0, 0);
     }
-    var matches = findAll(query);
+    var matches = findAll(query, matchCase, wholeWord);
     highlightMatches(matches);
     var currentIndex = matches.length > 0 ? 0 : -1;
     window.__zynlexFindState = {
       query: query,
+      matchCase: matchCase,
+      wholeWord: wholeWord,
       matches: matches,
       currentIndex: currentIndex
     };
@@ -133,7 +136,7 @@
     var s = window.__zynlexFindState;
     if (!s || s.matches.length === 0) {
       if (s && s.query) {
-        return window.__zynlexFind(s.query);
+        return window.__zynlexFind(s.query, s.matchCase, s.wholeWord);
       }
       return result(0, 0);
     }
