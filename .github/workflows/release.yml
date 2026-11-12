@@ -39,7 +39,7 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signs the updater artifacts and emits latest.json. Without these the
