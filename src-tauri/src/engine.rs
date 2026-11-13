@@ -22,6 +22,13 @@ pub struct EngineOptions {
     /// overhead). Trade-off: a GPU driver crash takes down the whole browser
     /// process (every webview) instead of Chromium restarting the GPU process.
     pub in_process_gpu: bool,
+    /// No site isolation, but still one renderer process per tab: cross-site
+    /// iframes run inside their tab's process instead of their own. Saves
+    /// ~280 MB with 10 tabs (nothing with 1-3). Trade-off: the same weaker
+    /// cross-site protection as the low-memory model, without its shared
+    /// processes (a heavy tab doesn't slow the others, suspend still pages a
+    /// tab out). Opt-in. Implied by `low_memory_process_model`.
+    pub tab_process_model: bool,
     /// No site isolation, at most 2 renderer processes. Saves ~330-570 MB with
     /// 10 tabs (nothing with 1-3). Trade-off: weaker cross-site protection
     /// (Spectre-class leaks between sites in one process), and one heavy tab
@@ -33,6 +40,7 @@ impl Default for EngineOptions {
     fn default() -> Self {
         Self {
             in_process_gpu: true,
+            tab_process_model: false,
             low_memory_process_model: false,
         }
     }
@@ -48,8 +56,11 @@ pub fn browser_args(o: &EngineOptions) -> String {
     if o.in_process_gpu {
         s.push_str(" --in-process-gpu");
     }
+    if o.tab_process_model || o.low_memory_process_model {
+        s.push_str(" --disable-site-isolation-trials");
+    }
     if o.low_memory_process_model {
-        s.push_str(" --disable-site-isolation-trials --renderer-process-limit=2");
+        s.push_str(" --renderer-process-limit=2");
     }
     s
 }
@@ -95,6 +106,7 @@ mod tests {
                     --autoplay-policy=no-user-gesture-required";
         let none = EngineOptions {
             in_process_gpu: false,
+            tab_process_model: false,
             low_memory_process_model: false,
         };
         assert_eq!(browser_args(&none), base);
@@ -102,14 +114,26 @@ mod tests {
             browser_args(&EngineOptions::default()),
             format!("{base} --in-process-gpu")
         );
-        let all = EngineOptions {
-            in_process_gpu: true,
-            low_memory_process_model: true,
+        let per_tab = EngineOptions {
+            tab_process_model: true,
+            ..EngineOptions::default()
         };
         assert_eq!(
-            browser_args(&all),
-            format!("{base} --in-process-gpu --disable-site-isolation-trials --renderer-process-limit=2")
+            browser_args(&per_tab),
+            format!("{base} --in-process-gpu --disable-site-isolation-trials")
         );
+        // Both on is the low-memory model: the switch is not repeated.
+        for tab_process_model in [false, true] {
+            let all = EngineOptions {
+                in_process_gpu: true,
+                tab_process_model,
+                low_memory_process_model: true,
+            };
+            assert_eq!(
+                browser_args(&all),
+                format!("{base} --in-process-gpu --disable-site-isolation-trials --renderer-process-limit=2")
+            );
+        }
     }
 
     #[test]
@@ -117,6 +141,8 @@ mod tests {
         let partial: EngineOptions =
             serde_json::from_str(r#"{"lowMemoryProcessModel":true}"#).unwrap();
         assert!(partial.in_process_gpu && partial.low_memory_process_model);
+        // A file written before the per-tab model existed leaves it off.
+        assert!(!partial.tab_process_model);
         assert!(serde_json::from_str::<EngineOptions>("not json").is_err());
     }
 }
