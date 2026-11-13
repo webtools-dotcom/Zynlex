@@ -301,6 +301,8 @@ pub fn run() {
             commands::browser::browser_stop_find,
             commands::browser::browser_set_theme,
             commands::browser::browser_set_network_capture,
+            commands::browser::browser_network_body,
+            commands::browser::browser_clear_network_bodies,
             commands::browser::browser_hide_tab,
             commands::browser::browser_show_tab,
             commands::browser::browser_set_user_agent,

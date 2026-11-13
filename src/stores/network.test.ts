@@ -15,6 +15,7 @@ import {
   type NetworkLogEntry,
   type SocketLog,
   useNetworkStore,
+  withBody,
 } from "@/stores/network";
 
 describe("WebSocket log", () => {
@@ -106,6 +107,49 @@ function add(count: number, tabId = "tab-1") {
 
 beforeEach(() => {
   useNetworkStore.setState({ entriesByTab: {}, paused: false, preserveLog: false });
+});
+
+describe("withBody", () => {
+  const bare = { ...makeEntry(1), body: "", bodyId: 7 };
+
+  it("fetches the body Rust kept for the entry", async () => {
+    const calls: [string, number][] = [];
+    const full = await withBody(bare, async (tabId, bodyId) => {
+      calls.push([tabId, bodyId]);
+      return '{"ok":true}';
+    });
+    expect(calls).toEqual([["tab-1", 7]]);
+    expect(full.body).toBe('{"ok":true}');
+    expect(full.bodyEvicted).toBe(false);
+  });
+
+  it("marks the entry evicted when Rust no longer has the body, or the call fails", async () => {
+    expect((await withBody(bare, async () => null)).bodyEvicted).toBe(true);
+    const failed = await withBody(bare, async () => {
+      throw new Error("ipc");
+    });
+    expect(failed.bodyEvicted).toBe(true);
+    expect(failed.body).toBe("");
+  });
+
+  it("asks for nothing when there is no body to fetch", async () => {
+    const never = async () => {
+      throw new Error("should not be called");
+    };
+    const noBody = { ...bare, bodyId: 0 };
+    const evicted = { ...bare, bodyEvicted: true };
+    expect(await withBody(noBody, never)).toBe(noBody);
+    expect(await withBody(evicted, never)).toBe(evicted);
+  });
+
+  it("an entry that aged out of the window is marked evicted without a fetch", () => {
+    for (let n = 1; n <= BODIES_KEPT + 1; n++) {
+      useNetworkStore.getState().addEntry({ ...makeEntry(n), body: "", bodyId: n });
+    }
+    const [oldest, next] = useNetworkStore.getState().entriesByTab["tab-1"];
+    expect(oldest.bodyEvicted).toBe(true);
+    expect(next.bodyEvicted).toBe(false);
+  });
 });
 
 describe("response body eviction", () => {

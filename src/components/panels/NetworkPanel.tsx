@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
   useNetworkStore,
+  withBody,
   type NetworkLogEntry,
   formatDuration,
   resourceTypeLabel,
@@ -77,6 +78,23 @@ function bodyPreview(body: string): string {
 }
 
 type Filter = "all" | "errors" | "api" | "slow";
+
+/** The selected entry with its body fetched from Rust; the bare entry until it arrives. */
+function useWithBody(entry: NetworkLogEntry | null): NetworkLogEntry | null {
+  const [full, setFull] = useState<NetworkLogEntry | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (entry) {
+      withBody(entry)
+        .then((e) => live && setFull(e))
+        .catch(() => {});
+    }
+    return () => {
+      live = false;
+    };
+  }, [entry]);
+  return full && full.id === entry?.id ? full : entry;
+}
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
@@ -231,6 +249,8 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
               <div className="text-[var(--color-text-muted)] italic">
                 (body dropped to save memory — reload to capture it again)
               </div>
+            ) : entry.bodyId ? (
+              <div className="text-[var(--color-text-muted)] italic">(loading…)</div>
             ) : (
               <div className="text-[var(--color-text-muted)] italic">(no response body)</div>
             )}
@@ -284,7 +304,9 @@ function EntryRow({
 }) {
   const handleCopyCurl = (e: React.MouseEvent) => {
     e.stopPropagation();
-    copyText(entryToCurl(entry, true)).catch(() => {});
+    withBody(entry)
+      .then((full) => copyText(entryToCurl(full, true)))
+      .catch(() => {});
   };
   const { path, host } = splitUrl(entry.url);
 
@@ -423,7 +445,7 @@ export function NetworkPanel() {
     }
   }, [entries.length]);
 
-  const selected = filtered.find((e) => e.id === selectedId) ?? null;
+  const selected = useWithBody(filtered.find((e) => e.id === selectedId) ?? null);
 
   return (
     <div className="flex flex-col h-full">

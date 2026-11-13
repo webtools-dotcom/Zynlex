@@ -22,6 +22,8 @@ Your tabs run on WebView2, which is Chromium, the same engine Chrome uses, so a 
 3. **Hidden tabs are suspended** after 5 minutes. A suspended tab's scripts stop, and Windows pages its memory out of RAM. With 10 tabs open, resident memory drops by about 60%. Click the tab and it picks up where it was.
 4. **Hidden tabs are discarded** after 10 minutes. The page is closed and reloads when you click it, with scroll position and form fields restored.
 
+The app's own stores are small: the network log and console together hold about 1 MB even after 600 requests and 1,200 console lines. Response bodies captured for the Network panel stay in the app process (the newest 50 per tab) and reach the UI only when you open a request. A page that fires 600 requests of 64 KB with the panel capturing used to push the UI's process from 48 MB to 104 MB until the burst was collected; it now peaks at 53 MB (0.18, median of 3 runs, sampled 40 s after the burst).
+
 Before and after this work, on the same machine (ZYNLEX 0.13 → 0.14, private memory):
 
 | | 0.13 | 0.14 | 0.14, hidden tabs suspended | 0.14 + low-memory process model |

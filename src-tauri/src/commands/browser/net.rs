@@ -2,7 +2,7 @@ use super::pwstr_to_string;
 use crate::zynlex_log;
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
@@ -280,7 +280,7 @@ unsafe fn try_mock(
                 "contentLength": rule.body.len(),
                 "referrer": request_header(request, "Referer").unwrap_or_default(),
                 "headers": [["Content-Type", content_type], ["X-Zynlex-Mock", "1"]],
-                "body": body,
+                "bodyId": bodies().keep(tab_id, body),
                 "bodyTruncated": truncated,
                 "mocked": true,
             }),
@@ -360,6 +360,73 @@ fn url_matches(pattern: &str, uri: &str) -> bool {
         }
     }
     true
+}
+
+// ─── Response bodies ──────────────────────────────────────────────
+
+/// Bodies kept per tab, newest last. The same window the UI's network store
+/// has always kept (`BODIES_KEPT` in src/stores/network.ts).
+const BODIES_KEPT: usize = 50;
+
+/// Captured response bodies stay here, not in the UI webview: a network entry
+/// carries only a `bodyId`, and the UI asks for the text when a request is
+/// opened (`browser_network_body`). Shipping every body with its entry pushed
+/// tens of MB of JSON through IPC during a burst of requests (the UI process
+/// went from 48 to 100 MB on 600 responses), for bodies nobody looked at.
+#[derive(Default)]
+struct BodyStore {
+    by_tab: HashMap<String, VecDeque<(u64, String)>>,
+}
+
+impl BodyStore {
+    /// Returns the body's id, or 0 for an empty body (nothing is kept).
+    fn keep(&mut self, tab_id: &str, body: String) -> u64 {
+        if body.is_empty() {
+            return 0;
+        }
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let bodies = self.by_tab.entry(tab_id.to_string()).or_default();
+        bodies.push_back((id, body));
+        if bodies.len() > BODIES_KEPT {
+            bodies.pop_front();
+        }
+        id
+    }
+
+    /// `None` once the body has aged out or its tab's log was cleared.
+    fn get(&self, tab_id: &str, id: u64) -> Option<String> {
+        let bodies = self.by_tab.get(tab_id)?;
+        bodies
+            .iter()
+            .find(|(i, _)| *i == id)
+            .map(|(_, b)| b.clone())
+    }
+}
+
+fn bodies() -> std::sync::MutexGuard<'static, BodyStore> {
+    static BODIES: OnceLock<Mutex<BodyStore>> = OnceLock::new();
+    BODIES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+#[tauri::command]
+pub fn browser_network_body(tab_id: String, body_id: u64) -> Option<String> {
+    bodies().get(&tab_id, body_id)
+}
+
+/// Called whenever the UI drops a tab's network log (page load, Clear, tab
+/// close), so the two never drift. `None` clears every tab.
+#[tauri::command]
+pub fn browser_clear_network_bodies(tab_id: Option<String>) {
+    match tab_id {
+        Some(id) => {
+            bodies().by_tab.remove(&id);
+        }
+        None => bodies().by_tab.clear(),
+    }
 }
 
 // ─── Network Capture ──────────────────────────────────────────────
@@ -653,7 +720,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                 "contentLength": content_length,
                                 "referrer": referrer,
                                 "headers": headers,
-                                "body": body,
+                                "bodyId": bodies().keep(&tab_id_body, body),
                                 "bodyTruncated": body_truncated,
                             }),
                         );
@@ -1073,5 +1140,39 @@ mod tests {
         // Middle segments still have to appear in order.
         assert!(url_matches("*/api/*/users", "http://x/api/v2/users"));
         assert!(!url_matches("*/api/*/users", "http://x/users/v2/api"));
+    }
+}
+
+#[cfg(test)]
+mod body_store_tests {
+    use super::{BodyStore, BODIES_KEPT};
+
+    #[test]
+    fn keeps_the_newest_bodies_per_tab() {
+        let mut store = BodyStore::default();
+        let ids: Vec<u64> = (0..BODIES_KEPT + 5)
+            .map(|n| store.keep("a", format!("body {n}")))
+            .collect();
+        let other = store.keep("b", "other tab".into());
+
+        // The five oldest aged out; the rest read back, and tab b is untouched.
+        assert!(ids[..5].iter().all(|id| store.get("a", *id).is_none()));
+        assert_eq!(store.get("a", ids[5]).as_deref(), Some("body 5"));
+        assert_eq!(
+            store.get("a", *ids.last().unwrap()),
+            Some(format!("body {}", BODIES_KEPT + 4))
+        );
+        assert_eq!(store.by_tab["a"].len(), BODIES_KEPT);
+        assert_eq!(store.get("b", other).as_deref(), Some("other tab"));
+        // An id is only valid for its own tab.
+        assert!(store.get("b", ids[10]).is_none());
+    }
+
+    #[test]
+    fn an_empty_body_is_not_kept() {
+        let mut store = BodyStore::default();
+        assert_eq!(store.keep("a", String::new()), 0);
+        assert!(store.by_tab.is_empty());
+        assert!(store.get("a", 0).is_none());
     }
 }

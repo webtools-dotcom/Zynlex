@@ -491,10 +491,21 @@ interface NetworkEntryPayload {
   referrer: string;
   /** A list, not a map — repeated headers (notably `Set-Cookie`) are the point. */
   headers: [string, string][];
-  body: string;
+  /** The body stays in Rust; fetch it with `getNetworkBody`. 0 = no body. */
+  bodyId: number;
   /** Body hit the 64 KB capture cap and this is the leading slice. */
   bodyTruncated: boolean;
   mocked?: boolean;
+}
+
+/** A captured response body, or null once it has aged out (net.rs keeps 50 per tab). */
+export async function getNetworkBody(tabId: string, bodyId: number): Promise<string | null> {
+  return await invoke<string | null>("browser_network_body", { tabId, bodyId });
+}
+
+/** Drop the bodies kept for a tab's network log; no tab = all of them. */
+export async function clearNetworkBodies(tabId?: string): Promise<void> {
+  await invoke<void>("browser_clear_network_bodies", { tabId: tabId ?? null });
 }
 
 export function onNetworkEntry(
