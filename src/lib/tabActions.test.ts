@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/services/browser", () => ({ closeTabWebview: vi.fn(() => Promise.resolve()) }));
+vi.mock("@/services/browser", () => ({
+  closeTabWebview: vi.fn(() => Promise.resolve()),
+  // Closing a tab clears its network log, which drops the bodies Rust keeps.
+  clearNetworkBodies: vi.fn(() => Promise.resolve()),
+}));
 
 import { closeTabWebview } from "@/services/browser";
 import { useTabsStore } from "@/stores/tabs";

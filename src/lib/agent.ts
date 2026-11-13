@@ -75,6 +75,7 @@ import {
   type NetworkLogEntry,
   type SocketLog,
   useNetworkStore,
+  withBody,
 } from "@/stores/network";
 import { useServersStore } from "@/stores/servers";
 import { useTabsStore } from "@/stores/tabs";
@@ -1577,7 +1578,8 @@ function errorsTool(args: Args): string {
     .join("\n");
 }
 
-async function requestDetail(tab: Tab, n: NetworkLogEntry): Promise<string> {
+async function requestDetail(tab: Tab, entry: NetworkLogEntry): Promise<string> {
+  const n = await withBody(entry);
   const body = n.bodyEvicted
     ? "(body dropped to save memory; only the 50 newest requests keep theirs)"
     : n.body

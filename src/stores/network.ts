@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { WebSocketEvent } from "@/services/browser";
+import { clearNetworkBodies, getNetworkBody, type WebSocketEvent } from "@/services/browser";
 
 export interface NetworkLogEntry {
   id: string;
@@ -15,7 +15,10 @@ export interface NetworkLogEntry {
   referrer: string;
   /** A list, not a map — repeated headers (notably `Set-Cookie`) are the point. */
   headers: [string, string][];
+  /** Empty in the store: the text stays in Rust until `withBody` fetches it. */
   body: string;
+  /** What `withBody` fetches by. Absent or 0 = the response had no body. */
+  bodyId?: number;
   /** Body hit the 64 KB capture cap and this is the leading slice. */
   bodyTruncated: boolean;
   /** Body was dropped to reclaim memory — see `BODIES_KEPT`. */
@@ -115,12 +118,29 @@ export function applySocketEvent(list: SocketLog[], e: WebSocketEvent, now: numb
 }
 
 /**
- * How many entries keep their response body. Rust ships up to 64 KB per response,
- * so 500 of them is ~32 MB of strings per tab, retained for as long as the tab
- * lives. The metadata is what the list view shows; a body is only ever looked at
- * for a handful of recent requests, so the rest are dropped as they age out.
+ * How many entries keep their response body. A body is up to 64 KB, so 500 of
+ * them would be ~32 MB per tab, retained for as long as the tab lives. The
+ * metadata is what the list view shows; a body is only ever looked at for a
+ * handful of recent requests, so the rest are dropped as they age out.
+ *
+ * The bodies themselves live in Rust (net.rs keeps the same number per tab);
+ * an entry here carries only its `bodyId`.
  */
 const BODIES_KEPT = 50;
+
+/**
+ * The entry with its response body filled in, for the places that read one: the
+ * detail pane, copy as cURL/fetch, "Mock this", and the agent's `network id`.
+ * A body Rust no longer has comes back marked evicted.
+ */
+export async function withBody(
+  entry: NetworkLogEntry,
+  fetchBody: typeof getNetworkBody = getNetworkBody,
+): Promise<NetworkLogEntry> {
+  if (!entry.bodyId || entry.bodyEvicted || entry.body) return entry;
+  const body = await fetchBody(entry.tabId, entry.bodyId).catch(() => null);
+  return body === null ? { ...entry, bodyEvicted: true } : { ...entry, body };
+}
 
 export const useNetworkStore = create<NetworkStore>()((set) => ({
   entriesByTab: {},
@@ -137,7 +157,7 @@ export const useNetworkStore = create<NetworkStore>()((set) => ({
       // Evict exactly the one entry that just aged past the window, rather than
       // re-scanning the list on every request.
       const evictAt = next.length - 1 - BODIES_KEPT;
-      if (evictAt >= 0 && next[evictAt].body) {
+      if (evictAt >= 0 && (next[evictAt].bodyId || next[evictAt].body)) {
         next[evictAt] = { ...next[evictAt], body: "", bodyEvicted: true };
       }
       return {
@@ -158,15 +178,20 @@ export const useNetworkStore = create<NetworkStore>()((set) => ({
             },
           },
     ),
-  clearTab: (tabId) =>
+  clearTab: (tabId) => {
+    clearNetworkBodies(tabId).catch(() => {});
     set((s) => {
       const next = { ...s.entriesByTab };
       delete next[tabId];
       const sockets = { ...s.socketsByTab };
       delete sockets[tabId];
       return { entriesByTab: next, socketsByTab: sockets };
-    }),
-  clearAll: () => set({ entriesByTab: {}, socketsByTab: {} }),
+    });
+  },
+  clearAll: () => {
+    clearNetworkBodies().catch(() => {});
+    set({ entriesByTab: {}, socketsByTab: {} });
+  },
 }));
 
 export function formatDuration(ms: number): string {

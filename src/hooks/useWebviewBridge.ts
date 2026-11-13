@@ -896,6 +896,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         addEntry({
           id: `net-${++_netEntryId}`,
           ...payload,
+          body: "",
           bodyEvicted: false,
         });
       }),
