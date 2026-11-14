@@ -37,7 +37,7 @@ Hidden tabs are suspended (`TrySuspend`) after a configurable idle time (default
 5 minutes), and discarded (destroyed, then recreated and reloaded on next switch)
 after another (default 10). Idle time counts from when the tab was last visible.
 Pinned and active tabs are exempt from both; localhost tabs and tabs playing audio
-are never suspended. WebView2 resumes a suspended webview when it is shown. A soft
+are never suspended, and a tab playing audio is never discarded. WebView2 resumes a suspended webview when it is shown. A soft
 cap of 10 concurrent webviews discards the oldest background tab when exceeded.
 
 ## Bounds and resize

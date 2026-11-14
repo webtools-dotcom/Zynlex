@@ -694,6 +694,11 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
     }
   };
 
+  // Unknown (the call failed) counts as playing: the safe side for a discard.
+  const isTabPlayingAudioRef = useRef((tabId: string) =>
+    isTabPlayingAudio(tabId).catch(() => true),
+  );
+
   // ── SUSPEND / DISCARD TIMER: hidden tabs, thresholds from Settings ─────
   // Suspend freezes a hidden tab and pages its renderer out of RAM (10 tabs,
   // measured: working set -62%, committed memory only -6%); discard closes the
@@ -737,18 +742,17 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
           loopback: isLoopbackUrl(tab.url),
         }));
 
-      // Under pressure a tab can be discarded after a minute. Not one that is
-      // playing audio: music in a background tab must not stop because RAM ran short.
+      // A tab that is playing audio is never discarded: music in a background tab
+      // must not stop after ten minutes, or because RAM ran short. A suspended tab
+      // cannot be playing, so it is not asked.
       const level = memoryLevel(memory);
-      if (level === "low") {
-        await Promise.all(
-          hidden.map(async (t) => {
-            if (!t.loopback && createdTabsRef.current.has(t.id)) {
-              t.audible = await isTabPlayingAudio(t.id).catch(() => true);
-            }
-          }),
-        );
-      }
+      await Promise.all(
+        hidden.map(async (t) => {
+          if (createdTabsRef.current.has(t.id) && !suspendedTabsRef.current.has(t.id)) {
+            t.audible = await isTabPlayingAudioRef.current(t.id);
+          }
+        }),
+      );
 
       const plan = planHiddenTabs(
         hidden,
@@ -829,7 +833,7 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   useEffect(() => {
     if (!IS_TAURI) return;
 
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       // Read per tick, not once at mount: the effect's dep array is empty, so a
       // value captured out here stayed frozen at whatever it was when the bridge
       // mounted and Settings changes did nothing until restart.
@@ -846,8 +850,17 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
         .filter((id) => tabsState[id]?.discardedAt === null)
         .sort((a, b) => (tabsState[a]?.lastActiveAt ?? 0) - (tabsState[b]?.lastActiveAt ?? 0));
 
-      const toDiscard = candidates.slice(0, liveCount - maxConcurrent);
-      for (const tabId of toDiscard) {
+      // Oldest first, skipping any tab that is playing audio.
+      let over = liveCount - maxConcurrent;
+      for (const tabId of candidates) {
+        if (over <= 0) break;
+        if (
+          !suspendedTabsRef.current.has(tabId) &&
+          (await isTabPlayingAudioRef.current(tabId))
+        ) {
+          continue;
+        }
+        over--;
         void discardWebviewRef.current(tabId);
       }
     }, 5000);

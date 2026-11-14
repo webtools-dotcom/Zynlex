@@ -4,7 +4,7 @@
  * The timers in Settings are the baseline. With "Adapt to available memory" on,
  * the system's free RAM moves them: when it runs short, hidden tabs are suspended
  * after a minute and the longest-hidden one is discarded each tick until memory
- * recovers; when there is plenty, tabs are kept three times as long before they
+ * recovers (never the tab you left last, a localhost tab, or one playing audio); when there is plenty, tabs are kept three times as long before they
  * are discarded, so they don't reload for nothing.
  *
  * Why discard and not something gentler: suspending frees resident memory but
@@ -26,7 +26,7 @@ export interface HiddenTab {
   hiddenMs: number;
   /** localhost: never suspended (HMR would stall), never discarded early. */
   loopback: boolean;
-  /** Playing audio right now: never discarded early. Only read under pressure. */
+  /** Playing audio right now: never discarded, by the timer or under pressure. */
   audible?: boolean;
 }
 
@@ -55,16 +55,29 @@ export function planHiddenTabs(
   if (level === "low" && suspendMs > 0) suspendMs = Math.min(suspendMs, PRESSURE_MIN_HIDDEN_MS);
   if (level === "ample") discardMs *= AMPLE_DISCARD_FACTOR;
 
+  // A tab that is playing audio is in use: discarding it stops the music.
   const discard = new Set(
-    discardMs > 0 ? tabs.filter((t) => t.hiddenMs > discardMs).map((t) => t.id) : [],
+    discardMs > 0
+      ? tabs.filter((t) => !t.audible && t.hiddenMs > discardMs).map((t) => t.id)
+      : [],
   );
   if (level === "low" && discardMs > 0) {
+    // The tab the user left last is spared: going back and forth between two
+    // tabs must not reload one of them every minute on a machine short of RAM.
+    const lastLeft = tabs.reduce<HiddenTab | null>(
+      (a, t) => (a === null || t.hiddenMs < a.hiddenMs ? t : a),
+      null,
+    );
     // One per tick, longest hidden first: each discard returns about 100 MB, and
     // the next tick re-reads memory before taking another.
     const oldest = tabs
       .filter(
         (t) =>
-          !t.loopback && !t.audible && !discard.has(t.id) && t.hiddenMs > PRESSURE_MIN_HIDDEN_MS,
+          t !== lastLeft &&
+          !t.loopback &&
+          !t.audible &&
+          !discard.has(t.id) &&
+          t.hiddenMs > PRESSURE_MIN_HIDDEN_MS,
       )
       .sort((a, b) => b.hiddenMs - a.hiddenMs)[0];
     if (oldest) discard.add(oldest.id);

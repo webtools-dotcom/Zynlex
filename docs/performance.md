@@ -56,8 +56,8 @@ All in **Settings → Memory**:
 | Setting | Default | Trade-off |
 |---|---|---|
 | Suspend hidden tabs | After 5 min | A suspended tab stops updating (chat, dashboards, live logs) until you switch back. `localhost` tabs and tabs playing audio are never suspended. |
-| Discard hidden tabs | After 10 min | The page reloads when you return to it. In-page state that isn't in a form field or the URL is lost. |
-| Adapt to available memory | On | When RAM is short, a hidden tab can be suspended after one minute and discarded soon after, earlier than the two timers above say. `localhost` tabs are never discarded early, and a timer set to Never stays never. Turn it off to get the plain timers. |
+| Discard hidden tabs | After 10 min | The page reloads when you return to it. In-page state that isn't in a form field or the URL is lost. A tab that is playing audio is never discarded. |
+| Adapt to available memory | On | When RAM is short, a hidden tab can be suspended after one minute and discarded soon after, earlier than the two timers above say. The tab you left last and `localhost` tabs are never discarded early, and a timer set to Never stays never. Turn it off to get the plain timers. |
 | GPU in main process | On | If your graphics driver crashes, the whole app closes instead of Chromium quietly restarting its GPU process. Turn it off if that happens to you. |
 | One process per tab | Off | Turns off site isolation: embedded frames from other sites run in their tab's process instead of their own. About 280 MB less with ten tabs open, nothing with one to three. Sites are less protected from each other (Spectre-class attacks), as with the low-memory model below, but each tab keeps its own process, so a heavy tab doesn't slow the rest and a suspended tab still leaves RAM. Fine for local development; leave it off for banking and similar. |
 | Low-memory process model | Off | Turns off site isolation and shares two processes across all tabs: up to half the memory with many tabs open. Sites are less protected from each other (Spectre-class attacks), and one heavy tab can slow the rest. Fine for local development; leave it off for banking and similar. |

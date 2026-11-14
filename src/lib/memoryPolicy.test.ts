@@ -75,6 +75,23 @@ describe("planHiddenTabs", () => {
     expect(planHiddenTabs([music], timers, "low").discard).toEqual([]);
   });
 
+  it("a tab playing audio is not discarded by the plain timer either", () => {
+    const music = { ...tab("music", 45), audible: true };
+    for (const level of ["normal", "ample", "low"] as const) {
+      expect(planHiddenTabs([music, tab("old", 45)], timers, level).discard).toEqual(["old"]);
+    }
+  });
+
+  it("low: the tab you left last is never discarded early", () => {
+    // Two tabs you go back and forth between: only the older one can go.
+    expect(planHiddenTabs([tab("justLeft", 2), tab("older", 5)], timers, "low").discard).toEqual([
+      "older",
+    ]);
+    // Next tick it is the only hidden tab left: it stays until the normal timer.
+    expect(planHiddenTabs([tab("justLeft", 3)], timers, "low").discard).toEqual([]);
+    expect(planHiddenTabs([tab("justLeft", 11)], timers, "low").discard).toEqual(["justLeft"]);
+  });
+
   it("low: a timer set to never stays never", () => {
     const plan = planHiddenTabs([tab("a", 30)], { suspendMinutes: 0, discardMinutes: 0 }, "low");
     expect(plan).toEqual({ suspend: [], discard: [] });
