@@ -66,6 +66,15 @@ describe("planHiddenTabs", () => {
     expect(plan).toEqual({ suspend: [], discard: [] });
   });
 
+  it("low: never discards a tab that is playing audio early, and takes the next one", () => {
+    const music = { ...tab("music", 9), audible: true };
+    const plan = planHiddenTabs([music, tab("a", 2), tab("b", 4)], timers, "low");
+    expect(plan.discard).toEqual(["b"]);
+    // Suspending is left to Rust, which skips a tab that is playing audio.
+    expect(plan.suspend).toEqual(["music", "a"]);
+    expect(planHiddenTabs([music], timers, "low").discard).toEqual([]);
+  });
+
   it("low: a timer set to never stays never", () => {
     const plan = planHiddenTabs([tab("a", 30)], { suspendMinutes: 0, discardMinutes: 0 }, "low");
     expect(plan).toEqual({ suspend: [], discard: [] });

@@ -26,6 +26,8 @@ export interface HiddenTab {
   hiddenMs: number;
   /** localhost: never suspended (HMR would stall), never discarded early. */
   loopback: boolean;
+  /** Playing audio right now: never discarded early. Only read under pressure. */
+  audible?: boolean;
 }
 
 const MINUTE = 60_000;
@@ -60,7 +62,10 @@ export function planHiddenTabs(
     // One per tick, longest hidden first: each discard returns about 100 MB, and
     // the next tick re-reads memory before taking another.
     const oldest = tabs
-      .filter((t) => !t.loopback && !discard.has(t.id) && t.hiddenMs > PRESSURE_MIN_HIDDEN_MS)
+      .filter(
+        (t) =>
+          !t.loopback && !t.audible && !discard.has(t.id) && t.hiddenMs > PRESSURE_MIN_HIDDEN_MS,
+      )
       .sort((a, b) => b.hiddenMs - a.hiddenMs)[0];
     if (oldest) discard.add(oldest.id);
   }

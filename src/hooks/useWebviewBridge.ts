@@ -39,6 +39,7 @@ import {
   setMemoryTarget,
   suspendTab,
   systemMemory,
+  isTabPlayingAudio,
   setTabZoom,
   saveTabState,
   restoreTabState,
@@ -736,10 +737,23 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
           loopback: isLoopbackUrl(tab.url),
         }));
 
+      // Under pressure a tab can be discarded after a minute. Not one that is
+      // playing audio: music in a background tab must not stop because RAM ran short.
+      const level = memoryLevel(memory);
+      if (level === "low") {
+        await Promise.all(
+          hidden.map(async (t) => {
+            if (!t.loopback && createdTabsRef.current.has(t.id)) {
+              t.audible = await isTabPlayingAudio(t.id).catch(() => true);
+            }
+          }),
+        );
+      }
+
       const plan = planHiddenTabs(
         hidden,
         { suspendMinutes: suspendHiddenTabsMinutes, discardMinutes: discardHiddenTabsMinutes },
-        memoryLevel(memory),
+        level,
       );
       for (const tabId of plan.discard) void discardWebviewRef.current(tabId);
       for (const tabId of plan.suspend) {

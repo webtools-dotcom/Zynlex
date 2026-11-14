@@ -1254,6 +1254,33 @@ pub async fn browser_suspend_tab(app: AppHandle, tab_id: String) -> Result<(), S
     })
 }
 
+/// Whether a tab's page is playing audio right now. The hidden-tab timer asks
+/// before discarding a tab early under memory pressure: music in a background
+/// tab must not stop because RAM ran short. No webview is "not playing"; a
+/// webview that does not answer in time counts as playing, the safe side.
+#[tauri::command]
+pub async fn browser_is_playing_audio(app: AppHandle, tab_id: String) -> Result<bool, String> {
+    let label = webview_label_for_tab(&tab_id);
+    let Some(wv) = find_tab_webview(&app, &label) else {
+        return Ok(false);
+    };
+    let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+    with_core(&wv, "playing-audio", move |core| unsafe {
+        use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_8;
+        use windows_core::Interface;
+        let mut playing = windows_core::BOOL(0);
+        let on = core
+            .cast::<ICoreWebView2_8>()
+            .is_ok_and(|c8| c8.IsDocumentPlayingAudio(&mut playing).is_ok() && playing.as_bool());
+        let _ = tx.send(on);
+    })?;
+    Ok(tokio::time::timeout(std::time::Duration::from_secs(2), rx)
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .unwrap_or(true))
+}
+
 // ─── Tab State Save/Restore ────────────────────────────────────────
 
 /// Capture a tab's scroll position and form values.

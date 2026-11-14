@@ -351,6 +351,11 @@ export async function systemMemory(): Promise<SystemMemory> {
   return await invoke<SystemMemory>("system_memory");
 }
 
+/** Whether the tab's page is playing audio right now. */
+export async function isTabPlayingAudio(tabId: string): Promise<boolean> {
+  return await invoke<boolean>("browser_is_playing_audio", { tabId });
+}
+
 /** Freeze a hidden tab (WebView2 TrySuspend). Showing it again resumes it. */
 export async function suspendTab(tabId: string): Promise<void> {
   await invoke<void>("browser_suspend_tab", { tabId });
@@ -508,6 +513,11 @@ interface NetworkEntryPayload {
 /** A captured response body, or null once it has aged out (net.rs keeps 50 per tab). */
 export async function getNetworkBody(tabId: string, bodyId: number): Promise<string | null> {
   return await invoke<string | null>("browser_network_body", { tabId, bodyId });
+}
+
+/** While the Network panel is paused, Rust keeps no new bodies (the UI drops those entries). */
+export async function setNetworkPaused(paused: boolean): Promise<void> {
+  await invoke<void>("browser_set_network_paused", { paused });
 }
 
 /** Drop the bodies kept for a tab's network log; no tab = all of them. */
