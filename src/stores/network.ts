@@ -21,7 +21,7 @@ export interface NetworkLogEntry {
   bodyId?: number;
   /** Body hit the 64 KB capture cap and this is the leading slice. */
   bodyTruncated: boolean;
-  /** Body was dropped to reclaim memory — see `BODIES_KEPT`. */
+  /** Set by `withBody` when Rust no longer has the body (it keeps the newest 50 per tab). */
   bodyEvicted: boolean;
   /** Served by a mock rule, never reached the network. */
   mocked?: boolean;
@@ -118,20 +118,14 @@ export function applySocketEvent(list: SocketLog[], e: WebSocketEvent, now: numb
 }
 
 /**
- * How many entries keep their response body. A body is up to 64 KB, so 500 of
- * them would be ~32 MB per tab, retained for as long as the tab lives. The
- * metadata is what the list view shows; a body is only ever looked at for a
- * handful of recent requests, so the rest are dropped as they age out.
- *
- * The bodies themselves live in Rust (net.rs keeps the same number per tab);
- * an entry here carries only its `bodyId`.
- */
-const BODIES_KEPT = 50;
-
-/**
  * The entry with its response body filled in, for the places that read one: the
  * detail pane, copy as cURL/fetch, "Mock this", and the agent's `network id`.
- * A body Rust no longer has comes back marked evicted.
+ *
+ * The bodies live in Rust, which keeps the newest 50 per tab (net.rs). A body it
+ * no longer has comes back marked evicted. The store does not try to predict
+ * that: it used to mark every entry older than the newest 50 *requests*, so a
+ * page that keeps sending images and analytics pings (which have no body)
+ * pushed real bodies out of reach long before Rust had dropped them.
  */
 export async function withBody(
   entry: NetworkLogEntry,
@@ -154,12 +148,6 @@ export const useNetworkStore = create<NetworkStore>()((set) => ({
       if (s.paused) return s;
       const tab = s.entriesByTab[entry.tabId] ?? [];
       const next = [...tab, entry].slice(-MAX_ENTRIES_PER_TAB);
-      // Evict exactly the one entry that just aged past the window, rather than
-      // re-scanning the list on every request.
-      const evictAt = next.length - 1 - BODIES_KEPT;
-      if (evictAt >= 0 && (next[evictAt].bodyId || next[evictAt].body)) {
-        next[evictAt] = { ...next[evictAt], body: "", bodyEvicted: true };
-      }
       return {
         entriesByTab: {
           ...s.entriesByTab,

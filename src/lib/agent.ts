@@ -1581,7 +1581,7 @@ function errorsTool(args: Args): string {
 async function requestDetail(tab: Tab, entry: NetworkLogEntry): Promise<string> {
   const n = await withBody(entry);
   const body = n.bodyEvicted
-    ? "(body dropped to save memory; only the 50 newest requests keep theirs)"
+    ? "(body dropped to save memory; only the 50 newest response bodies are kept)"
     : n.body
       ? await inlineOrFile(n.body, `body-${shortId(tab)}-${n.id}`, { chars: MAX_BODY })
       : "(empty)";

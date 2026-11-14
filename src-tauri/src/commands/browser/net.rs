@@ -364,8 +364,8 @@ fn url_matches(pattern: &str, uri: &str) -> bool {
 
 // ─── Response bodies ──────────────────────────────────────────────
 
-/// Bodies kept per tab, newest last. The same window the UI's network store
-/// has always kept (`BODIES_KEPT` in src/stores/network.ts).
+/// Bodies kept per tab, newest last. Requests without a body (images, pings)
+/// do not count, so they cannot push a real body out.
 const BODIES_KEPT: usize = 50;
 
 /// Captured response bodies stay here, not in the UI webview: a network entry
