@@ -38,6 +38,7 @@ import {
   onInspectorData,
   setMemoryTarget,
   suspendTab,
+  systemMemory,
   setTabZoom,
   saveTabState,
   restoreTabState,
@@ -59,6 +60,7 @@ import { useConsoleStore } from "@/stores/console";
 import { useHeadersStore } from "@/stores/headers";
 import { setHeaderRules, setMockRules } from "@/services/browser";
 import { useMocksStore } from "@/stores/mocks";
+import { type HiddenTab, memoryLevel, planHiddenTabs } from "@/lib/memoryPolicy";
 import { isLoopbackUrl, titleFromUrl } from "@/lib/url";
 import { openTab } from "@/lib/tabActions";
 import { listenForAgents } from "@/lib/agent";
@@ -696,6 +698,8 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   // measured: working set -62%, committed memory only -6%); discard closes the
   // webview outright (-69% committed) and reloads on click. Both are skipped
   // for the active tab, pinned tabs and loading tabs.
+  // With "Adapt to available memory" on, free RAM moves both timers: sooner when
+  // it runs short, later when there is plenty (memoryPolicy.ts).
   // Localhost tabs are never suspended: a frozen tab misses HMR updates and its
   // dev-server requests. The Network panel only ever shows the active tab, which
   // is never hidden, so its log keeps flowing.
@@ -704,35 +708,42 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
 
     const CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
 
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
+      // With "Adapt to available memory" on, free RAM moves the timers
+      // (memoryPolicy.ts). A failed reading falls back to the plain timers.
+      const memory = useSettingsStore.getState().settings.adaptToMemory
+        ? await systemMemory().catch(() => null)
+        : null;
+
       const now = Date.now();
       const { suspendHiddenTabsMinutes, discardHiddenTabsMinutes } =
         useSettingsStore.getState().settings;
-      const tabsState = useTabsStore.getState().tabs;
       const currentActiveTabId = getActiveTabId();
 
-      for (const [tabId, tab] of Object.entries(tabsState)) {
-        // Skip: active tab, already discarded, pinned, no URL, still loading
-        if (
-          tabId === currentActiveTabId ||
-          tab.discardedAt !== null ||
-          tab.isPinned ||
-          !tab.url ||
-          tab.isLoading
-        ) {
-          continue;
-        }
+      // Skip: active tab, already discarded, pinned, no URL, still loading
+      const hidden: HiddenTab[] = Object.entries(useTabsStore.getState().tabs)
+        .filter(
+          ([tabId, tab]) =>
+            tabId !== currentActiveTabId &&
+            tab.discardedAt === null &&
+            !tab.isPinned &&
+            tab.url &&
+            !tab.isLoading,
+        )
+        .map(([id, tab]) => ({
+          id,
+          hiddenMs: now - tab.lastActiveAt,
+          loopback: isLoopbackUrl(tab.url),
+        }));
 
-        const hiddenMs = now - tab.lastActiveAt;
-        if (discardHiddenTabsMinutes > 0 && hiddenMs > discardHiddenTabsMinutes * 60_000) {
-          void discardWebviewRef.current(tabId);
-        } else if (
-          suspendHiddenTabsMinutes > 0 &&
-          hiddenMs > suspendHiddenTabsMinutes * 60_000 &&
-          createdTabsRef.current.has(tabId) &&
-          !suspendedTabsRef.current.has(tabId) &&
-          !isLoopbackUrl(tab.url)
-        ) {
+      const plan = planHiddenTabs(
+        hidden,
+        { suspendMinutes: suspendHiddenTabsMinutes, discardMinutes: discardHiddenTabsMinutes },
+        memoryLevel(memory),
+      );
+      for (const tabId of plan.discard) void discardWebviewRef.current(tabId);
+      for (const tabId of plan.suspend) {
+        if (createdTabsRef.current.has(tabId) && !suspendedTabsRef.current.has(tabId)) {
           suspendedTabsRef.current.add(tabId);
           suspendTab(tabId).catch(() => suspendedTabsRef.current.delete(tabId));
         }

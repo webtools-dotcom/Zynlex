@@ -1,5 +1,6 @@
 /** Typed IPC wrappers over the Rust `browser_*` commands. Per-tab commands
  * target a specific child webview via tabId — see docs/architecture.md. */
+import type { SystemMemory } from "@/lib/memoryPolicy";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -343,6 +344,11 @@ export async function getEngineOptions(): Promise<EngineOptions> {
 /** Saved for the next start; takes effect after a restart. */
 export async function setEngineOptions(options: EngineOptions): Promise<void> {
   await invoke<void>("set_engine_options", { options });
+}
+
+/** Physical memory right now, for the hidden-tab timer (src/lib/memoryPolicy.ts). */
+export async function systemMemory(): Promise<SystemMemory> {
+  return await invoke<SystemMemory>("system_memory");
 }
 
 /** Freeze a hidden tab (WebView2 TrySuspend). Showing it again resumes it. */

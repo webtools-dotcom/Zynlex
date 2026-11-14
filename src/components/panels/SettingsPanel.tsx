@@ -418,6 +418,21 @@ export function SettingsPanel() {
         value={settings.discardHiddenTabsMinutes}
         onChange={(discardHiddenTabsMinutes) => update({ discardHiddenTabsMinutes })}
       />
+      <div className="flex justify-between items-center mt-3">
+        <div>
+          <span className="text-sm text-[var(--color-text-muted)] block">
+            Adapt to available memory
+          </span>
+          <span className="text-xs text-[var(--color-text-disabled)] block">
+            When RAM runs short, hidden tabs are suspended and discarded sooner. When there is
+            plenty, they are kept 3× longer.
+          </span>
+        </div>
+        <CompactToggle
+          value={settings.adaptToMemory}
+          onToggle={() => update({ adaptToMemory: !settings.adaptToMemory })}
+        />
+      </div>
       <EngineToggles />
 
       {/* ── Environments ────────────────────────────────────────────── */}

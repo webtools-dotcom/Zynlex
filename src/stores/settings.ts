@@ -16,6 +16,7 @@ const DEFAULTS: AppSettings = {
   maxConcurrentWebviews: 10,
   suspendHiddenTabsMinutes: 5,
   discardHiddenTabsMinutes: 10,
+  adaptToMemory: true,
   userAgent: null,
 };
 
@@ -42,9 +43,9 @@ export const useSettingsStore = create<SettingsStore>()(
     })),
     {
       name: "zynlex-settings",
-      // v4 added the suspend/discard timers; every bump re-fills new keys from
+      // v4 added the suspend/discard timers, v5 adaptToMemory; every bump re-fills new keys from
       // DEFAULTS below (persist's own merge would replace the whole object).
-      version: 4,
+      version: 5,
       migrate: (persistedState, version) => {
         const state = persistedState as any;
         const settings = { ...DEFAULTS, ...(state?.settings || {}) };
