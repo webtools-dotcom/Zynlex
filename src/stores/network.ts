@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import { clearNetworkBodies, getNetworkBody, type WebSocketEvent } from "@/services/browser";
+import {
+  clearNetworkBodies,
+  getNetworkBody,
+  setNetworkPaused,
+  type WebSocketEvent,
+} from "@/services/browser";
 
 export interface NetworkLogEntry {
   id: string;
@@ -141,7 +146,11 @@ export const useNetworkStore = create<NetworkStore>()((set) => ({
   socketsByTab: {},
   paused: false,
   preserveLog: false,
-  setPaused: (paused) => set({ paused }),
+  setPaused: (paused) => {
+    // Rust stops keeping bodies too, so the ones on screen stay readable.
+    setNetworkPaused(paused).catch(() => {});
+    set({ paused });
+  },
   setPreserveLog: (preserveLog) => set({ preserveLog }),
   addEntry: (entry) =>
     set((s) => {

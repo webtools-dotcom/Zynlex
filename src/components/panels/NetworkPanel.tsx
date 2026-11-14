@@ -136,9 +136,10 @@ const SELECT_CLASS =
   "text-micro bg-[var(--color-elevated)] text-[var(--color-text-muted)] rounded outline-none border border-[var(--color-border)] px-1 py-0.5";
 
 /** Seed a mock from a captured response, then jump to it. */
-function mockEntry(entry: NetworkLogEntry) {
+async function mockEntry(entry: NetworkLogEntry) {
   const wsId = useWorkspacesStore.getState().activeWorkspaceId;
-  useMocksStore.getState().addRule(wsId, mockRuleFromEntry(entry));
+  // The pane's entry may still be waiting for its body: a mock without one is useless.
+  useMocksStore.getState().addRule(wsId, mockRuleFromEntry(await withBody(entry)));
   useUIStore.getState().setActivePanel("mocks");
 }
 
@@ -163,7 +164,7 @@ function DetailTabs({ entry, onClose }: { entry: NetworkLogEntry; onClose: () =>
         <div className="flex items-center gap-1">
           {!entry.mocked && (
             <button
-              onClick={() => mockEntry(entry)}
+              onClick={() => void mockEntry(entry)}
               title={
                 entry.bodyTruncated || entry.bodyEvicted
                   ? "Create a mock from this response (body is incomplete — edit it in Mock Responses)"

@@ -2,7 +2,7 @@ use super::pwstr_to_string;
 use crate::zynlex_log;
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
@@ -280,7 +280,7 @@ unsafe fn try_mock(
                 "contentLength": rule.body.len(),
                 "referrer": request_header(request, "Referer").unwrap_or_default(),
                 "headers": [["Content-Type", content_type], ["X-Zynlex-Mock", "1"]],
-                "bodyId": bodies().keep(tab_id, body),
+                "bodyId": keep_body(tab_id, body),
                 "bodyTruncated": truncated,
                 "mocked": true,
             }),
@@ -410,6 +410,24 @@ fn bodies() -> std::sync::MutexGuard<'static, BodyStore> {
         .get_or_init(Default::default)
         .lock()
         .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Set while the Network panel is paused. The UI drops entries that arrive
+/// then, so their bodies must not be kept either: they would push out the
+/// bodies of the very requests the user paused to look at.
+static BODIES_PAUSED: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+pub fn browser_set_network_paused(paused: bool) {
+    BODIES_PAUSED.store(paused, Ordering::Relaxed);
+}
+
+/// Keep a captured body for its entry; 0 = none kept.
+fn keep_body(tab_id: &str, body: String) -> u64 {
+    if BODIES_PAUSED.load(Ordering::Relaxed) {
+        return 0;
+    }
+    bodies().keep(tab_id, body)
 }
 
 #[tauri::command]
@@ -720,7 +738,7 @@ pub fn register_webview_network_capture(wv: &tauri::Webview, app: &tauri::AppHan
                                 "contentLength": content_length,
                                 "referrer": referrer,
                                 "headers": headers,
-                                "bodyId": bodies().keep(&tab_id_body, body),
+                                "bodyId": keep_body(&tab_id_body, body),
                                 "bodyTruncated": body_truncated,
                             }),
                         );
