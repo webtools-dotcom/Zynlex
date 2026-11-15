@@ -115,7 +115,7 @@ The agent fixed every bug on Kitesurf, but where the bug needed the browser to c
 - `storage`: `localStorage` is kept per document, so a value is gone after a reload, and `Object.keys(localStorage)` lists the method names. One run hit the 15-minute limit; its tokens are rebuilt from the transcript, turns and cost leave it out.
 - `confirm`: `confirm()` isn't supported yet, which Kitesurf already notes.
 
-Kitesurf is days old and labelled experimental; this measures it as an agent's browser today, not where it is going. The iframe and storage issues are being reported to the Kitesurf project with minimal reproductions.
+Kitesurf is days old and labelled experimental; this measures it as an agent's browser today, not where it is going. The storage and iframe issues are reported to Kitesurf with minimal reproductions: [cloudflare/kitesurf#133](https://github.com/cloudflare/kitesurf/issues/133), [cloudflare/kitesurf#134](https://github.com/cloudflare/kitesurf/issues/134).
 
 ## Caveats
 
