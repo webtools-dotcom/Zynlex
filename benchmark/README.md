@@ -30,6 +30,7 @@ Each tool gets the same prompt, the same model and the same app copy.
 | `devtools` | [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp), headless, isolated | 1.12.0 |
 | `pwcli` | [playwright-cli](https://www.npmjs.com/package/@playwright/cli), through Bash | 0.1.22 |
 | `agentbrowser` | [agent-browser](https://www.npmjs.com/package/agent-browser), through Bash | 0.41.0 |
+| `kitesurf` | Playwright MCP over CDP to [Kitesurf](https://github.com/cloudflare/kitesurf), Cloudflare's WebAssembly browser engine, run locally with `wrangler dev` | MCP 0.0.83, Kitesurf `c7b1301` |
 
 ## Tasks
 
@@ -95,6 +96,26 @@ Playwright MCP rerun the same day as ZYNLEX, because the model behind `sonnet` h
 | Playwright MCP | 25/25 | 0 | 262k | 13 | 8 | $0.196 |
 
 ZYNLEX used fewer tokens on all five bugs. Two of its five `loadmore` runs cost about twice the usual (387k and 399k): after fixing the code the agent re-opened its tab with `open`, which switched to it without reloading, so it tested the old script. Since 0.18, `open` reloads a tab the agent opened.
+
+### Kitesurf, held-out set (2026-11-15)
+
+`results/kitesurf-2026-11-15.jsonl`, 3 repeats. The same agent and Playwright MCP, once on Chrome and once on Kitesurf, with ZYNLEX (build of `f1b678d`: 0.18 plus memory work) the same day.
+
+| Tool | Fixed | Timed out | Tokens | Turns | Browser calls | Cost per task |
+|---|---|---|---|---|---|---|
+| ZYNLEX | 15/15 | 0 | 177k | 10 | 6 | $0.133 |
+| Playwright MCP on Chrome | 15/15 | 0 | 264k | 13 | 8 | $0.190 |
+| Playwright MCP on Kitesurf | 15/15 | 1 | 491k | 19 | 16 | $0.274 |
+
+Median tokens per bug, ZYNLEX / Chrome / Kitesurf: `iframe` 174k / 268k / 1,113k, `storage` 197k / 277k / 1,108k, `confirm` 177k / 263k / 491k, `loadmore` 217k / 265k / 311k, `enter` 157k / 212k / 241k.
+
+The agent fixed every bug on Kitesurf, but where the bug needed the browser to confirm, it struggled:
+
+- `iframe`: evaluating inside a same-origin iframe never returns over CDP, so all three runs used their 40 turns trying to look inside it and stopped without a final answer (the code fix was already made).
+- `storage`: `localStorage` is kept per document, so a value is gone after a reload, and `Object.keys(localStorage)` lists the method names. One run hit the 15-minute limit; its tokens are rebuilt from the transcript, turns and cost leave it out.
+- `confirm`: `confirm()` isn't supported yet, which Kitesurf already notes.
+
+Kitesurf is days old and labelled experimental; this measures it as an agent's browser today, not where it is going. The iframe and storage issues are being reported to the Kitesurf project with minimal reproductions.
 
 ## Caveats
 
