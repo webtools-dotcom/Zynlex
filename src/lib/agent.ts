@@ -21,6 +21,7 @@ import {
   PAUSED_REPLY,
   tookOverLine,
 } from "@/lib/agentPause";
+import { findError, findExpression, parseSelector, QUERY } from "@/lib/agentQuery";
 import { dropAgentRules, mockTool } from "@/lib/agentRules";
 import { agentCanUse, SCOPE } from "@/lib/agentScope";
 import {
@@ -49,6 +50,7 @@ import {
   agentWriteTemp,
   captureScreenshot,
   getAgentStatus,
+  navigateTab,
   onAgentRequest,
   onAgentStatus,
   onDialog,
@@ -1830,22 +1832,25 @@ export function formatEvalValue(r: RemoteObject): string {
   return r.description ?? r.type;
 }
 
-async function evalTool(args: Args): Promise<string> {
-  const tab = tabOf(args);
-  const code = typeof args.code === "string" ? args.code.trim() : "";
-  if (!code)
-    throw new Error("Pass code: a JS expression, or a function body that returns a value.");
-  await showTab(tab);
-  type Evaluated = {
-    result: RemoteObject & { objectId?: string };
-    exceptionDetails?: { text: string; exception?: { description?: string } };
-  };
+type Evaluated = {
+  result: RemoteObject & { objectId?: string };
+  exceptionDetails?: { text: string; exception?: { description?: string } };
+};
+
+/**
+ * Evaluates `expression` in the tab's page and reads its value, awaiting a
+ * promise. DIALOG if a dialog opens first, null after EVAL_TIMEOUT.
+ */
+async function evaluateIn(
+  tabId: string,
+  expression: string,
+): Promise<Evaluated | typeof DIALOG | null> {
   // replMode ignores awaitPromise, so a promise (an async body, fetch().then…)
   // came back as `{}`. Take a handle instead, await it if it's a promise, then
   // read the value.
   const call = async (): Promise<Evaluated> => {
-    const r = await tabCdp<Evaluated>(tab.id, "Runtime.evaluate", {
-      expression: evalSource(code),
+    const r = await tabCdp<Evaluated>(tabId, "Runtime.evaluate", {
+      expression,
       objectGroup: EVAL_GROUP,
       replMode: true,
       userGesture: true,
@@ -1853,31 +1858,179 @@ async function evalTool(args: Args): Promise<string> {
     const id = r.result.objectId;
     if (r.exceptionDetails || !id) return r;
     return r.result.subtype === "promise"
-      ? tabCdp<Evaluated>(tab.id, "Runtime.awaitPromise", {
+      ? tabCdp<Evaluated>(tabId, "Runtime.awaitPromise", {
           promiseObjectId: id,
           returnByValue: true,
         })
-      : tabCdp<Evaluated>(tab.id, "Runtime.callFunctionOn", {
+      : tabCdp<Evaluated>(tabId, "Runtime.callFunctionOn", {
           objectId: id,
           functionDeclaration: "function () { return this; }",
           returnByValue: true,
         });
   };
-  const r = await Promise.race([
-    orDialog(tab.id, call()),
-    sleep(EVAL_TIMEOUT).then(() => null),
-  ]).finally(() => {
-    tabCdp(tab.id, "Runtime.releaseObjectGroup", { objectGroup: EVAL_GROUP }).catch(() => {});
-  });
+  return Promise.race([orDialog(tabId, call()), sleep(EVAL_TIMEOUT).then(() => null)]).finally(
+    () => {
+      tabCdp(tabId, "Runtime.releaseObjectGroup", { objectGroup: EVAL_GROUP }).catch(() => {});
+    },
+  );
+}
+
+const threw = (ex: NonNullable<Evaluated["exceptionDetails"]>) =>
+  `Threw: ${cut(ex.exception?.description ?? ex.text, MAX_EVAL)}`;
+
+async function evalTool(args: Args): Promise<string> {
+  const tab = tabOf(args);
+  const code = typeof args.code === "string" ? args.code.trim() : "";
+  if (!code)
+    throw new Error("Pass code: a JS expression, or a function body that returns a value.");
+  await showTab(tab);
+  const r = await evaluateIn(tab.id, evalSource(code));
   if (r === DIALOG) return `${header(tab)}\n${dialogNote(tab.id)}`;
   if (r === null) {
     throw new Error(`No value after ${EVAL_TIMEOUT / 1000}s (a promise that never settles?).`);
   }
-  if (r.exceptionDetails) {
-    const ex = r.exceptionDetails;
-    throw new Error(`Threw: ${cut(ex.exception?.description ?? ex.text, MAX_EVAL)}`);
-  }
+  if (r.exceptionDetails) throw new Error(threw(r.exceptionDetails));
   return cut(formatEvalValue(r.result), MAX_EVAL);
+}
+
+/** How long a `page` action waits for its selector to match (Playwright's auto-wait, shorter). */
+const FIND_TIMEOUT = 10_000;
+
+/** The element a `page` action names, as a ref; waits for it to appear. */
+async function findRef(tab: Tab, sel: string, nth: number | null): Promise<number> {
+  const start = Date.now();
+  let why = "none:0";
+  while (Date.now() - start < FIND_TIMEOUT) {
+    if (dialogs.has(tab.id)) throw new Error(dialogNote(tab.id) ?? "A dialog is open.");
+    let r: Evaluated;
+    try {
+      r = await tabCdp<Evaluated>(tab.id, "Runtime.evaluate", {
+        expression: findExpression(sel, nth),
+        objectGroup: EVAL_GROUP,
+      });
+    } catch {
+      // Mid-navigation: the next try reads the new document.
+      await sleep(100);
+      continue;
+    }
+    if (r.exceptionDetails) {
+      throw new Error(`Bad selector ${JSON.stringify(sel)}: ${threw(r.exceptionDetails)}`);
+    }
+    if (r.result.subtype === "node" && r.result.objectId) {
+      const { node } = await tabCdp<{ node: { backendNodeId: number } }>(
+        tab.id,
+        "DOM.describeNode",
+        { objectId: r.result.objectId },
+      );
+      return node.backendNodeId;
+    }
+    why = String(r.result.value ?? why);
+    // Several matches won't become one by waiting.
+    if (why.startsWith("strict:")) break;
+    await sleep(100);
+  }
+  throw new Error(findError(sel, why));
+}
+
+const PAGE_ACTIONS = ["click", "hover", "type", "insert", "select", "press", "back", "forward"];
+/** Actions that need no element. */
+const PAGE_NO_TARGET = ["press", "insert", "back", "forward"];
+
+/**
+ * The `script` tool's primitives (zynlex-mcp runs the agent's Playwright-style
+ * script and calls this once per `page.*` call). Not listed to agents. Replies
+ * are JSON so the script gets values, not prose; actions reuse `act`'s real
+ * input and settle afterwards; a dialog an action opens is reported for the
+ * script's `page.on("dialog")` handler (or its default, dismiss) to answer.
+ */
+async function pageTool(args: Args): Promise<string> {
+  const tab = tabOf(args);
+  const op = String(args.op ?? "");
+  const dialogNow = () => dialogs.get(tab.id) ?? null;
+  const out = (v: Record<string, unknown>) => JSON.stringify(v);
+  switch (op) {
+    case "act": {
+      const action = String(args.action ?? "");
+      if (!PAGE_ACTIONS.includes(action)) throw new Error(`Unknown page action "${action}".`);
+      if (dialogs.has(tab.id)) throw new Error(dialogNote(tab.id) ?? "A dialog is open.");
+      await showTab(tab);
+      const text = typeof args.text === "string" ? args.text : "";
+      const sel = args.selector == null ? null : parseSelector(args.selector);
+      const nth = typeof args.nth === "number" ? args.nth : null;
+      const ref = sel == null ? null : await findRef(tab, sel, nth);
+      if (ref == null && !PAGE_NO_TARGET.includes(action)) {
+        throw new Error(`${action} needs a selector.`);
+      }
+      if (action === "insert") {
+        // Playwright's type()/keyboard.type(): adds to what's there.
+        if (ref != null) await tabCdp(tab.id, "DOM.focus", { backendNodeId: ref });
+        await orDialog(tab.id, tabCdp(tab.id, "Input.insertText", { text }));
+      } else {
+        const step = { action, text, ref, to: null, files: [] };
+        await doStep(tab, step, () => (sel ? JSON.stringify(sel) : ""));
+      }
+      if (!dialogs.has(tab.id)) await settle(tab.id);
+      return out({ dialog: dialogNow() });
+    }
+    case "eval": {
+      const expression = typeof args.expression === "string" ? args.expression : "";
+      if (!expression) throw new Error("Pass an expression.");
+      if (dialogs.has(tab.id)) throw new Error(dialogNote(tab.id) ?? "A dialog is open.");
+      const r = await evaluateIn(tab.id, `((__zq) => (${expression}))(${QUERY})`);
+      if (r === DIALOG) return out({ dialog: dialogNow() });
+      if (r === null) throw new Error(`No value after ${EVAL_TIMEOUT / 1000}s.`);
+      if (r.exceptionDetails) throw new Error(threw(r.exceptionDetails));
+      return out({ value: r.result.value ?? null });
+    }
+    case "goto": {
+      const base = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+      let url: string;
+      try {
+        url = new URL(String(args.url ?? ""), base).href;
+      } catch {
+        throw new Error(`Not a URL: ${JSON.stringify(args.url)}.`);
+      }
+      if (!agentCanUse(url, tab.workspaceId)) {
+        throw new Error(`goto only takes URLs in your scope: ${SCOPE}.`);
+      }
+      await showTab(tab);
+      await navigateTab(tab.id, url);
+      await sleep(150);
+      const unsettled = await settle(tab.id);
+      const now = useTabsStore.getState().tabs[tab.id]?.url ?? url;
+      return out({ url: now, unsettled, dialog: dialogNow() });
+    }
+    case "reload": {
+      await showTab(tab);
+      await webviewReload(tab.id);
+      await sleep(150);
+      return out({ unsettled: await settle(tab.id), dialog: dialogNow() });
+    }
+    case "settle":
+      return out({ unsettled: await settle(tab.id), dialog: dialogNow() });
+    case "dialog": {
+      const d = dialogNow();
+      if (!d) throw new Error("No dialog is open in this tab.");
+      const accept = args.accept === true;
+      await tabCdp(tab.id, "Page.handleJavaScriptDialog", {
+        accept,
+        ...(d.type === "prompt" && accept && typeof args.text === "string"
+          ? { promptText: args.text }
+          : {}),
+      });
+      dialogs.delete(tab.id);
+      await settle(tab.id);
+      return out({ answered: d, dialog: dialogNow() });
+    }
+    case "state": {
+      const t = useTabsStore.getState().tabs[tab.id] ?? tab;
+      return out({ url: t.url, title: t.title, tab: shortId(t), dialog: dialogNow() });
+    }
+    case "problems":
+      return out({ lines: newProblems(tab) });
+    default:
+      throw new Error(`Unknown page op "${op}".`);
+  }
 }
 
 const WAIT_DEFAULT = 10;
@@ -1993,12 +2146,19 @@ export async function runAgentTool(tool: string, args: Args, client = 0): Promis
   }
   const text = await runPaused(tool, args);
   if (tool === "open") target = scopedTabs().find((t) => t.url === openUrl(args))?.id;
+  // A `page` call (the script tool) answers JSON; only its closing `problems`
+  // call carries the developer's flags, as a field.
+  if (tool === "page" && args.op !== "problems") return text;
   const ids = tool === "tabs" ? scopedTabs().map((t) => t.id) : target ? [target] : [];
   const flags = useAgentFlagsStore.getState().take(ids);
   for (const f of flags) {
     const set = flaggedRefs.get(f.tabId) ?? new Set<number>();
     set.add(parseRef(f.ref));
     flaggedRefs.set(f.tabId, set);
+  }
+  if (tool === "page") {
+    if (!flags.length) return text;
+    return JSON.stringify({ ...JSON.parse(text), flags: withFlags("", flags, false) });
   }
   return withFlags(text, flags, tool === "tabs");
 }
@@ -2040,6 +2200,9 @@ async function runPaused(tool: string, args: Args): Promise<string> {
   if (held.kind === "stopped")
     throw new Error("The developer stopped the agent while it was paused.");
   const lead = [tookOverLine(held.pausedMs), ...(await takeoverDiff(tool, args))].join("\n");
+  // The script reads JSON: the takeover note goes in a field.
+  if (tool === "page")
+    return JSON.stringify({ ...JSON.parse(await runNow(tool, args)), note: lead });
   try {
     return `${lead}\n${await runNow(tool, args)}`;
   } catch (err) {
@@ -2085,6 +2248,8 @@ ${note}`;
       return mockTool(resolveTab(args.tab), args);
     case "recording":
       return recordingTool(args.playwright === true);
+    case "page":
+      return pageTool(args);
     default:
       throw new Error(`Unknown tool "${tool}".`);
   }
