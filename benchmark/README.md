@@ -31,6 +31,7 @@ Each tool gets the same prompt, the same model and the same app copy.
 | `pwcli` | [playwright-cli](https://www.npmjs.com/package/@playwright/cli), through Bash | 0.1.22 |
 | `agentbrowser` | [agent-browser](https://www.npmjs.com/package/agent-browser), through Bash | 0.41.0 |
 | `kitesurf` | Playwright MCP over CDP to [Kitesurf](https://github.com/cloudflare/kitesurf), Cloudflare's WebAssembly browser engine, run locally with `wrangler dev` | MCP 0.0.83, Kitesurf `c7b1301` |
+| `browse` | [OpenCode Browse](https://github.com/anomalyco/browse): MCP server + extension in a Chromium with its own profile; Claude Code gets its `execute` tool | 0.1.0 |
 
 ## Tasks
 
@@ -116,6 +117,21 @@ The agent fixed every bug on Kitesurf, but where the bug needed the browser to c
 - `confirm`: `confirm()` isn't supported yet, which Kitesurf already notes.
 
 Kitesurf launched in August 2026 and is still experimental; this measures it as an agent's browser today, not where it is going. The storage and iframe issues are reported to Kitesurf with minimal reproductions: [cloudflare/kitesurf#133](https://github.com/cloudflare/kitesurf/issues/133), [cloudflare/kitesurf#134](https://github.com/cloudflare/kitesurf/issues/134).
+
+### Script tool and OpenCode Browse, held-out set (2026-11-17)
+
+`results/heldout-2026-11-17.jsonl`, 3 repeats, all the same day. OpenCode Browse's `execute` tool runs a whole Playwright-style script per call, and it beat ZYNLEX's `act` on four of five bugs that morning. ZYNLEX's answer is `script` (see [docs/agent-interface.md](../docs/agent-interface.md#scripts)); `zynlex-script` is ZYNLEX with it.
+
+| Tool | Fixed | Ran out of turns | Tokens | Turns | Browser calls | Cost per task | Total cost |
+|---|---|---|---|---|---|---|---|
+| ZYNLEX with `script` | 15/15 | 0 | 108k | 7 | 2 | $0.097 | $1.53 |
+| OpenCode Browse 0.1.0 | 15/15 | 3 | 128k | 9 | 3 | $0.118 | $3.57 |
+| ZYNLEX without `script` | 15/15 | 0 | 175k | 10 | 5 | $0.122 | $1.96 |
+| Playwright MCP | 15/15 | 0 | 283k | 14 | 9 | $0.211 | $3.13 |
+
+Median tokens per bug, ZYNLEX with `script` / Browse: `confirm` 127k / 1,112k, `enter` 106k / 108k, `iframe` 107k / 125k, `loadmore` 108k / 128k, `storage` 129k / 128k. On `confirm`, all three Browse runs fixed the code but ran out of turns: its `dialog` tool reports "No dialog is open" while the page is blocked on one. Leaving `confirm` out, ZYNLEX with `script` used 1.35M tokens and $1.20 in all, Browse 1.51M and $1.41.
+
+Not blind: `script`'s instructions were tuned over three rounds on these five bugs (the rounds, 163k and 109k median, are what led to telling agents to read the code before scripting, listing the page's controls when a selector misses, `frameLocator`, and reloading past the cache). A new held-out set is the next check.
 
 ## Caveats
 

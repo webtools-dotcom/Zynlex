@@ -122,6 +122,7 @@ call to find out.
 | `wait_for` | Polls every 250 ms until all given conditions hold: `text` appears, `gone` disappears (full snapshot + `body.innerText`), `url` contains; `timeout` s (default 10, max 30); says what matched or what's pending, then the consequences | Built, untested on Windows |
 | `mock` | `add` a canned response (or, with `header`+`value`, a request-header rule), `list`, `remove` by id, `clear`, through the panels' stores | Built |
 | `recording` | The developer's latest recorded steps (click/type/select/press/upload, with refs) and what each caused; `playwright: true` gives them as a Playwright test instead. See [Recorded steps](#recorded-steps) | Done, tested on Windows |
+| `script` | Runs the agent's Playwright-style async script in one call: `page` (goto, reload, click/fill/press/hover/check/selectOption, locators and `getBy*`, reads like `textContent`/`count`/`allTextContents`, `evaluate`/`$eval`/`$$eval`, waits, `keyboard`, `on("dialog")`) and `zynlex.<tool>()` for every other tool. Returns what it `return`s, its `console.log` lines, dialogs it dismissed, then the page's new errors. See [Scripts](#scripts) | Built |
 
 ### WebSockets and vitals
 
@@ -293,6 +294,48 @@ and runs it with `npx playwright test`.
   in as `// ZYNLEX saw:` comments: a recording usually shows the bug, so its
   behaviour isn't what the test should expect. The file ends with a TODO for
   the agent's `expect` and fails on any uncaught page error.
+
+### Scripts
+
+`script` runs the agent's code in QuickJS inside `zynlex-mcp`, not in ZYNLEX: the
+app's CSP (`script-src 'self'`) rightly forbids evaluating agent-written code in
+its own window. The script gets no files, no network and no event loop (a
+`setTimeout` sleeps, then runs its callback), 64 MB and 90 s. Its only way out is
+`__host`, which relays a tool call over the agent's own pipe session, so the
+developer sees every step in the activity panel, Pause holds them like any
+other call, and scope rules apply unchanged (`goto` refuses URLs outside it).
+
+Each `page.*` call becomes one call to a `page` tool that agents aren't shown
+(`pageTool` in `src/lib/agent.ts`), which replies in JSON:
+
+- actions (`act`: click, hover, type, insert, select, press, back, forward)
+  find their element by selector, waiting up to 10 s, then use `act`'s real
+  input and settle;
+- `eval` runs an expression with the selector engine bound as `__zq`;
+- `goto`, `reload`, `settle`, `dialog` (answer), `state` (url, title, open
+  dialog) and `problems` (new errors, and the developer's flags as a field).
+
+Selectors are resolved in the page by `src/lib/agentQuery.ts`: CSS,
+`text=`, `:has-text()`, `role=…[name=…]`, `label=`, `nth=`, `has-text=` and
+`>>`, with Playwright's matching (substring, case-insensitive; quoted is
+exact) and its strict mode for actions and reads. A dialog an action opens
+goes to the script's `page.on("dialog")` handlers, or is dismissed, as
+Playwright does.
+
+A selector that matches nothing fails with the page's visible controls
+(`input#new-task placeholder="What needs doing?" label="New task"; button#add "Add"`),
+so the next try is right instead of a snapshot. `frameLocator()`,
+`locator.contentFrame()` and `page.frames()` reach same-origin iframes (a `frame`
+step into the iframe's document). `reload`, and `goto` to the page the tab is
+already on, reload past the cache: after an edit, the old script must not run.
+`goto` with no tab open opens one, as `open` does.
+
+Why: on the held-out benchmark (2026-11-17), OpenCode Browse's `execute` tool
+(the same idea over a Chrome extension) used fewer tokens than `act` on four
+of five bugs, because a whole check (reload, click, read the list) is one call
+with a few lines back instead of several calls returning page diffs. With `script`, ZYNLEX
+used fewer tokens than Browse on four of the five and tied the fifth
+([benchmark](../benchmark/README.md)).
 
 ### Mocks and header rules
 

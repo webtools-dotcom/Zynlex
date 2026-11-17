@@ -6,7 +6,7 @@ average. Medians lead because a single runaway run skews a mean of five.
 """
 import json, statistics, sys
 
-TOOLS = ["zynlex", "playwright", "kitesurf", "devtools", "pwcli", "agentbrowser"]
+TOOLS = ["zynlex", "zynlex-script", "browse", "playwright", "kitesurf", "devtools", "pwcli", "agentbrowser"]
 
 
 def tokens_from_transcript(path):

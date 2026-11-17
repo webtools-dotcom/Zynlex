@@ -106,7 +106,14 @@ import {
   vitalsText,
   waitPending,
 } from "./agent";
-import { cancelPause, PAUSE_HOLD_MS, PAUSED_REPLY, pauseAgent, resumeAgent } from "./agentPause";
+import {
+  actsOnPage,
+  cancelPause,
+  PAUSE_HOLD_MS,
+  PAUSED_REPLY,
+  pauseAgent,
+  resumeAgent,
+} from "./agentPause";
 import { forgetAgentTab, markAgentOpened, notePopup, popupMark, takePopups } from "./agentTabs";
 import { forgetTab, notePageLoad } from "./errorGroups";
 
@@ -666,6 +673,69 @@ describe("agent tools", () => {
     expect(out.split("\n")[0]).toBe('Developer flagged e15 button "Apply": does nothing on mobile');
     expect(await runAgentTool("errors", {})).not.toContain("Developer flagged");
     expect(useAgentFlagsStore.getState().flags).toEqual([]);
+  });
+
+  describe("page (the script tool's primitives)", () => {
+    it("answers JSON, refuses to act past an open dialog, and answers it", async () => {
+      listenForAgents();
+      // A loaded, still page, so settling after the answer is quick.
+      hooks.answer = (method) =>
+        method === "Runtime.evaluate"
+          ? { result: { value: { ready: "complete", quietMs: 900 } } }
+          : {};
+      hooks.dialog?.({ tabId: "aaaaaaaa-1", open: true, type: "confirm", message: "Delete?" });
+      hooks.cdp.length = 0;
+      const state = JSON.parse(await runAgentTool("page", { op: "state" }));
+      expect(state).toMatchObject({ url: "http://localhost:5173/", dialog: { type: "confirm" } });
+      await expect(
+        runAgentTool("page", { op: "act", action: "click", selector: "#del" }),
+      ).rejects.toThrow("A confirm dialog is open");
+      expect(hooks.cdp).toEqual([]);
+      const answered = JSON.parse(await runAgentTool("page", { op: "dialog", accept: true }));
+      expect(answered.answered).toEqual({ type: "confirm", message: "Delete?" });
+      expect(hooks.cdp[0]).toBe("Page.handleJavaScriptDialog");
+      await expect(runAgentTool("page", { op: "dialog", accept: true })).rejects.toThrow(
+        "No dialog is open",
+      );
+      hooks.answer = null;
+    });
+
+    it("keeps goto in the agent's scope and needs a target for element actions", async () => {
+      await expect(
+        runAgentTool("page", { op: "goto", url: "https://mail.example.com/" }),
+      ).rejects.toThrow("goto only takes URLs in your scope");
+      await expect(runAgentTool("page", { op: "act", action: "launch" })).rejects.toThrow(
+        'Unknown page action "launch"',
+      );
+      await expect(runAgentTool("page", { op: "nope" })).rejects.toThrow('Unknown page op "nope"');
+    });
+
+    it("hands the developer's flags over only on the closing problems call, as a field", async () => {
+      const flags = useAgentFlagsStore.getState();
+      flags.clear();
+      flags.add({ tabId: "aaaaaaaa-1", ref: "e15", role: "button", name: "Apply", note: "" });
+      expect(JSON.parse(await runAgentTool("page", { op: "state" })).flags).toBeUndefined();
+      const end = JSON.parse(await runAgentTool("page", { op: "problems" }));
+      expect(end.flags).toContain('Developer flagged e15 button "Apply"');
+      expect(useAgentFlagsStore.getState().flags).toEqual([]);
+    });
+
+    it("lets a script start with goto when no tab is open, but only in scope", async () => {
+      useTabsStore.setState({ tabs: {} });
+      await expect(
+        runAgentTool("page", { op: "goto", url: "https://mail.example.com/" }),
+      ).rejects.toThrow("goto only takes URLs in your scope");
+      expect(Object.keys(useTabsStore.getState().tabs)).toEqual([]);
+      // Anything else still needs a tab.
+      await expect(runAgentTool("page", { op: "state" })).rejects.toThrow("No tab you can use");
+    });
+
+    it("counts its actions as acting on the page for Pause, not its reads", () => {
+      expect(actsOnPage("page", { op: "act" })).toBe(true);
+      expect(actsOnPage("page", { op: "goto" })).toBe(true);
+      expect(actsOnPage("page", { op: "state" })).toBe(false);
+      expect(actsOnPage("page", { op: "problems" })).toBe(false);
+    });
   });
 
   it("delivers every tab's flags to tabs, naming the tab", async () => {

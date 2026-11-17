@@ -36,6 +36,9 @@ export function actsOnPage(tool: string, args: Record<string, unknown>): boolean
       return true;
     case "check":
       return !!args.reload;
+    // The script tool's primitives: reading state and errors isn't acting.
+    case "page":
+      return args.op !== "state" && args.op !== "problems";
     case "mock":
       return args.action !== "list";
     case "tabs":
