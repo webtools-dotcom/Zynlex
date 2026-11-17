@@ -96,7 +96,11 @@ async function __read(loc, fn, arg, noWait) {
     try {
       return __op("eval", { expression: expr }).value;
     } catch (e) {
-      if (noWait || !/No element matches/.test(e.message) || Date.now() > until) throw e;
+      if (noWait || !/No element matches/.test(e.message)) throw e;
+      if (Date.now() > until) {
+        const what = e.message.replace(/^Threw: Error: /, "").split("\n")[0];
+        throw new Error(`${what}.${__op("hint").hint}`);
+      }
       __sleep(100);
     }
   }
@@ -116,6 +120,13 @@ class Locator {
   }
   locator(sel) {
     return this._sub(sel);
+  }
+  contentFrame() {
+    const base = this._nth == null ? this._sel : `${this._sel} >> nth=${this._nth}`;
+    return __frame(`${base} >> frame >> `);
+  }
+  frameLocator(sel) {
+    return this._sub(sel).contentFrame();
   }
   getByRole(role, o = {}) {
     return this._sub(__byRole(role, o));
@@ -265,7 +276,9 @@ class Locator {
       const ok =
         state === "attached" ? n > 0 : state === "detached" ? n === 0 : state === "hidden" ? !visible : visible;
       if (ok) return;
-      if (Date.now() > until) throw new Error(`Timed out waiting for ${__q(this._sel)} to be ${state}.`);
+      if (Date.now() > until) {
+        throw new Error(`Timed out waiting for ${__q(this._sel)} to be ${state}.${__op("hint").hint}`);
+      }
       __sleep(100);
     }
   }
@@ -290,7 +303,84 @@ async function __poll(test, timeout, what) {
 const __fnExpr = (fn, arg) =>
   typeof fn === "function" ? `(${String(fn)})(${__q(arg ?? null)})` : String(fn);
 
-const page = {
+/**
+ * The selector methods of a page or a frame: `prefix` scopes every selector
+ * ("" for the page, "<iframe selector> >> frame >> " inside a same-origin frame).
+ */
+function __scope(prefix) {
+  const L = (sel) => (sel instanceof Locator ? sel : new Locator(prefix + sel));
+  return {
+    async $eval(sel, fn, arg) {
+      return __read(L(sel), String(fn), arg);
+    },
+    async $$eval(sel, fn, arg) {
+      return __all(prefix + sel, String(fn), arg);
+    },
+    async $(sel) {
+      return L(sel)._count() ? new Locator(prefix + sel, 0) : null;
+    },
+    async $$(sel) {
+      return L(sel).all();
+    },
+    locator: (sel) => L(sel),
+    frameLocator: (sel) => __frame(`${prefix}${sel} >> frame >> `),
+    getByRole: (role, o = {}) => L(__byRole(role, o)),
+    getByText: (t, o = {}) => L(`text=${__text(t, o.exact)}`),
+    getByLabel: (t, o = {}) => L(`label=${__text(t, o.exact)}`),
+    getByPlaceholder: (t, o = {}) => L(__attr("placeholder", t, o.exact)),
+    getByTestId: (t) => L(__attr("data-testid", t, true)),
+    getByTitle: (t, o = {}) => L(__attr("title", t, o.exact)),
+    getByAltText: (t, o = {}) => L(__attr("alt", t, o.exact)),
+    click: (sel, o) => L(sel).click(o),
+    dblclick: (sel) => L(sel).dblclick(),
+    tap: (sel) => L(sel).tap(),
+    hover: (sel) => L(sel).hover(),
+    fill: (sel, v) => L(sel).fill(v),
+    type: (sel, v) => L(sel).type(v),
+    press: (sel, key) => L(sel).press(key),
+    check: (sel) => L(sel).check(),
+    uncheck: (sel) => L(sel).uncheck(),
+    selectOption: (sel, v) => L(sel).selectOption(v),
+    focus: (sel) => L(sel).focus(),
+    textContent: (sel) => L(sel).textContent(),
+    innerText: (sel) => L(sel).innerText(),
+    innerHTML: (sel) => L(sel).innerHTML(),
+    inputValue: (sel) => L(sel).inputValue(),
+    getAttribute: (sel, n) => L(sel).getAttribute(n),
+    isVisible: (sel) => L(sel).isVisible(),
+    isHidden: (sel) => L(sel).isHidden(),
+    isChecked: (sel) => L(sel).isChecked(),
+    isEnabled: (sel) => L(sel).isEnabled(),
+    isDisabled: (sel) => L(sel).isDisabled(),
+    async waitForSelector(sel, o = {}) {
+      await L(sel).waitFor({ state: o.state ?? "visible", timeout: o.timeout });
+      return o.state === "hidden" || o.state === "detached" ? null : new Locator(prefix + sel, 0);
+    },
+  };
+}
+
+/** A same-origin iframe: frameLocator(), locator.contentFrame() and page.frames() entries. */
+function __frame(prefix, info = {}) {
+  const frame = __scope(prefix);
+  // The iframe element itself: the prefix without its trailing " >> frame >> ".
+  const el = prefix.slice(0, -" >> frame >> ".length);
+  const inFrame = (body) =>
+    __op("eval", {
+      expression: `(() => { const f = __zq(${__q(el)})[0]; if (!f || !f.contentWindow) throw new Error("No frame matches " + ${__q(el)}); return f.contentWindow.eval(${__q(body)}); })()`,
+    }).value;
+  return Object.assign(frame, {
+    url: () => info.url ?? inFrame("location.href"),
+    name: () => info.name ?? "",
+    async evaluate(fn, arg) {
+      return inFrame(__fnExpr(fn, arg));
+    },
+    async content() {
+      return inFrame("document.documentElement.outerHTML");
+    },
+  });
+}
+
+const page = Object.assign(__scope(""), {
   async goto(url) {
     const r = __op("goto", { url });
     await __dialogs(r);
@@ -317,51 +407,19 @@ const page = {
   async evaluate(fn, arg) {
     return __op("eval", { expression: __fnExpr(fn, arg) }).value;
   },
-  async $eval(sel, fn, arg) {
-    return __read(__loc(sel), String(fn), arg);
+  /** The page, then each same-origin iframe (cross-origin ones are skipped). */
+  frames() {
+    const list = __op("eval", {
+      expression:
+        "[...document.querySelectorAll('iframe')].map((f) => { try { return f.contentDocument ? { url: f.contentWindow.location.href, name: f.name } : null; } catch { return null; } })",
+    }).value;
+    const frames = [];
+    list.forEach((f, i) => {
+      if (f) frames.push(__frame(`iframe >> nth=${i} >> frame >> `, f));
+    });
+    return [page, ...frames];
   },
-  async $$eval(sel, fn, arg) {
-    return __all(sel, String(fn), arg);
-  },
-  async $(sel) {
-    return __loc(sel)._count() ? new Locator(sel, 0) : null;
-  },
-  async $$(sel) {
-    return __loc(sel).all();
-  },
-  locator: (sel) => __loc(sel),
-  getByRole: (role, o = {}) => new Locator(__byRole(role, o)),
-  getByText: (t, o = {}) => new Locator(`text=${__text(t, o.exact)}`),
-  getByLabel: (t, o = {}) => new Locator(`label=${__text(t, o.exact)}`),
-  getByPlaceholder: (t, o = {}) => new Locator(__attr("placeholder", t, o.exact)),
-  getByTestId: (t) => new Locator(__attr("data-testid", t, true)),
-  getByTitle: (t, o = {}) => new Locator(__attr("title", t, o.exact)),
-  getByAltText: (t, o = {}) => new Locator(__attr("alt", t, o.exact)),
-  click: (sel, o) => __loc(sel).click(o),
-  dblclick: (sel) => __loc(sel).dblclick(),
-  tap: (sel) => __loc(sel).tap(),
-  hover: (sel) => __loc(sel).hover(),
-  fill: (sel, v) => __loc(sel).fill(v),
-  type: (sel, v) => __loc(sel).type(v),
-  press: (sel, key) => __loc(sel).press(key),
-  check: (sel) => __loc(sel).check(),
-  uncheck: (sel) => __loc(sel).uncheck(),
-  selectOption: (sel, v) => __loc(sel).selectOption(v),
-  focus: (sel) => __loc(sel).focus(),
-  textContent: (sel) => __loc(sel).textContent(),
-  innerText: (sel) => __loc(sel).innerText(),
-  innerHTML: (sel) => __loc(sel).innerHTML(),
-  inputValue: (sel) => __loc(sel).inputValue(),
-  getAttribute: (sel, n) => __loc(sel).getAttribute(n),
-  isVisible: (sel) => __loc(sel).isVisible(),
-  isHidden: (sel) => __loc(sel).isHidden(),
-  isChecked: (sel) => __loc(sel).isChecked(),
-  isEnabled: (sel) => __loc(sel).isEnabled(),
-  isDisabled: (sel) => __loc(sel).isDisabled(),
-  async waitForSelector(sel, o = {}) {
-    await __loc(sel).waitFor({ state: o.state ?? "visible", timeout: o.timeout });
-    return o.state === "hidden" || o.state === "detached" ? null : new Locator(sel, 0);
-  },
+  mainFrame: () => page,
   async waitForTimeout(ms) {
     __sleep(Math.min(Number(ms) || 0, 15000));
   },
@@ -409,7 +467,7 @@ const page = {
   },
   async bringToFront() {},
   async close() {},
-};
+});
 
 // No event loop here: a timer sleeps, then runs its callback as a microtask,
 // which is all `await new Promise((r) => setTimeout(r, 500))` needs.

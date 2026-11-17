@@ -21,7 +21,7 @@ import {
   PAUSED_REPLY,
   tookOverLine,
 } from "@/lib/agentPause";
-import { findError, findExpression, parseSelector, QUERY } from "@/lib/agentQuery";
+import { findError, findExpression, HINT, parseSelector, QUERY } from "@/lib/agentQuery";
 import { dropAgentRules, mockTool } from "@/lib/agentRules";
 import { agentCanUse, SCOPE } from "@/lib/agentScope";
 import {
@@ -50,6 +50,7 @@ import {
   agentWriteTemp,
   captureScreenshot,
   getAgentStatus,
+  hardReload,
   navigateTab,
   onAgentRequest,
   onAgentStatus,
@@ -1893,8 +1894,38 @@ async function evalTool(args: Args): Promise<string> {
   return cut(formatEvalValue(r.result), MAX_EVAL);
 }
 
+/** `page.goto` with no tab open: opens one, as `open` would, without returning the page. */
+async function gotoNewTab(args: Args): Promise<string> {
+  const url = openUrl(args);
+  if (!url || !agentCanUse(url, useWorkspacesStore.getState().activeWorkspaceId)) {
+    throw new Error(`goto only takes URLs in your scope: ${SCOPE}.`);
+  }
+  const id = openTab({ url });
+  markAgentOpened(id);
+  const tab: AgentTab = { ...useTabsStore.getState().tabs[id], client: clientOf(args) };
+  await showTab(tab);
+  await sleep(150);
+  const unsettled = await settle(id);
+  const now = useTabsStore.getState().tabs[id]?.url ?? url;
+  return JSON.stringify({ url: now, unsettled, dialog: dialogs.get(id) ?? null });
+}
+
 /** How long a `page` action waits for its selector to match (Playwright's auto-wait, shorter). */
 const FIND_TIMEOUT = 10_000;
+
+/** " On the page: …" (its visible controls), or "" if the page can't be read. */
+async function pageHint(tabId: string): Promise<string> {
+  try {
+    const r = await tabCdp<Evaluated>(tabId, "Runtime.evaluate", {
+      expression: HINT,
+      returnByValue: true,
+    });
+    const list = typeof r.result.value === "string" ? r.result.value : "";
+    return list ? ` On the page: ${list}` : "";
+  } catch {
+    return "";
+  }
+}
 
 /** The element a `page` action names, as a ref; waits for it to appear. */
 async function findRef(tab: Tab, sel: string, nth: number | null): Promise<number> {
@@ -1929,7 +1960,7 @@ async function findRef(tab: Tab, sel: string, nth: number | null): Promise<numbe
     if (why.startsWith("strict:")) break;
     await sleep(100);
   }
-  throw new Error(findError(sel, why));
+  throw new Error(findError(sel, why) + (why.startsWith("none") ? await pageHint(tab.id) : ""));
 }
 
 const PAGE_ACTIONS = ["click", "hover", "type", "insert", "select", "press", "back", "forward"];
@@ -1944,6 +1975,8 @@ const PAGE_NO_TARGET = ["press", "insert", "back", "forward"];
  * script's `page.on("dialog")` handler (or its default, dismiss) to answer.
  */
 async function pageTool(args: Args): Promise<string> {
+  // A script may start with page.goto(url) before any tab is open.
+  if (args.op === "goto" && args.tab == null && !scopedTabs().length) return gotoNewTab(args);
   const tab = tabOf(args);
   const op = String(args.op ?? "");
   const dialogNow = () => dialogs.get(tab.id) ?? null;
@@ -1994,7 +2027,10 @@ async function pageTool(args: Args): Promise<string> {
         throw new Error(`goto only takes URLs in your scope: ${SCOPE}.`);
       }
       await showTab(tab);
-      await navigateTab(tab.id, url);
+      // The same page again (the usual "run it again" after a fix): reload
+      // past the cache, or the old script runs and the fix looks broken.
+      const sameDoc = url.split("#")[0] === base.split("#")[0];
+      await (sameDoc ? hardReload(tab.id) : navigateTab(tab.id, url));
       await sleep(150);
       const unsettled = await settle(tab.id);
       const now = useTabsStore.getState().tabs[tab.id]?.url ?? url;
@@ -2002,7 +2038,8 @@ async function pageTool(args: Args): Promise<string> {
     }
     case "reload": {
       await showTab(tab);
-      await webviewReload(tab.id);
+      // Past the cache: a script reloads to run code it just changed.
+      await hardReload(tab.id);
       await sleep(150);
       return out({ unsettled: await settle(tab.id), dialog: dialogNow() });
     }
@@ -2028,6 +2065,8 @@ async function pageTool(args: Args): Promise<string> {
     }
     case "problems":
       return out({ lines: newProblems(tab) });
+    case "hint":
+      return out({ hint: await pageHint(tab.id) });
     default:
       throw new Error(`Unknown page op "${op}".`);
   }

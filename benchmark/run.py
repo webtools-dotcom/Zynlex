@@ -29,6 +29,9 @@ MCP = {
     # Playwright MCP driving Cloudflare's Kitesurf engine (github.com/cloudflare/kitesurf) over CDP
     # instead of launching Chrome. The engine must already be running on :8787 (wrangler dev, with
     # KITESURF_ALLOW_PRIVATE_NETWORK=1 so it may load the 127.0.0.1 fixtures).
+    # OpenCode Browse (github.com/anomalyco/browse): `browse` on PATH, its extension paired with a
+    # browser that's open (`browse status` says so). Use a separate browser profile for runs.
+    "browse": {"command": "browse", "args": ["mcp"]},
     "kitesurf": {
         "command": "cmd",
         "args": ["/c", "npx", "-y", "@playwright/mcp@0.0.83", "--cdp-endpoint", "http://127.0.0.1:8787"],

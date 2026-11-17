@@ -3,7 +3,7 @@
  * Playwright-style script; each `page.*` call becomes a `page` call here).
  * Agents write Playwright selectors from memory, so this covers the ones they
  * reach for: CSS, `text=` (quoted: exact), `:has-text("…")`, `role=button[name="…"]`
- * (getByRole), `label=` (getByLabel), `nth=N`, `has-text=` (filter), and `>>` to scope each part
+ * (getByRole), `label=` (getByLabel), `nth=N`, `has-text=` (filter), `frame` (into an iframe), and `>>` to scope each part
  * within the matches of the one before. Matching is Playwright's: substring,
  * case-insensitive, whitespace collapsed; quoted means exact.
  *
@@ -56,6 +56,16 @@ export const QUERY = `((sel, root) => {
   const innermost = (els) => els.filter((e) => !els.some((o) => o !== e && e.contains(o)));
   const step = (part, scopes) => {
     let m;
+    // frameLocator(): into each same-origin iframe's document (a cross-origin one can't be read).
+    if (part === "frame") {
+      return scopes.flatMap((e) => {
+        try {
+          return e.contentDocument ? [e.contentDocument] : [];
+        } catch {
+          return [];
+        }
+      });
+    }
     if ((m = /^nth=(-?\\d+)$/.exec(part))) {
       const i = Number(m[1]);
       const el = scopes.at(i);
@@ -90,6 +100,28 @@ export const QUERY = `((sel, root) => {
   }
   return found;
 })`;
+
+/**
+ * In-page: the visible controls (up to 15) as `tag#id placeholder= label= "text"`,
+ * for a selector that matched nothing, so the agent's next try is right instead
+ * of a snapshot to find out what's there.
+ */
+export const HINT = `(() => [...document.querySelectorAll("input,textarea,select,button,a[href],[role=button],[role=link],[contenteditable=true]")]
+  .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; })
+  .slice(0, 15)
+  .map((e) => {
+    const tag = e.tagName.toLowerCase();
+    const bits = [tag + (e.id ? "#" + e.id : "")];
+    const q = (s) => JSON.stringify(String(s).replace(/\\s+/g, " ").trim().slice(0, 40));
+    const ph = e.getAttribute("placeholder");
+    if (ph) bits.push("placeholder=" + q(ph));
+    const label = e.labels && e.labels[0] ? e.labels[0].innerText : e.getAttribute("aria-label");
+    if (label && label.trim()) bits.push("label=" + q(label));
+    const text = tag === "input" || tag === "textarea" ? "" : e.innerText;
+    if (text && text.trim()) bits.push(q(text));
+    return bits.join(" ");
+  })
+  .join("; "))()`;
 
 /** A selector a `page` call names, checked before anything runs in the page. */
 export function parseSelector(v: unknown): string {

@@ -720,6 +720,16 @@ describe("agent tools", () => {
       expect(useAgentFlagsStore.getState().flags).toEqual([]);
     });
 
+    it("lets a script start with goto when no tab is open, but only in scope", async () => {
+      useTabsStore.setState({ tabs: {} });
+      await expect(
+        runAgentTool("page", { op: "goto", url: "https://mail.example.com/" }),
+      ).rejects.toThrow("goto only takes URLs in your scope");
+      expect(Object.keys(useTabsStore.getState().tabs)).toEqual([]);
+      // Anything else still needs a tab.
+      await expect(runAgentTool("page", { op: "state" })).rejects.toThrow("No tab you can use");
+    });
+
     it("counts its actions as acting on the page for Pause, not its reads", () => {
       expect(actsOnPage("page", { op: "act" })).toBe(true);
       expect(actsOnPage("page", { op: "goto" })).toBe(true);

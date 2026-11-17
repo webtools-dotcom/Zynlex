@@ -322,10 +322,20 @@ exact) and its strict mode for actions and reads. A dialog an action opens
 goes to the script's `page.on("dialog")` handlers, or is dismissed, as
 Playwright does.
 
+A selector that matches nothing fails with the page's visible controls
+(`input#new-task placeholder="What needs doing?" label="New task"; button#add "Add"`),
+so the next try is right instead of a snapshot. `frameLocator()`,
+`locator.contentFrame()` and `page.frames()` reach same-origin iframes (a `frame`
+step into the iframe's document). `reload`, and `goto` to the page the tab is
+already on, reload past the cache: after an edit, the old script must not run.
+`goto` with no tab open opens one, as `open` does.
+
 Why: on the held-out benchmark (2026-11-17), OpenCode Browse's `execute` tool
 (the same idea over a Chrome extension) used fewer tokens than `act` on four
 of five bugs, because a whole check (reload, click, read the list) is one call
-with a few lines back instead of several calls returning page diffs.
+with a few lines back instead of several calls returning page diffs. With `script`, ZYNLEX
+used fewer tokens than Browse on four of the five and tied the fifth
+([benchmark](../benchmark/README.md)).
 
 ### Mocks and header rules
 
