@@ -116,6 +116,7 @@ function __response(e) {
     status: () => e.status,
     ok: () => e.status >= 200 && e.status < 300,
     request: () => request,
+    headers: () => __op("body", { id: e.id }).headers,
     async text() {
       return __op("body", { id: e.id }).value;
     },

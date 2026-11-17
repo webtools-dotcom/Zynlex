@@ -2063,7 +2063,13 @@ async function pageTool(args: Args): Promise<string> {
       if (!hit) throw new Error(`No response ${String(args.id)} in this tab.`);
       const n = await withBody(hit);
       if (n.bodyEvicted) throw new Error("That response's body was dropped to save memory.");
-      return out({ value: n.body });
+      // Playwright's headers(): lower-case names, repeated ones joined.
+      const headers: Record<string, string> = {};
+      for (const [k, v] of n.headers) {
+        const key = k.toLowerCase();
+        headers[key] = key in headers ? `${headers[key]}\n${v}` : v;
+      }
+      return out({ value: n.body, headers });
     }
     case "cookies": {
       // context().cookies(): the tab's own URL's cookies (httpOnly ones too), nothing wider.

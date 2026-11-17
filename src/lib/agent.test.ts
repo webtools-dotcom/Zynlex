@@ -781,6 +781,7 @@ describe("agent tools", () => {
       expect(r.list.map((e: { id: string }) => e.id)).toEqual(["net-9"]);
       const b = JSON.parse(await runAgentTool("page", { op: "body", id: "net-9" }));
       expect(b.value).toBe('{"ok":true}');
+      expect(b.headers).toBeTypeOf("object");
       expect(actsOnPage("page", { op: "responses" })).toBe(false);
     });
 
