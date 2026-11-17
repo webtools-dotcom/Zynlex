@@ -828,8 +828,15 @@ async function sendInput(tabId: string, method: string, events: object[]): Promi
 }
 
 async function pressKey(tabId: string, key: string): Promise<void> {
-  const k = KEYS[key];
-  if (!k) throw new Error(`Unknown key "${key}". Known: ${Object.keys(KEYS).join(", ")}.`);
+  // A single character ("y", "7", "/") types itself, as in Playwright.
+  const k =
+    KEYS[key] ??
+    ([...key].length === 1 ? { code: key.toUpperCase().charCodeAt(0), text: key } : null);
+  if (!k) {
+    throw new Error(
+      `Unknown key "${key}". Known: any single character, ${Object.keys(KEYS).join(", ")}.`,
+    );
+  }
   const base = { key: key === "Space" ? " " : key, windowsVirtualKeyCode: k.code };
   await sendInput(tabId, "Input.dispatchKeyEvent", [
     { type: "keyDown", ...base, text: k.text },
@@ -1895,6 +1902,15 @@ async function evalTool(args: Args): Promise<string> {
 }
 
 /** `page.goto` with no tab open: opens one, as `open` would, without returning the page. */
+/** The origin `url` names (a path resolves against `base`); "" if it isn't a URL. */
+function originOf(url: string, base: string): string {
+  try {
+    return new URL(/^[/.?#]/.test(url) ? url : openUrl({ url }), base).origin;
+  } catch {
+    return "";
+  }
+}
+
 async function gotoNewTab(args: Args): Promise<string> {
   const url = openUrl(args);
   if (!url || !agentCanUse(url, useWorkspacesStore.getState().activeWorkspaceId)) {
@@ -1975,8 +1991,15 @@ const PAGE_NO_TARGET = ["press", "insert", "back", "forward"];
  * script's `page.on("dialog")` handler (or its default, dismiss) to answer.
  */
 async function pageTool(args: Args): Promise<string> {
-  // A script may start with page.goto(url) before any tab is open.
-  if (args.op === "goto" && args.tab == null && !scopedTabs().length) return gotoNewTab(args);
+  // A script's page.goto(url) to another site than the active tab's (or with
+  // no tab open) gets a tab of its own: never the developer's tab of some
+  // other app, nor a tab an earlier agent left emulating a phone.
+  if (args.op === "goto" && args.tab == null) {
+    const cur = scopedTabs().length ? resolveTab(null) : null;
+    if (!cur || originOf(String(args.url ?? ""), cur.url) !== originOf(cur.url, cur.url)) {
+      return gotoNewTab(args);
+    }
+  }
   const tab = tabOf(args);
   const op = String(args.op ?? "");
   const dialogNow = () => dialogs.get(tab.id) ?? null;
@@ -1995,9 +2018,16 @@ async function pageTool(args: Args): Promise<string> {
         throw new Error(`${action} needs a selector.`);
       }
       if (action === "insert") {
-        // Playwright's type()/keyboard.type(): adds to what's there.
+        // Playwright's type()/keyboard.type(): adds to what's there, one
+        // character (one input event) at a time, `delay` ms apart, so a
+        // search box's per-keystroke requests race as they do for a person.
         if (ref != null) await tabCdp(tab.id, "DOM.focus", { backendNodeId: ref });
-        await orDialog(tab.id, tabCdp(tab.id, "Input.insertText", { text }));
+        const delay = Math.min(Math.max(Number(args.delay) || 0, 0), 1000);
+        for (const ch of text) {
+          const r = await orDialog(tab.id, tabCdp(tab.id, "Input.insertText", { text: ch }));
+          if (r === DIALOG) break;
+          if (delay) await sleep(delay);
+        }
       } else {
         const step = { action, text, ref, to: null, files: [] };
         await doStep(tab, step, () => (sel ? JSON.stringify(sel) : ""));
@@ -2014,6 +2044,12 @@ async function pageTool(args: Args): Promise<string> {
       if (r === null) throw new Error(`No value after ${EVAL_TIMEOUT / 1000}s.`);
       if (r.exceptionDetails) throw new Error(threw(r.exceptionDetails));
       return out({ value: r.result.value ?? null });
+    }
+    case "cookies": {
+      // context().cookies(): the tab's own URL's cookies (httpOnly ones too), nothing wider.
+      const url = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
+      const r = await tabCdp<{ cookies: unknown[] }>(tab.id, "Network.getCookies", { urls: [url] });
+      return out({ value: r.cookies });
     }
     case "goto": {
       const base = (useTabsStore.getState().tabs[tab.id] ?? tab).url;

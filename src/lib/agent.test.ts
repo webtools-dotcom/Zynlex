@@ -730,11 +730,49 @@ describe("agent tools", () => {
       await expect(runAgentTool("page", { op: "state" })).rejects.toThrow("No tab you can use");
     });
 
+    it("opens its own tab to go to another site, never taking over the active one", async () => {
+      listenForAgents();
+      hooks.answer = (method) =>
+        method === "Runtime.evaluate"
+          ? { result: { value: { ready: "complete", quietMs: 900 } } }
+          : {};
+      const before = Object.keys(useTabsStore.getState().tabs);
+      const other = JSON.parse(await runAgentTool("page", { op: "goto", url: "localhost:3000/" }));
+      expect(other.url).toBe("http://localhost:3000/");
+      const opened = Object.keys(useTabsStore.getState().tabs).filter((id) => !before.includes(id));
+      expect(opened).toHaveLength(1);
+      expect(useTabsStore.getState().tabs["aaaaaaaa-1"].url).toBe("http://localhost:5173/");
+      hooks.answer = null;
+    });
+
+    it("presses single characters and reads the tab's cookies", async () => {
+      hooks.answer = (method) =>
+        method === "Network.getCookies"
+          ? { cookies: [{ name: "prefs", value: "x" }] }
+          : method === "Runtime.evaluate"
+            ? { result: { value: { ready: "complete", quietMs: 900 } } }
+            : {};
+      hooks.cdp.length = 0;
+      await runAgentTool("page", { op: "act", action: "press", text: "y" });
+      expect(hooks.cdp).toContain("Input.dispatchKeyEvent");
+      await expect(
+        runAgentTool("page", { op: "act", action: "press", text: "Hyper" }),
+      ).rejects.toThrow("any single character");
+      // type() sends one input event per character, as a person's typing does.
+      hooks.cdp.length = 0;
+      await runAgentTool("page", { op: "act", action: "insert", text: "yo" });
+      expect(hooks.cdp.filter((m) => m === "Input.insertText")).toHaveLength(2);
+      const c = JSON.parse(await runAgentTool("page", { op: "cookies" }));
+      expect(c.value).toEqual([{ name: "prefs", value: "x" }]);
+      hooks.answer = null;
+    });
+
     it("counts its actions as acting on the page for Pause, not its reads", () => {
       expect(actsOnPage("page", { op: "act" })).toBe(true);
       expect(actsOnPage("page", { op: "goto" })).toBe(true);
       expect(actsOnPage("page", { op: "state" })).toBe(false);
       expect(actsOnPage("page", { op: "problems" })).toBe(false);
+      expect(actsOnPage("page", { op: "cookies" })).toBe(false);
     });
   });
 

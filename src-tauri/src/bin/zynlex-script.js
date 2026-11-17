@@ -76,8 +76,8 @@ async function __dialogs(r) {
   }
 }
 
-async function __act(action, loc, text) {
-  const r = __op("act", { action, selector: loc ? loc._sel : null, nth: loc ? loc._nth : null, text });
+async function __act(action, loc, text, delay) {
+  const r = __op("act", { action, selector: loc ? loc._sel : null, nth: loc ? loc._nth : null, text, delay });
   await __dialogs(r);
 }
 
@@ -183,11 +183,11 @@ class Locator {
   async clear() {
     await __act("type", this, "");
   }
-  async type(v) {
-    await __act("insert", this, String(v));
+  async type(v, o = {}) {
+    await __act("insert", this, String(v), o.delay);
   }
-  async pressSequentially(v) {
-    await __act("insert", this, String(v));
+  async pressSequentially(v, o = {}) {
+    await __act("insert", this, String(v), o.delay);
   }
   async press(key) {
     await __act("press", this, key);
@@ -245,6 +245,17 @@ class Locator {
   }
   async evaluate(fn, arg) {
     return __read(this, String(fn), arg);
+  }
+  async boundingBox() {
+    if (!this._count()) return null;
+    return __read(
+      this,
+      "(el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }",
+    );
+  }
+  /** No handles here: the locator itself, pinned to its one match. */
+  async elementHandle() {
+    return this._count() ? new Locator(this._sel, this._nth ?? 0) : null;
   }
   async evaluateAll(fn, arg) {
     return __all(this._sel, String(fn), arg);
@@ -336,7 +347,7 @@ function __scope(prefix) {
     tap: (sel) => L(sel).tap(),
     hover: (sel) => L(sel).hover(),
     fill: (sel, v) => L(sel).fill(v),
-    type: (sel, v) => L(sel).type(v),
+    type: (sel, v, o) => L(sel).type(v, o),
     press: (sel, key) => L(sel).press(key),
     check: (sel) => L(sel).check(),
     uncheck: (sel) => L(sel).uncheck(),
@@ -440,7 +451,7 @@ const page = Object.assign(__scope(""), {
   },
   keyboard: {
     press: (key) => __act("press", null, key),
-    type: (text) => __act("insert", null, String(text)),
+    type: (text, o = {}) => __act("insert", null, String(text), o.delay),
     insertText: (text) => __act("insert", null, String(text)),
   },
   on(event, fn) {
@@ -465,6 +476,11 @@ const page = Object.assign(__scope(""), {
   async setViewportSize(s) {
     __call("viewport", __withTab({ width: s.width, height: s.height }));
   },
+  context: () => ({
+    async cookies() {
+      return __op("cookies").value;
+    },
+  }),
   async bringToFront() {},
   async close() {},
 });
