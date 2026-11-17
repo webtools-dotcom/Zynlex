@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TeamHub · Events</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/events">TeamHub</a>
+    <button id="menu-btn" class="menu-btn" aria-label="Menu" aria-expanded="false">&#9776;</button>
+    <nav id="nav" class="nav">
+      <a href="#/events" data-view="events">Events</a>
+      <a href="#/bookings" data-view="bookings">My bookings</a>
+      <a href="#/settings" data-view="settings">Settings</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-events" class="view">
+      <h1>Upcoming events</h1>
+      <input id="search" type="search" placeholder="Search events" autocomplete="off">
+      <div id="cities" class="chips">
+        <button data-city="all">All cities</button>
+        <button data-city="Berlin">Berlin</button>
+        <button data-city="Lisbon">Lisbon</button>
+      </div>
+      <ul id="events" class="cards"></ul>
+      <p id="events-empty" class="muted" hidden>No events match.</p>
+    </section>
+
+    <section id="view-event" class="view" hidden>
+      <a href="#/events" class="back">&larr; All events</a>
+      <h1 id="ev-title"></h1>
+      <p class="meta"><span id="ev-date"></span> · <span id="ev-city"></span> · <span id="price"></span> per ticket · <span id="ev-left"></span> seats left</p>
+      <p id="ev-desc"></p>
+
+      <form id="book-form" class="panel" novalidate>
+        <h2>Book seats</h2>
+        <label>Your name <input id="name" name="name" autocomplete="name"></label>
+        <label>Seats <input id="seats" name="seats" inputmode="numeric" value="1"></label>
+        <button id="book" type="submit">Book</button>
+        <p id="book-status" class="status" aria-live="polite"></p>
+      </form>
+
+      <div class="panel">
+        <h2>Comments</h2>
+        <ul id="comments" class="comments"></ul>
+        <textarea id="comment-text" rows="2" placeholder="Write a comment"></textarea>
+        <button id="post-comment" type="button">Post comment</button>
+      </div>
+    </section>
+
+    <section id="view-bookings" class="view" hidden>
+      <h1>My bookings</h1>
+      <ul id="bookings" class="bookings"></ul>
+      <p id="bookings-empty" class="muted" hidden>No bookings yet.</p>
+    </section>
+
+    <section id="view-settings" class="view" hidden>
+      <h1>Settings</h1>
+      <form id="prefs-form" class="panel">
+        <label>Home city
+          <select id="pref-city">
+            <option value="all">All cities</option>
+            <option value="Berlin">Berlin</option>
+            <option value="Lisbon">Lisbon</option>
+          </select>
+        </label>
+        <label class="check"><input id="pref-compact" type="checkbox"> Compact event list</label>
+        <button id="save-prefs" type="submit">Save</button>
+        <p id="prefs-status" class="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+
+  <script src="format.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

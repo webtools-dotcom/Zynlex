@@ -1,19 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="284" viewBox="0 0 760 284" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
-<style>.fg{fill:#1f2328}.mu{fill:#59636e}.bar{fill:#c8d1da}.acc{fill:#0969da}@media (prefers-color-scheme: dark){.fg{fill:#e6edf3}.mu{fill:#9198a1}.bar{fill:#3d444d}.acc{fill:#4493f8}}</style>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="330" viewBox="0 0 760 330" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<style>.fg{fill:#1f2328}.mu{fill:#59636e}.bar{fill:#c8d1da}.acc{fill:#0969da}.acc2{fill:#0969da;fill-opacity:.55}@media (prefers-color-scheme: dark){.fg{fill:#e6edf3}.mu{fill:#9198a1}.bar{fill:#3d444d}.acc{fill:#4493f8}.acc2{fill:#4493f8;fill-opacity:.55}}</style>
 <text x="0" y="20" font-size="15" font-weight="600" class="fg">Tokens Claude Code used per bug fixed (median, lower is better)</text>
-<text x="178" y="60" font-size="14" text-anchor="end" class="fg" font-weight="600">ZYNLEX</text>
-<rect x="190" y="44" width="212.6" height="22" rx="3" class="acc"/>
-<text x="410.6" y="60" font-size="14" class="fg" font-weight="600">186k</text>
-<text x="178" y="100" font-size="14" text-anchor="end" class="fg" font-weight="400">Playwright MCP</text>
-<rect x="190" y="84" width="317.7" height="22" rx="3" class="bar"/>
-<text x="515.7" y="100" font-size="14" class="mu" font-weight="400">278k</text>
-<text x="178" y="140" font-size="14" text-anchor="end" class="fg" font-weight="400">agent-browser</text>
-<rect x="190" y="124" width="369.1" height="22" rx="3" class="bar"/>
-<text x="567.1" y="140" font-size="14" class="mu" font-weight="400">323k</text>
-<text x="178" y="180" font-size="14" text-anchor="end" class="fg" font-weight="400">playwright-cli</text>
-<rect x="190" y="164" width="417.1" height="22" rx="3" class="bar"/>
-<text x="615.1" y="180" font-size="14" class="mu" font-weight="400">365k</text>
-<text x="178" y="220" font-size="14" text-anchor="end" class="fg" font-weight="400">Chrome DevTools MCP</text>
-<rect x="190" y="204" width="452.6" height="22" rx="3" class="bar"/>
-<text x="650.6" y="220" font-size="14" class="mu" font-weight="400">396k</text>
-<text x="0" y="274" font-size="12" class="mu">5 held-out bugs × 5 runs per tool, all fixed 25/25. Same model (Sonnet), same day (2026-11-01). Data: benchmark/</text></svg>
+<text x="218" y="60" font-size="14" text-anchor="end" class="fg" font-weight="600">ZYNLEX</text>
+<rect x="230" y="44" width="135.4" height="22" rx="3" class="acc"/>
+<text x="373.4" y="60" font-size="14" class="fg" font-weight="600">170k</text>
+<text x="218" y="100" font-size="14" text-anchor="end" class="fg" font-weight="600">ZYNLEX, before these fixes</text>
+<rect x="230" y="84" width="176.8" height="22" rx="3" class="acc2"/>
+<text x="414.8" y="100" font-size="14" class="fg" font-weight="600">222k</text>
+<text x="218" y="140" font-size="14" text-anchor="end" class="fg" font-weight="400">OpenCode Browse</text>
+<rect x="230" y="124" width="231.0" height="22" rx="3" class="bar"/>
+<text x="469.0" y="140" font-size="14" class="mu" font-weight="400">290k</text>
+<text x="218" y="180" font-size="14" text-anchor="end" class="fg" font-weight="400">Playwright MCP</text>
+<rect x="230" y="164" width="407.0" height="22" rx="3" class="bar"/>
+<text x="645.0" y="180" font-size="14" class="mu" font-weight="400">511k</text>
+<text x="218" y="220" font-size="14" text-anchor="end" class="fg" font-weight="400">agent-browser</text>
+<rect x="230" y="204" width="430.9" height="22" rx="3" class="bar"/>
+<text x="668.9" y="220" font-size="14" class="mu" font-weight="400">541k</text>
+<text x="218" y="260" font-size="14" text-anchor="end" class="fg" font-weight="400">Chrome DevTools MCP</text>
+<rect x="230" y="244" width="450.0" height="22" rx="3" class="bar"/>
+<text x="688.0" y="260" font-size="14" class="mu" font-weight="400">565k</text>
+<text x="0" y="300" font-size="12" class="mu">8 new bugs, written blind, × 3 runs per tool; all fixed every run but DevTools (23/24). Sonnet, 2026-11-17.</text>
+<text x="0" y="318" font-size="12" class="mu">"Before these fixes" is ZYNLEX untouched; the fixes came from reading its runs on these bugs. Data: benchmark/</text></svg>
