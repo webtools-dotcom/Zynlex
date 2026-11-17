@@ -238,10 +238,18 @@ const SCRIPT_LIMIT: Duration = Duration::from_secs(90);
 fn run_script(pipe: &mut Option<Pipe>, client: &str, args: &Value) -> (bool, String) {
     let code = args["code"].as_str().unwrap_or_default();
     if code.trim().is_empty() {
-        return (false, "Pass code: the body of an async function that uses `page`.".into());
+        return (
+            false,
+            "Pass code: the body of an async function that uses `page`.".into(),
+        );
     }
     let shared = Rc::new(RefCell::new(pipe.take()));
-    let result = script_in(shared.clone(), client, code, args["tab"].as_str().unwrap_or(""));
+    let result = script_in(
+        shared.clone(),
+        client,
+        code,
+        args["tab"].as_str().unwrap_or(""),
+    );
     *pipe = shared.borrow_mut().take();
     result
 }
@@ -387,10 +395,20 @@ mod tests {
     #[test]
     fn runs_scripts_sandboxed() {
         let run = |code: &str| run_script(&mut None, "test", &json!({ "code": code }));
-        assert_eq!(run("return { n: [1, 2].map((x) => x * 2) };"), (true, r#"{"n":[2,4]}"#.into()));
-        assert_eq!(run("console.log('hi', { a: 1 });"), (true, "Done (nothing returned).
+        assert_eq!(
+            run("return { n: [1, 2].map((x) => x * 2) };"),
+            (true, r#"{"n":[2,4]}"#.into())
+        );
+        assert_eq!(
+            run("console.log('hi', { a: 1 });"),
+            (
+                true,
+                "Done (nothing returned).
 Log:
-hi {\"a\":1}".into()));
+hi {\"a\":1}"
+                    .into()
+            )
+        );
         let (ok, text) = run("throw new Error('boom');");
         assert_eq!(text, "Script failed at line 1: Error: boom");
         assert!(!ok);
@@ -399,8 +417,14 @@ hi {\"a\":1}".into()));
         let (ok, text) = run("await new Promise(() => {});");
         assert!(!ok && text.contains("never settles"), "{text}");
         let (ok, text) = run("return await zynlex.script({ code: '1' });");
-        assert!(!ok && text.contains("A script can't start another script"), "{text}");
-        assert_eq!(run("await new Promise((r) => setTimeout(r, 10)); return 'waited';"), (true, "waited".into()));
+        assert!(
+            !ok && text.contains("A script can't start another script"),
+            "{text}"
+        );
+        assert_eq!(
+            run("await new Promise((r) => setTimeout(r, 10)); return 'waited';"),
+            (true, "waited".into())
+        );
         let (ok, text) = run("");
         assert!(!ok && text.starts_with("Pass code"), "{text}");
     }
