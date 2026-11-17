@@ -767,6 +767,23 @@ describe("agent tools", () => {
       hooks.answer = null;
     });
 
+    it("lists responses newer than the script's mark, with their bodies", async () => {
+      useNetworkStore.setState({
+        entriesByTab: {
+          "aaaaaaaa-1": [
+            row("net-5", 200, "http://localhost:5173/api/old"),
+            { ...row("net-9", 201, "http://localhost:5173/api/prefs"), body: '{"ok":true}' },
+          ],
+        },
+      });
+      expect(JSON.parse(await runAgentTool("page", { op: "responses" }))).toEqual({ last: 9 });
+      const r = JSON.parse(await runAgentTool("page", { op: "responses", since: 5 }));
+      expect(r.list.map((e: { id: string }) => e.id)).toEqual(["net-9"]);
+      const b = JSON.parse(await runAgentTool("page", { op: "body", id: "net-9" }));
+      expect(b.value).toBe('{"ok":true}');
+      expect(actsOnPage("page", { op: "responses" })).toBe(false);
+    });
+
     it("counts its actions as acting on the page for Pause, not its reads", () => {
       expect(actsOnPage("page", { op: "act" })).toBe(true);
       expect(actsOnPage("page", { op: "goto" })).toBe(true);

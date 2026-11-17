@@ -2045,6 +2045,26 @@ async function pageTool(args: Args): Promise<string> {
       if (r.exceptionDetails) throw new Error(threw(r.exceptionDetails));
       return out({ value: r.result.value ?? null });
     }
+    case "responses": {
+      // waitForResponse(): the tab's finished requests newer than `since` (the N of net-N).
+      const num = (id: string) => Number(id.slice(4)) || 0;
+      const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
+      const last = rows.length ? num(rows[rows.length - 1].id) : 0;
+      if (typeof args.since !== "number") return out({ last });
+      const since = args.since;
+      const list = rows
+        .filter((n) => num(n.id) > since)
+        .map((n) => ({ id: n.id, url: n.url, method: n.method, status: n.statusCode }));
+      return out({ last, list });
+    }
+    case "body": {
+      const rows = useNetworkStore.getState().entriesByTab[tab.id] ?? [];
+      const hit = rows.find((n) => n.id === args.id);
+      if (!hit) throw new Error(`No response ${String(args.id)} in this tab.`);
+      const n = await withBody(hit);
+      if (n.bodyEvicted) throw new Error("That response's body was dropped to save memory.");
+      return out({ value: n.body });
+    }
     case "cookies": {
       // context().cookies(): the tab's own URL's cookies (httpOnly ones too), nothing wider.
       const url = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
@@ -2065,7 +2085,13 @@ async function pageTool(args: Args): Promise<string> {
       await showTab(tab);
       // The same page again (the usual "run it again" after a fix): reload
       // past the cache, or the old script runs and the fix looks broken.
+      // Another #route of it goes there first, or the reload lands on the old route.
       const sameDoc = url.split("#")[0] === base.split("#")[0];
+      if (sameDoc && url !== base) {
+        await tabCdp(tab.id, "Runtime.evaluate", {
+          expression: `location.href = ${JSON.stringify(url)}`,
+        });
+      }
       await (sameDoc ? hardReload(tab.id) : navigateTab(tab.id, url));
       await sleep(150);
       const unsettled = await settle(tab.id);

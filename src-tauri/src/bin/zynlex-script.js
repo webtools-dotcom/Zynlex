@@ -108,6 +108,49 @@ async function __read(loc, fn, arg, noWait) {
 const __all = (sel, fn, arg) =>
   __op("eval", { expression: `(${fn})(__zq(${__q(sel)}), ${__q(arg ?? null)})` }).value;
 
+/** A finished request as Playwright's Response (and its request()). */
+function __response(e) {
+  const request = { url: () => e.url, method: () => e.method };
+  return {
+    url: () => e.url,
+    status: () => e.status,
+    ok: () => e.status >= 200 && e.status < 300,
+    request: () => request,
+    async text() {
+      return __op("body", { id: e.id }).value;
+    },
+    async json() {
+      return JSON.parse(__op("body", { id: e.id }).value);
+    },
+  };
+}
+const __urlTest = (want) =>
+  typeof want === "function"
+    ? want
+    : want instanceof RegExp
+      ? (r) => want.test(r.url())
+      : (r) => r.url().includes(String(want).replace(/\*\*/g, ""));
+
+/**
+ * waitForResponse/waitForRequest: the first finished request after the call
+ * that `test` accepts. It yields once before polling, so the action next to it
+ * in `Promise.all([page.waitForResponse(...), page.click(...)])` runs first.
+ */
+async function __waitNet(test, o = {}, what) {
+  let since = __op("responses").last;
+  await null;
+  const until = Date.now() + (o.timeout ?? 30000);
+  for (;;) {
+    const r = __op("responses", { since });
+    for (const e of r.list) {
+      if (test(__response(e))) return __response(e);
+    }
+    since = r.last;
+    if (Date.now() > until) throw new Error(`Timed out waiting for ${what}.`);
+    __sleep(100);
+  }
+}
+
 class Locator {
   constructor(sel, nth = null) {
     this._sel = sel;
@@ -445,6 +488,16 @@ const page = Object.assign(__scope(""), {
           ? (u) => want(new URL(u))
           : (u) => u.includes(String(want).replace(/\*\*/g, ""));
     await __poll(() => test(page.url()), o.timeout, `the URL to match ${String(want)}`);
+  },
+  waitForResponse(want, o) {
+    const test = __urlTest(want);
+    return __waitNet(test, o, `a response matching ${String(want)}`);
+  },
+  waitForRequest(want, o) {
+    const test = __urlTest(want);
+    return __waitNet((r) => test(r.request()), o, `a request matching ${String(want)}`).then((r) =>
+      r.request(),
+    );
   },
   async waitForFunction(fn, arg, o = {}) {
     return __poll(() => __op("eval", { expression: __fnExpr(fn, arg) }).value, o.timeout, "the function");
