@@ -19,7 +19,18 @@ const __call = (tool, args) => {
   return r.text;
 };
 const __withTab = (args) => (__tab ? Object.assign({ tab: __tab }, args) : args);
+// setViewportSize() before the script's first goto waits for it: goto may open
+// a tab of its own, and the size belongs on that tab, not the one before.
+let __went = false;
+let __last = null;
+let __size = null;
+const __applySize = () => {
+  const s = __size;
+  __size = null;
+  if (s) __call("viewport", __withTab({ width: s.width, height: s.height }));
+};
 const __op = (op, args) => {
+  if (__size && op !== "goto") __applySize();
   __used = true;
   const text = __call("page", __withTab(Object.assign({}, args, { op })));
   let r;
@@ -438,6 +449,8 @@ function __frame(prefix, info = {}) {
 const page = Object.assign(__scope(""), {
   async goto(url) {
     const r = __op("goto", { url });
+    __went = true;
+    __applySize();
     await __dialogs(r);
     return { ok: () => true, status: () => 200, url: () => r.url };
   },
@@ -528,8 +541,11 @@ const page = Object.assign(__scope(""), {
     return __call("screenshot", __withTab({ full: !!o.fullPage }));
   },
   async setViewportSize(s) {
-    __call("viewport", __withTab({ width: s.width, height: s.height }));
+    __size = { width: s.width, height: s.height };
+    __last = __size;
+    if (__went) __applySize();
   },
+  viewportSize: () => __last,
   context: () => ({
     async cookies() {
       return __op("cookies").value;
