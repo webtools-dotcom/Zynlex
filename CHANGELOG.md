@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-18
+
+AI agents can now check a whole bug in one call, by writing a short
+Playwright-style script, and ZYNLEX holds less memory when your machine runs
+short.
+
+On eight new bugs written for the benchmark, Claude Code fixed every one with
+a median of 170k tokens per bug, against 290k with OpenCode Browse and 511k
+with Playwright MCP (benchmark/README.md).
+
+### Added
+
+- **Scripts for agents.** The new `script` tool runs a Playwright-style script
+  in one call: open the page, click, type, wait for a request, read what's on
+  screen, and return the result with any new errors. Actions are the same real
+  input as `act`, so they show in the page and the Agent Activity panel, and
+  Pause stops them. Scripts run in a sandbox inside `zynlex-mcp`, with no file
+  or network access, and only reach pages the agent is allowed to use.
+- **Adapt to available memory** (Settings, on by default). When Windows is
+  short of RAM, hidden tabs are suspended after a minute and discarded one at
+  a time until memory recovers; when there's plenty, tabs are kept longer.
+  With ten tabs and RAM held near 1.3 GB, ZYNLEX went from about 1,180 MB to
+  800 MB. `localhost` tabs, the tab you left last, and tabs playing audio are
+  never discarded early.
+- **One process per tab** (Settings, off by default): about 280 MB less with
+  ten tabs open, by running cross-site frames in their tab's process. Like the
+  low-memory model, sites are less isolated from each other, so it's off by
+  default.
+- **Match case and Whole word** in find in page. Thanks to @terminalchai.
+
+### Changed
+
+- Response bodies captured for the Network panel stay in the app's main
+  process and reach the panel only when you open a request. A burst of 600
+  responses used to take the panel's process from 48 MB to 104 MB; it now
+  peaks at 53 MB.
+
+### Fixed
+
+- A script that went to another site took over the active tab, which could be
+  your own tab of another app. It now opens a tab of its own.
+- A script's `goto` to another `#route` of the open page reloaded the old
+  route.
+- Typing in a script sent the whole text as one event, so bugs that depend on
+  each keystroke (a search box racing its own requests) didn't show up. It now
+  types one key at a time.
+- Images, fonts and analytics pings pushed real response bodies out of the
+  Network panel early.
+- Pausing the Network panel didn't stop new response bodies being kept, so
+  they pushed out the bodies of the requests on screen.
+- Mock this, clicked before a response's body had loaded, made an empty mock.
+- A hidden tab playing music could be discarded, which stopped the music.
+
 ## [0.18.0] - 2026-11-09
 
 You can now see what your AI agent does in the page, as it does it, and it
@@ -436,7 +489,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.0
 [0.18.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.18.0
 [0.17.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.17.0
 [0.16.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.16.1
