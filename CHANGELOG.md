@@ -14,8 +14,9 @@ Playwright-style script, and ZYNLEX holds less memory when your machine runs
 short.
 
 On eight new bugs written for the benchmark, Claude Code fixed every one with
-a median of 170k tokens per bug, against 290k with OpenCode Browse and 511k
-with Playwright MCP (benchmark/README.md).
+a median of 176k tokens per bug, against 290k with OpenCode Browse and 511k
+with Playwright MCP, and used fewer tokens than with either on every bug
+(benchmark/README.md).
 
 ### Added
 
@@ -50,6 +51,9 @@ with Playwright MCP (benchmark/README.md).
   your own tab of another app. It now opens a tab of its own.
 - A script's `goto` to another `#route` of the open page reloaded the old
   route.
+- A phone size set in a script before `goto` resized the old tab, and `goto`
+  then opened a new one at full size, so phone-only bugs didn't show. The size
+  now goes to the script's own tab.
 - Typing in a script sent the whole text as one event, so bugs that depend on
   each keystroke (a search box racing its own requests) didn't show up. It now
   types one key at a time.
