@@ -313,11 +313,11 @@ Each `page.*` call becomes one call to a `page` tool that agents aren't shown
   input and settle;
 - `eval` runs an expression with the selector engine bound as `__zq`;
 - `goto`, `reload`, `settle`, `dialog` (answer), `state` (url, title, open
-  dialog) and `problems` (new errors, and the developer's flags as a field).
+  dialog), `cookies`, `responses`/`body` (the network log) and `problems` (new errors, and the developer's flags as a field).
 
 Selectors are resolved in the page by `src/lib/agentQuery.ts`: CSS,
 `text=`, `:has-text()`, `role=…[name=…]`, `label=`, `nth=`, `has-text=` and
-`>>`, with Playwright's matching (substring, case-insensitive; quoted is
+XPath and `>>`, with Playwright's matching (substring, case-insensitive; quoted is
 exact) and its strict mode for actions and reads. A dialog an action opens
 goes to the script's `page.on("dialog")` handlers, or is dismissed, as
 Playwright does.
@@ -328,7 +328,14 @@ so the next try is right instead of a snapshot. `frameLocator()`,
 `locator.contentFrame()` and `page.frames()` reach same-origin iframes (a `frame`
 step into the iframe's document). `reload`, and `goto` to the page the tab is
 already on, reload past the cache: after an edit, the old script must not run.
-`goto` with no tab open opens one, as `open` does.
+`goto` with no tab open, or to another site than the active tab's, opens a
+tab of its own: a script never takes over the developer's tab of another app
+(nor a tab an earlier agent left emulating a phone). `type()` sends one input
+event per character (`delay` ms apart), so per-keystroke search races
+reproduce. `page.context().cookies()` reads the tab's own URL's cookies.
+`waitForResponse`/`waitForRequest` watch the tab's network log (they yield once,
+so `Promise.all([page.waitForResponse(…), page.click(…)])` works). Selectors
+also take XPath (`xpath=…`, `//…`, `..` for the parent).
 
 Why: on the held-out benchmark (2026-11-17), OpenCode Browse's `execute` tool
 (the same idea over a Chrome extension) used fewer tokens than `act` on four

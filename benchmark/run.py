@@ -24,7 +24,7 @@ MCP = {
     "zynlex": {"command": ZYNLEX_MCP, "args": []},
     "playwright": {
         "command": "cmd",
-        "args": ["/c", "npx", "-y", "@playwright/mcp@0.0.83", "--browser", "chrome", "--headless", "--isolated"],
+        "args": ["/c", "npx", "-y", "@playwright/mcp@0.0.85", "--browser", "chrome", "--headless", "--isolated"],
     },
     # Playwright MCP driving Cloudflare's Kitesurf engine (github.com/cloudflare/kitesurf) over CDP
     # instead of launching Chrome. The engine must already be running on :8787 (wrangler dev, with
@@ -38,7 +38,7 @@ MCP = {
     },
     "devtools": {
         "command": "cmd",
-        "args": ["/c", "npx", "-y", "chrome-devtools-mcp@1.12.0", "--executablePath", CHROME, "--headless", "--isolated"],
+        "args": ["/c", "npx", "-y", "chrome-devtools-mcp@1.13.0", "--executablePath", CHROME, "--headless", "--isolated"],
     },
 }
 
@@ -75,6 +75,15 @@ TASKS = {
     "storage": ("fixture3", "Dark mode doesn't stick: after a reload the page is light again."),
     "enter": ("fixture3", "Pressing Enter in the New task box doesn't add the task (clicking Add works)."),
     "loadmore": ("fixture3", "\"Load more\" under Team tasks just shows the same tasks again."),
+    # fresh set (fixture4, 2026-11-17): written blind by an agent told nothing about any browser tool
+    "evsearch": ("fixture4", "Typing \"yoga\" in the event search box sometimes leaves the list showing events that have nothing to do with yoga."),
+    "details": ("fixture4", "Clicking \"Hackathon Friday\" in the events list opens the page for \"Sunrise Yoga\" instead."),
+    "price": ("fixture4", "Bowling Night's description says tickets are $6.03, but the app shows $6.30 per ticket and charges $12.60 for two."),
+    "seats": ("fixture4", "Cooking Class has 8 seats left, and booking 9 is refused, but it lets me book 10 or 12 seats."),
+    "comments": ("fixture4", "Posting a comment on an event clears the box, but my comment never shows up."),
+    "cancel": ("fixture4", "In My bookings, clicking \"Cancel booking\" does nothing; the booking stays listed."),
+    "settings": ("fixture4", "I set my home city to Lisbon and ticked Compact in Settings and it says Saved, but after a reload both are back to the defaults."),
+    "mobile": ("fixture4", "In a narrow (phone-size) window, tapping the Berlin or Lisbon filter above the events list doesn't filter the list; sometimes it jumps to another page instead."),
 }
 
 PROMPT = """You're working on the web app in the current folder. It's already running at {url} \

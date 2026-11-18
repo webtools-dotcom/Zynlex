@@ -76,8 +76,8 @@ async function __dialogs(r) {
   }
 }
 
-async function __act(action, loc, text) {
-  const r = __op("act", { action, selector: loc ? loc._sel : null, nth: loc ? loc._nth : null, text });
+async function __act(action, loc, text, delay) {
+  const r = __op("act", { action, selector: loc ? loc._sel : null, nth: loc ? loc._nth : null, text, delay });
   await __dialogs(r);
 }
 
@@ -107,6 +107,50 @@ async function __read(loc, fn, arg, noWait) {
 }
 const __all = (sel, fn, arg) =>
   __op("eval", { expression: `(${fn})(__zq(${__q(sel)}), ${__q(arg ?? null)})` }).value;
+
+/** A finished request as Playwright's Response (and its request()). */
+function __response(e) {
+  const request = { url: () => e.url, method: () => e.method };
+  return {
+    url: () => e.url,
+    status: () => e.status,
+    ok: () => e.status >= 200 && e.status < 300,
+    request: () => request,
+    headers: () => __op("body", { id: e.id }).headers,
+    async text() {
+      return __op("body", { id: e.id }).value;
+    },
+    async json() {
+      return JSON.parse(__op("body", { id: e.id }).value);
+    },
+  };
+}
+const __urlTest = (want) =>
+  typeof want === "function"
+    ? want
+    : want instanceof RegExp
+      ? (r) => want.test(r.url())
+      : (r) => r.url().includes(String(want).replace(/\*\*/g, ""));
+
+/**
+ * waitForResponse/waitForRequest: the first finished request after the call
+ * that `test` accepts. It yields once before polling, so the action next to it
+ * in `Promise.all([page.waitForResponse(...), page.click(...)])` runs first.
+ */
+async function __waitNet(test, o = {}, what) {
+  let since = __op("responses").last;
+  await null;
+  const until = Date.now() + (o.timeout ?? 30000);
+  for (;;) {
+    const r = __op("responses", { since });
+    for (const e of r.list) {
+      if (test(__response(e))) return __response(e);
+    }
+    since = r.last;
+    if (Date.now() > until) throw new Error(`Timed out waiting for ${what}.`);
+    __sleep(100);
+  }
+}
 
 class Locator {
   constructor(sel, nth = null) {
@@ -183,11 +227,11 @@ class Locator {
   async clear() {
     await __act("type", this, "");
   }
-  async type(v) {
-    await __act("insert", this, String(v));
+  async type(v, o = {}) {
+    await __act("insert", this, String(v), o.delay);
   }
-  async pressSequentially(v) {
-    await __act("insert", this, String(v));
+  async pressSequentially(v, o = {}) {
+    await __act("insert", this, String(v), o.delay);
   }
   async press(key) {
     await __act("press", this, key);
@@ -245,6 +289,17 @@ class Locator {
   }
   async evaluate(fn, arg) {
     return __read(this, String(fn), arg);
+  }
+  async boundingBox() {
+    if (!this._count()) return null;
+    return __read(
+      this,
+      "(el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }",
+    );
+  }
+  /** No handles here: the locator itself, pinned to its one match. */
+  async elementHandle() {
+    return this._count() ? new Locator(this._sel, this._nth ?? 0) : null;
   }
   async evaluateAll(fn, arg) {
     return __all(this._sel, String(fn), arg);
@@ -336,7 +391,7 @@ function __scope(prefix) {
     tap: (sel) => L(sel).tap(),
     hover: (sel) => L(sel).hover(),
     fill: (sel, v) => L(sel).fill(v),
-    type: (sel, v) => L(sel).type(v),
+    type: (sel, v, o) => L(sel).type(v, o),
     press: (sel, key) => L(sel).press(key),
     check: (sel) => L(sel).check(),
     uncheck: (sel) => L(sel).uncheck(),
@@ -435,12 +490,22 @@ const page = Object.assign(__scope(""), {
           : (u) => u.includes(String(want).replace(/\*\*/g, ""));
     await __poll(() => test(page.url()), o.timeout, `the URL to match ${String(want)}`);
   },
+  waitForResponse(want, o) {
+    const test = __urlTest(want);
+    return __waitNet(test, o, `a response matching ${String(want)}`);
+  },
+  waitForRequest(want, o) {
+    const test = __urlTest(want);
+    return __waitNet((r) => test(r.request()), o, `a request matching ${String(want)}`).then((r) =>
+      r.request(),
+    );
+  },
   async waitForFunction(fn, arg, o = {}) {
     return __poll(() => __op("eval", { expression: __fnExpr(fn, arg) }).value, o.timeout, "the function");
   },
   keyboard: {
     press: (key) => __act("press", null, key),
-    type: (text) => __act("insert", null, String(text)),
+    type: (text, o = {}) => __act("insert", null, String(text), o.delay),
     insertText: (text) => __act("insert", null, String(text)),
   },
   on(event, fn) {
@@ -465,6 +530,11 @@ const page = Object.assign(__scope(""), {
   async setViewportSize(s) {
     __call("viewport", __withTab({ width: s.width, height: s.height }));
   },
+  context: () => ({
+    async cookies() {
+      return __op("cookies").value;
+    },
+  }),
   async bringToFront() {},
   async close() {},
 });

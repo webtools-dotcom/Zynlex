@@ -3,7 +3,7 @@
  * Playwright-style script; each `page.*` call becomes a `page` call here).
  * Agents write Playwright selectors from memory, so this covers the ones they
  * reach for: CSS, `text=` (quoted: exact), `:has-text("…")`, `role=button[name="…"]`
- * (getByRole), `label=` (getByLabel), `nth=N`, `has-text=` (filter), `frame` (into an iframe), and `>>` to scope each part
+ * (getByRole), `label=` (getByLabel), `nth=N`, `has-text=` (filter), `frame` (into an iframe), XPath (`xpath=`, `//`, `..`), and `>>` to scope each part
  * within the matches of the one before. Matching is Playwright's: substring,
  * case-insensitive, whitespace collapsed; quoted means exact.
  *
@@ -64,6 +64,14 @@ export const QUERY = `((sel, root) => {
         } catch {
           return [];
         }
+      });
+    }
+    // XPath, as Playwright reads it: xpath=…, or a part starting with // or .. (locator("..") is the parent).
+    if ((m = /^xpath=(.*)$/s.exec(part)) || /^(\\/\\/|\\.\\.)/.test(part)) {
+      const xp = m ? m[1] : part;
+      return scopes.flatMap((s) => {
+        const r = (s.ownerDocument ?? s).evaluate(xp, s, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        return Array.from({ length: r.snapshotLength }, (_, i) => r.snapshotItem(i)).filter((n) => n.nodeType === 1);
       });
     }
     if ((m = /^nth=(-?\\d+)$/.exec(part))) {

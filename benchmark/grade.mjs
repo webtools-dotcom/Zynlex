@@ -1,6 +1,10 @@
 // Grades one task against a running fixture: node grade.mjs <task> <port>.
 // Prints PASS or FAIL: <reason>. Uses the installed Edge, headless.
 import { chromium } from "playwright-core";
+import { grade4 } from "./grade4.mjs";
+
+// fixture4 tasks, graded by grade4.mjs (written with the fixture); run.py calls "search" there "evsearch".
+const FIXTURE4 = { evsearch: "search", details: "details", price: "price", seats: "seats", comments: "comments", cancel: "cancel", settings: "settings", mobile: "mobile" };
 
 const [task, port] = process.argv.slice(2);
 const browser = await chromium.launch({ channel: "msedge", headless: true });
@@ -10,6 +14,7 @@ page.on("pageerror", (e) => errors.push(e.message));
 const total = () => page.textContent("#total");
 
 async function grade() {
+  if (task in FIXTURE4) return grade4(FIXTURE4[task], page, port);
   await page.goto(`http://127.0.0.1:${port}/`);
   await page.waitForSelector("text=Add Desk Lamp", { timeout: 5000 }).catch(() => {});
   if (task === "coupon") {

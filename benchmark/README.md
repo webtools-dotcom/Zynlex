@@ -2,7 +2,7 @@
 
 How much does it cost Claude Code to find and fix a bug in a local web app,
 depending on the browser tool it has? This folder has everything needed to
-check the numbers in ZYNLEX's README: the harness, the three buggy apps, the
+check the numbers in ZYNLEX's README: the harness, the four buggy apps, the
 graders and every result row.
 
 ## What one run is
@@ -26,12 +26,12 @@ Each tool gets the same prompt, the same model and the same app copy.
 | Name in results | Tool | Version |
 |---|---|---|
 | `zynlex` | ZYNLEX's MCP server, `zynlex-mcp` | see each results file |
-| `playwright` | [Playwright MCP](https://github.com/microsoft/playwright-mcp), Chrome, headless, isolated | 0.0.83 |
-| `devtools` | [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp), headless, isolated | 1.12.0 |
+| `playwright` | [Playwright MCP](https://github.com/microsoft/playwright-mcp), Chrome, headless, isolated | 0.0.83; 0.0.85 on the fresh set |
+| `devtools` | [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp), headless, isolated | 1.12.0; 1.13.0 on the fresh set |
 | `pwcli` | [playwright-cli](https://www.npmjs.com/package/@playwright/cli), through Bash | 0.1.22 |
-| `agentbrowser` | [agent-browser](https://www.npmjs.com/package/agent-browser), through Bash | 0.41.0 |
+| `agentbrowser` | [agent-browser](https://www.npmjs.com/package/agent-browser), through Bash | 0.41.0; 0.43.0 on the fresh set |
 | `kitesurf` | Playwright MCP over CDP to [Kitesurf](https://github.com/cloudflare/kitesurf), Cloudflare's WebAssembly browser engine, run locally with `wrangler dev` | MCP 0.0.83, Kitesurf `c7b1301` |
-| `browse` | [OpenCode Browse](https://github.com/anomalyco/browse): MCP server + extension in a Chromium with its own profile; Claude Code gets its `execute` tool | 0.1.0 |
+| `browse` | [OpenCode Browse](https://github.com/anomalyco/browse): MCP server + extension in a Chromium with its own profile; Claude Code gets its `execute` tool | 0.1.0; 0.1.1 on the fresh set |
 
 ## Tasks
 
@@ -43,13 +43,57 @@ Each tool gets the same prompt, the same model and the same app copy.
   isn't an artefact of tuning. ZYNLEX changed afterwards (dialog support,
   multi-step `act`), so later held-out rounds are no longer blind; the
   same-day comparison below reruns Playwright MCP too.
+- **Fresh set** (`fixture4`, a team-events app; `evsearch`, `details`, `price`,
+  `seats`, `comments`, `cancel`, `settings`, `mobile`): eight bugs written on
+  2026-11-17 by an agent told nothing about ZYNLEX or any browser tool, with
+  their grader (`grade4.mjs`). Each fix was checked to turn its grader from
+  FAIL to PASS on its own; the solutions are kept out of this folder so no
+  agent can read them.
 
 ## Results
 
 All rows: Claude Code, `sonnet`, one Windows 11 laptop, 5 repeats per task and
-tool. "Tokens" is the median input tokens per task, cache reads included: most
+tool (3 on the fresh set). "Tokens" is the median input tokens per task, cache reads included: most
 of it is Claude Code re-sending its own context every turn, so a tool that
 needs fewer turns wins even when its replies are the same size.
+
+### Fresh set, 8 tasks (2026-11-17)
+
+`results/fresh-2026-11-17.jsonl`, 3 repeats, every tool the same day.
+`zynlex` is main at `0ffb7b2`, blind to these bugs. `zynlex-fixed` is the
+same with the fixes its runs pointed to (`fix/script-gaps`): a script's
+`goto` to another site opens its own tab (the old one reused the active tab,
+so the 375 px emulation from a `mobile` run leaked into later runs), `type()`
+sends one input event per key (so `evsearch`'s keystroke race reproduces),
+`goto` reaches another `#route` of the open page, and `boundingBox`,
+`elementHandle`, `context().cookies()`, `waitForResponse`, single-key
+`press` and XPath selectors exist. Those were made with these bugs in view.
+
+| Tool | Fixed | Tokens | Turns | Browser calls | Cost per task | Total cost |
+|---|---|---|---|---|---|---|
+| ZYNLEX, fixed | 24/24 | 170k | 8.5 | 3 | $0.170 | $4.07 |
+| ZYNLEX, blind | 24/24 | 222k | 11.5 | 5.5 | $0.210 | $5.05 |
+| OpenCode Browse 0.1.1 | 24/24 | 290k | 13.5 | 7.5 | $0.232 | $5.56 |
+| Playwright MCP 0.0.85 | 24/24 | 511k | 19.5 | 14.5 | $0.384 | $9.22 |
+| agent-browser 0.43.0 | 24/24 | 541k | 21.5 | 15 | $0.354 | $8.49 |
+| Chrome DevTools MCP 1.13.0 | 23/24 | 565k | 19 | 14 | $0.382 | $9.16 |
+
+Median tokens per bug:
+
+| Task | ZYNLEX, fixed | ZYNLEX, blind | Browse | Playwright MCP | agent-browser | DevTools MCP |
+|---|---|---|---|---|---|---|
+| `evsearch` | 153k | 329k | 330k | 414k | 459k | 704k |
+| `details` | 128k | 186k | 154k | 540k | 418k | 327k |
+| `price` | 197k | 252k | 294k | 479k | 371k | 472k |
+| `seats` | 170k | 169k | 334k | 1,097k | 584k | 695k |
+| `comments` | 128k | 128k | 263k | 598k | 757k | 462k |
+| `cancel` | 155k | 257k | 318k | 467k | 691k | 637k |
+| `settings` | 205k | 180k | 336k | 499k | 644k | 552k |
+| `mobile` | 224k | 317k | 216k | 440k | 512k | 761k |
+
+Blind ZYNLEX was cheapest on six of eight bugs (Browse won `details` and
+`mobile`); fixed ZYNLEX on seven, with `mobile` within 4% of Browse. The one
+failure is DevTools MCP's first `evsearch` run.
 
 ### Tuned set, 6 tasks (2026-10-31 to 11-01)
 

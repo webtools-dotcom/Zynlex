@@ -27,7 +27,7 @@ then, in a new terminal:
 claude mcp add zynlex zynlex-mcp
 ```
 
-<img src=".github/assets/benchmark.svg" alt="Median tokens Claude Code used per bug fixed: ZYNLEX 186k, Playwright MCP 278k, agent-browser 323k, playwright-cli 365k, Chrome DevTools MCP 396k. Every tool fixed all 25 runs." width="760" />
+<img src=".github/assets/benchmark.svg" alt="Median tokens Claude Code used per bug fixed, on 8 new bugs: ZYNLEX 170k (222k before the fixes those runs led to), OpenCode Browse 290k, Playwright MCP 511k, agent-browser 541k, Chrome DevTools MCP 565k." width="760" />
 
 <sub>[How this was measured, with every run's data](benchmark/README.md)</sub>
 
@@ -68,16 +68,16 @@ Developer flagged e15 button "Apply": does nothing on mobile
 
 Each action already returns what changed on the page and any new errors, so the agent rarely needs a second look. Steps it already knows (type, then press Enter; click Delete, then accept the confirm) go in a single call. Claude Code re-sends its whole context on every turn, so fewer turns means fewer tokens.
 
-The latest run (2026-11-09, ZYNLEX 0.18), on the same day as Playwright MCP: Claude Code fixing five bugs it had never seen, five runs each.
+The latest run (2026-11-17): eight new bugs in a new app, written by an agent told nothing about any browser tool, then Claude Code (Sonnet) fixing each one three times with each tool, all the same day.
 
-| | ZYNLEX | Playwright MCP |
-|---|---|---|
-| Bugs fixed | 25/25 | 25/25 |
-| Tokens per bug (median) | **176k** | 262k |
-| Cost per bug (median) | **$0.124** | $0.196 |
-| Turns per bug (median) | **10** | 13 |
+| | ZYNLEX | ZYNLEX, before these fixes | OpenCode Browse | Playwright MCP | agent-browser | Chrome DevTools MCP |
+|---|---|---|---|---|---|---|
+| Bugs fixed | 24/24 | 24/24 | 24/24 | 24/24 | 24/24 | 23/24 |
+| Tokens per bug (median) | **170k** | 222k | 290k | 511k | 541k | 565k |
+| Cost per bug (average) | **$0.17** | $0.21 | $0.23 | $0.38 | $0.35 | $0.38 |
+| Browser calls per bug (median) | **3** | 5.5 | 7.5 | 14.5 | 15 | 14 |
 
-That's 33% fewer tokens and 37% lower cost, and fewer tokens on every one of the five bugs. It's our own harness, on one machine, with one model family, which is why the harness, the buggy apps, the graders and every run's result are in [benchmark/](benchmark/README.md) for you to rerun.
+ZYNLEX was cheapest before we touched it, too. Reading its runs then showed where agents wasted calls (a script reusing a tab still set to phone size, typing that couldn't trigger a keystroke race, Playwright methods agents expect), and fixing those took it from 222k to 170k. Those fixes were made with these bugs in view, so the column before them is the blind number. It's our own harness, on one machine, with one model family, which is why the harness, the buggy apps, the graders and every run's result are in [benchmark/](benchmark/README.md) for you to rerun.
 
 ## What a session looks like
 
