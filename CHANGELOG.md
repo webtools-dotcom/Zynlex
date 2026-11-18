@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.2] - 2026-11-18
+
+Fixes for apps like Streamlit, from an agent that tested one through ZYNLEX.
+
+### Added
+
+- Agents can press shortcuts as Playwright writes them: `Control+a`,
+  `Shift+Tab`, `Control+Shift+R`, and F1 to F12. A shortcut doesn't type its
+  letter.
+
+### Fixed
+
+- A whole-page screenshot of an app that scrolls inside its own container
+  (Streamlit, many dashboards) stopped at the bottom of the window. That
+  container now grows for the shot, and the page is put back afterwards.
+- On a page that redraws itself on every change, an element the agent had
+  just been shown could be gone by the time it acted on it. When exactly one
+  element on the page now has the same role and name, the action goes to it,
+  and the reply says so. With several, or none, it's refused as before.
+
 ## [0.19.1] - 2026-11-18
 
 ### Fixed
@@ -503,7 +523,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.19.1...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.19.2...HEAD
+[0.19.2]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.2
 [0.19.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.1
 [0.19.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.0
 [0.18.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.18.0
