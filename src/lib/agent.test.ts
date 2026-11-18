@@ -546,6 +546,59 @@ describe("agent tools", () => {
       expect(clicked()).toBe(false);
     });
 
+    it("uses the one element with the same role and name when the page redrew", async () => {
+      fake(null);
+      await runAgentTool("snapshot", {});
+      // Redrawn (Streamlit does this on every change): same button, new node.
+      const redraw = (ids: number[]) => {
+        hooks.ax = [
+          {
+            nodeId: "1",
+            role: { value: "RootWebArea" },
+            name: { value: "App" },
+            childIds: ids.map(String),
+          },
+          ...ids.map((id) => ({
+            nodeId: String(id),
+            role: { value: "button" },
+            name: { value: "Save" },
+            childIds: [],
+            backendDOMNodeId: id,
+          })),
+        ];
+      };
+      // As the browser does: a node from before the redraw is gone.
+      const focused: unknown[] = [];
+      const answer = hooks.answer;
+      hooks.answer = (method, p) => {
+        if (method === "DOM.focus") {
+          const id = (p as { backendNodeId?: number }).backendNodeId;
+          const live = (hooks.ax ?? []).some(
+            (n) => (n as { backendDOMNodeId?: number }).backendDOMNodeId === id,
+          );
+          if (!live) throw new Error("Could not find node with given id");
+          focused.push(id);
+          return {};
+        }
+        return answer?.(method, p);
+      };
+      redraw([40]);
+      await runAgentTool("act", { action: "press", ref: "e12", text: "Enter" }).catch(() => {});
+      expect(focused).toEqual([40]);
+      // Shown the redrawn page since (an act reply does that), the agent still
+      // uses the ref it had first: the name it was shown with finds it.
+      redraw([60]);
+      await runAgentTool("snapshot", {});
+      await runAgentTool("act", { action: "press", ref: "e12", text: "Enter" }).catch(() => {});
+      expect(focused).toEqual([40, 60]);
+      // Two of them: not ours to guess.
+      redraw([50, 51]);
+      await expect(
+        runAgentTool("act", { action: "press", ref: "e60", text: "Enter" }),
+      ).rejects.toThrow(/e60/);
+      expect(focused).toEqual([40, 60]);
+    });
+
     it("lets through a ref the developer flagged, even one the outline leaves out", async () => {
       fake("");
       useAgentFlagsStore
@@ -764,6 +817,32 @@ describe("agent tools", () => {
       expect(hooks.cdp.filter((m) => m === "Input.insertText")).toHaveLength(2);
       const c = JSON.parse(await runAgentTool("page", { op: "cookies" }));
       expect(c.value).toEqual([{ name: "prefs", value: "x" }]);
+      hooks.answer = null;
+    });
+
+    it("presses shortcuts as Playwright writes them: Control+a, Shift+Tab, F5", async () => {
+      const keys: Record<string, unknown>[] = [];
+      hooks.answer = (method, p) => {
+        if (method === "Input.dispatchKeyEvent") keys.push(p as Record<string, unknown>);
+        return method === "Runtime.evaluate"
+          ? { result: { value: { ready: "complete", quietMs: 900 } } }
+          : {};
+      };
+      const press = async (text: string) => {
+        keys.length = 0;
+        await runAgentTool("page", { op: "act", action: "press", text });
+        return keys[0];
+      };
+      // A shortcut types nothing: the page sees Ctrl+A, not an "a".
+      expect(await press("Control+a")).toMatchObject({ key: "a", modifiers: 2, text: undefined });
+      expect(await press("Shift+a")).toMatchObject({ modifiers: 8, text: "A" });
+      expect(await press("Control+Shift+R")).toMatchObject({ key: "R", modifiers: 10 });
+      expect(await press("F5")).toMatchObject({ key: "F5", windowsVirtualKeyCode: 116 });
+      expect(await press("+")).toMatchObject({ key: "+", text: "+" });
+      expect((await press("Enter")).modifiers).toBeUndefined();
+      await expect(
+        runAgentTool("page", { op: "act", action: "press", text: "Control+Hyper" }),
+      ).rejects.toThrow('Unknown key "Control+Hyper"');
       hooks.answer = null;
     });
 

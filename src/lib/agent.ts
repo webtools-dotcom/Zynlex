@@ -31,6 +31,8 @@ import {
   formatSnapshot,
   isIframe,
   mergeFrames,
+  refNamed,
+  refNames,
 } from "@/lib/agentSnapshot";
 import {
   forgetAgentTab,
@@ -140,7 +142,7 @@ const view = (t: AgentTab) => `${t.client ?? 0}:${t.id}`;
 
 /** Drops every agent's view of a tab. */
 function forgetViews(tabId: string): void {
-  for (const m of [snapshots, cursors]) {
+  for (const m of [snapshots, cursors, shownNames]) {
     for (const k of m.keys()) if (k.endsWith(`:${tabId}`)) m.delete(k);
   }
 }
@@ -481,7 +483,34 @@ interface Seen {
   compact: string;
   full: string;
 }
-const snapshots = new Map<string, Seen>();
+
+/**
+ * Every ref's role and name each view has been shown (`button "Run"`). A page
+ * that redraws (Streamlit, a re-rendered list) replaces its elements and the
+ * stored snapshot with them, so an old ref's name is kept here: it's how the
+ * element is found again. The oldest go past MAX_NAMES.
+ */
+const shownNames = new Map<string, Map<number, string>>();
+const MAX_NAMES = 5000;
+class Snapshots extends Map<string, Seen> {
+  override set(key: string, seen: Seen): this {
+    let names = shownNames.get(key);
+    if (!names) {
+      names = new Map();
+      shownNames.set(key, names);
+    }
+    for (const [ref, name] of refNames(seen.full)) {
+      names.delete(ref);
+      names.set(ref, name);
+    }
+    for (const ref of names.keys()) {
+      if (names.size <= MAX_NAMES) break;
+      names.delete(ref);
+    }
+    return super.set(key, seen);
+  }
+}
+const snapshots = new Snapshots();
 
 async function frameAX(tabId: string, frameId?: string): Promise<AXNode[]> {
   const params = frameId ? { frameId } : {};
@@ -813,7 +842,11 @@ const KEYS: Record<string, { code: number; text?: string }> = {
   End: { code: 35 },
   PageUp: { code: 33 },
   PageDown: { code: 34 },
+  ...Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`F${i + 1}`, { code: 112 + i }])),
 };
+
+/** CDP's modifier bits, by the names Playwright's key combos use ("Control+a"). */
+const MODIFIERS: Record<string, number> = { Alt: 1, Control: 2, Ctrl: 2, Meta: 4, Shift: 8 };
 
 /**
  * Sends input events in order. A handler that opens a dialog pauses the page
@@ -827,19 +860,37 @@ async function sendInput(tabId: string, method: string, events: object[]): Promi
   }
 }
 
-async function pressKey(tabId: string, key: string): Promise<void> {
+/**
+ * A key, or a combo as Playwright writes it: "Control+a", "Shift+Tab",
+ * "Control+Shift+R" ("Shift++" is Shift and "+").
+ */
+async function pressKey(tabId: string, combo: string): Promise<void> {
+  const [, held = "", key = ""] =
+    /^((?:(?:Alt|Control|Ctrl|Meta|Shift)\+)*)(.+)$/.exec(combo) ?? [];
+  const mods = held
+    .split("+")
+    .filter(Boolean)
+    .reduce((bits, m) => bits | MODIFIERS[m], 0);
   // A single character ("y", "7", "/") types itself, as in Playwright.
   const k =
     KEYS[key] ??
     ([...key].length === 1 ? { code: key.toUpperCase().charCodeAt(0), text: key } : null);
   if (!k) {
+    const named = Object.keys(KEYS).filter((n) => !/^F\d/.test(n));
     throw new Error(
-      `Unknown key "${key}". Known: any single character, ${Object.keys(KEYS).join(", ")}.`,
+      `Unknown key "${combo}". Known: any single character, ${named.join(", ")}, F1-F12, with Control+, Shift+, Alt+ or Meta+ in front for a shortcut.`,
     );
   }
-  const base = { key: key === "Space" ? " " : key, windowsVirtualKeyCode: k.code };
+  // With Control, Alt or Meta held it's a shortcut, so nothing is typed;
+  // Shift alone types the shifted character.
+  const text = mods & 7 ? undefined : mods & 8 && k.text ? k.text.toUpperCase() : k.text;
+  const base = {
+    key: key === "Space" ? " " : key,
+    windowsVirtualKeyCode: k.code,
+    ...(mods ? { modifiers: mods } : {}),
+  };
   await sendInput(tabId, "Input.dispatchKeyEvent", [
-    { type: "keyDown", ...base, text: k.text },
+    { type: "keyDown", ...base, text },
     { type: "keyUp", ...base },
   ]);
 }
@@ -1417,15 +1468,33 @@ const inPage = (seen: Seen | undefined, r: number) => !!seen?.full.includes(`[e$
  * unrelated node (ids restart with the renderer) and the click would land
  * on it.
  */
-async function knownRefs(tab: AgentTab, refs: number[]): Promise<Seen | undefined> {
+async function knownRefs(
+  tab: AgentTab,
+  refs: number[],
+): Promise<{ seen: Seen | undefined; moved: Map<number, number> }> {
   const flagged = flaggedRefs.get(tab.id);
+  const moved = new Map<number, number>();
   const ok = (seen: Seen | undefined, r: number) => inPage(seen, r) || !!flagged?.has(r);
-  let seen = snapshots.get(view(tab));
-  if (refs.every((r) => ok(seen, r))) return seen;
-  seen = await takePage(tab.id);
+  const old = snapshots.get(view(tab));
+  if (refs.every((r) => ok(old, r))) return { seen: old, moved };
+  const known = new Map(shownNames.get(view(tab)));
+  const seen = await takePage(tab.id);
   snapshots.set(view(tab), seen);
-  const missing = refs.find((r) => !ok(seen, r));
-  if (missing == null) return seen;
+  // A page that redraws on every change (Streamlit, a re-rendered list)
+  // replaces its elements, and their refs with them. The one element on the
+  // new page with the same role and name is the one the agent meant; with
+  // several, or none, it's not ours to guess.
+  // One that's only hidden is still the agent's element: that's reported below.
+  for (const r of refs) {
+    if (ok(seen, r)) continue;
+    const name = known.get(r);
+    const now = name == null ? null : refNamed(seen.full, name);
+    if (now == null) continue;
+    const why = await hiddenWhy(tab.id, r);
+    if (!why || why === "gone") moved.set(r, now);
+  }
+  const missing = refs.find((r) => !ok(seen, r) && !moved.has(r));
+  if (missing == null) return { seen, moved };
   const why = await hiddenWhy(tab.id, missing);
   if (why && why !== "gone") throw hiddenError(missing, why);
   const page = await showPage(tab, seen.compact);
@@ -1470,19 +1539,28 @@ async function actTool(args: Args): Promise<string> {
     snapshots.set(view(tab), await takePage(tab.id));
   }
   // A paused page (dialog) can't be read; its steps are answers anyway.
-  const before = dialogs.has(tab.id)
-    ? snapshots.get(view(tab))
+  const { seen: before, moved } = dialogs.has(tab.id)
+    ? { seen: snapshots.get(view(tab)), moved: new Map<number, number>() }
     : await knownRefs(
         tab,
         steps.flatMap((s) => [s.ref, s.to]).filter((r): r is number => r != null),
       );
+  // The latest look at the page names refs best: a step may have redrawn it.
   const labelOf = (r: number | null) =>
     r == null
       ? ""
-      : (before?.full
-          .split("\n")
-          .find((l) => l.includes(`[e${r}]`))
+      : ([snapshots.get(view(tab))?.full, before?.full]
+          .map((t) => t?.split("\n").find((l) => l.includes(`[e${r}]`)))
+          .find(Boolean)
           ?.trim() ?? `e${r}`);
+  const swap = (r: number | null) => (r == null ? r : (moved.get(r) ?? r));
+  const notes = [...moved].map(
+    ([was, now]) => `e${was} was redrawn; used ${labelOf(now)}, the only element like it now.`,
+  );
+  for (const st of steps) {
+    st.ref = swap(st.ref);
+    st.to = swap(st.to);
+  }
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
   const mark = actionMark();
   const did: string[] = [];
@@ -1497,13 +1575,38 @@ async function actTool(args: Args): Promise<string> {
     try {
       did.push(await doStep(tab, st, labelOf));
     } catch (err) {
+      // An earlier step redrew the page: the element it now has with the
+      // same role and name, if there's exactly one, once.
+      const now = redrawn(tab, st.ref, err);
+      if (now != null) {
+        notes.push(`e${st.ref} was redrawn by an earlier step; used ${labelOf(now)}.`);
+        st.ref = now;
+        did.push(await doStep(tab, st, labelOf));
+        continue;
+      }
       if (!batch) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       const page = await consequences(tab, urlBefore, mark).catch(() => []);
-      throw new Error([...did, `Step ${i + 1} (${st.action}) failed: ${msg}`, ...page].join("\n"));
+      throw new Error(
+        [...notes, ...did, `Step ${i + 1} (${st.action}) failed: ${msg}`, ...page].join("\n"),
+      );
     }
   }
-  return [...did, ...(await consequences(tab, urlBefore, mark))].join("\n");
+  return [...notes, ...did, ...(await consequences(tab, urlBefore, mark))].join("\n");
+}
+
+/**
+ * After a step failed with "Stale ref" (which stores the page as it is now):
+ * the ref of the one element on it with the role and name `ref` was shown
+ * with, or null.
+ */
+function redrawn(tab: AgentTab, ref: number | null, err: unknown): number | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (ref == null || !msg.startsWith("Stale ref")) return null;
+  const name = shownNames.get(view(tab))?.get(ref);
+  if (name == null) return null;
+  const now = refNamed(snapshots.get(view(tab))?.full ?? "", name);
+  return now === ref ? null : now;
 }
 
 /** The URL `open` was asked for, scheme added; empty if none was given. */
@@ -1770,6 +1873,49 @@ interface LayoutMetrics {
   layoutViewport?: { pageX: number; pageY: number };
 }
 
+/**
+ * In-page, for a whole-page shot of a page that doesn't scroll itself: the
+ * largest element that scrolls on its own (a quarter of the window or more)
+ * and its ancestors are let grow to their full height, fixed ones laid out in
+ * the page, so the document is as tall as the content. Returns that element
+ * as `tag.class`, "" if there's none; `__zynlexUngrow()` restores styles and
+ * scroll positions.
+ */
+const GROW_SCROLLER = `(() => {
+  const root = document.documentElement;
+  if (root.scrollHeight > innerHeight + 1) return "";
+  let best = null;
+  let area = innerWidth * innerHeight * 0.25;
+  for (const el of document.querySelectorAll("body *")) {
+    if (el.scrollHeight <= el.clientHeight + 1) continue;
+    const oy = getComputedStyle(el).overflowY;
+    if (oy !== "auto" && oy !== "scroll") continue;
+    const a = el.clientWidth * el.clientHeight;
+    if (a >= area) { area = a; best = el; }
+  }
+  if (!best) return "";
+  const saved = [];
+  for (let el = best; el; el = el.parentElement) {
+    saved.push([el, el.getAttribute("style"), el.scrollTop]);
+    const pos = getComputedStyle(el).position;
+    const s = el.style;
+    s.setProperty("height", "auto", "important");
+    s.setProperty("max-height", "none", "important");
+    s.setProperty("overflow", "visible", "important");
+    if (pos === "fixed") s.setProperty("position", "absolute", "important");
+    if (pos === "fixed" || pos === "absolute") s.setProperty("bottom", "auto", "important");
+  }
+  window.__zynlexUngrow = () => {
+    for (const [el, style] of saved) {
+      if (style == null) el.removeAttribute("style"); else el.setAttribute("style", style);
+    }
+    for (const [el, , top] of saved) el.scrollTop = top;
+    delete window.__zynlexUngrow;
+  };
+  const cls = typeof best.className === "string" ? best.className.trim().split(/\\s+/)[0] : "";
+  return best.tagName.toLowerCase() + (best.id ? "#" + best.id : cls ? "." + cls : "");
+})()`;
+
 /** The visible area, the whole page (`full`), or one element (`ref`), as a PNG in %TEMP%\zynlex-agent. */
 async function screenshotTool(args: Args): Promise<string> {
   const tab = tabOf(args);
@@ -1777,9 +1923,28 @@ async function screenshotTool(args: Args): Promise<string> {
   await tabCdp(tab.id, "Runtime.evaluate", {
     expression: `document.querySelectorAll("zynlex-agent-mark").forEach((m) => m.remove())`,
   }).catch(() => {});
+  if (args.ref == null && !args.full) {
+    return `${header(tab)}\nSaved ${await captureScreenshot(tab.id, "agent")}`;
+  }
   if (args.ref == null) {
-    const path = await captureScreenshot(tab.id, args.full ? "agent-full" : "agent");
-    return `${header(tab)}\nSaved ${path}${args.full ? " (whole page)" : ""}`;
+    // An app that scrolls inside its own container (Streamlit, dashboards)
+    // has a page no taller than the window: let that container grow for the
+    // shot, then put everything back.
+    const grown = await tabCdp<Evaluated>(tab.id, "Runtime.evaluate", {
+      expression: GROW_SCROLLER,
+      returnByValue: true,
+    }).catch(() => null);
+    const inner = typeof grown?.result.value === "string" ? grown.result.value : "";
+    try {
+      const path = await captureScreenshot(tab.id, "agent-full");
+      return `${header(tab)}\nSaved ${path} (whole page${inner ? `, with all of ${inner}, which scrolls on its own` : ""})`;
+    } finally {
+      if (inner) {
+        await tabCdp(tab.id, "Runtime.evaluate", {
+          expression: "window.__zynlexUngrow?.()",
+        }).catch(() => {});
+      }
+    }
   }
   if (args.full) throw new Error("Pass ref or full, not both.");
   const ref = parseRef(args.ref);

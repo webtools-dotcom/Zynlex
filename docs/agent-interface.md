@@ -116,7 +116,7 @@ call to find out.
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
 | `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` / `upload` on a ref with real input, `back` / `forward` in history (localhost entries only), or `steps`: up to 10 of them in one call, settling between steps and stopping at the first that fails; then the consequences (including any tab it opened) | Built (hover, drag, back/forward, upload untested on Windows) |
 | `network` | Requests (assets hidden unless `all`) and WebSockets; `failed`, `match`; `id` for headers + body, or a socket's frames | Built |
-| `screenshot` | Visible area, one element (`ref`) or the whole page (`full`) to `%TEMP%\zynlex-agent`, returns the path | Built (`ref`, `full` untested on Windows) |
+| `screenshot` | Visible area, one element (`ref`) or the whole page (`full`) to `%TEMP%\zynlex-agent`, returns the path. A page that scrolls inside its own container (Streamlit, dashboards) has that container grown for a `full` shot, then put back | Built (`ref`, `full` untested on Windows) |
 | `viewport` | Device presets or width×height, touch, mobile UA; `reset` | Built |
 | `eval` | `Runtime.evaluate` (`awaitPromise`, `returnByValue`, `replMode`): an expression, or a function body when the code has `return`; value as compact JSON cut at 4 KB, exceptions as `Threw: …`, gives up after 10 s | Built, untested on Windows |
 | `wait_for` | Polls every 250 ms until all given conditions hold: `text` appears, `gone` disappears (full snapshot + `body.innerText`), `url` contains; `timeout` s (default 10, max 30); says what matched or what's pending, then the consequences | Built, untested on Windows |
@@ -243,7 +243,7 @@ schema costs fewer tokens than explaining a mode switch.
 - **Same vocabulary as `act`.** Typing into one field in a row collapses to
   its final value (the click that focused it folds in, editing keys inside it
   are dropped). The click an Enter causes is not a second step. Only the keys
-  `act` can press are recorded, without modifiers.
+  `act` can press are recorded, without modifiers (`act` itself takes combos like `Control+a`).
 - **What each step caused.** Errors and failed requests are copied from the
   console and network stores as they arrive (a navigation clears those
   stores) and given to the last step before them; a request row's arrival time
@@ -456,6 +456,16 @@ page, but input can't reach it. Nothing was done.`; in the page and visible
 gives `The browser refused type on e8…` (focus on something that takes none).
 A click on a `visibility: hidden` element used to say it was covered by
 whatever is behind it; that's checked the same way now.
+
+A page that redraws on every change (Streamlit, a list re-rendered without
+keys) replaces its elements, so the ref an agent was shown goes stale before
+it's used. Every ref's role and name an agent has been shown is kept
+(`button "Run"`); when its element is gone and exactly one element on the
+page now has that role and name, the action goes to it, and the reply starts
+with `e9 was redrawn; used button "Run" [e32], the only element like it now.`
+Several matches, none, an unnamed element, or one that's only hidden are
+refused as before. Between the steps of a batch, the same goes for a step an
+earlier step redrew.
 
 Before anything touches the page, every ref an `act` names (both refs of a
 drag, every step of a batch) must be in the page's outline, as the last

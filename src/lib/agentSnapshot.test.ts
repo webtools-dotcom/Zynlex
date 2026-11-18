@@ -5,6 +5,8 @@ import {
   type FrameTrees,
   formatSnapshot,
   mergeFrames,
+  refNamed,
+  refNames,
 } from "./agentSnapshot";
 
 let next = 0;
@@ -173,5 +175,35 @@ describe("diffSnapshot", () => {
 
   it("counts repeated lines", () => {
     expect(diffSnapshot('link "More"\nlink "More"', 'link "More"')).toEqual(['- link "More"']);
+  });
+});
+
+describe("refNames / refNamed", () => {
+  const before = [
+    "main",
+    '  textbox "Search" [e12] value="yo"',
+    '  button "Run" [e13]',
+    "  button [e14]",
+  ].join("\n");
+  const after = [
+    "main",
+    '  textbox "Search" [e40] value=""',
+    '  button "Run" [e41]',
+    '  link "Run" [e42]',
+  ].join("\n");
+
+  it("finds a redrawn element by its role and name, ignoring value and states", () => {
+    // The unnamed button has nothing to find it by again, so it isn't listed.
+    expect(refNames(before)).toEqual([
+      [12, 'textbox "Search"'],
+      [13, 'button "Run"'],
+    ]);
+    expect(refNamed(after, 'textbox "Search"')).toBe(40);
+    expect(refNamed(after, 'button "Run"')).toBe(41);
+  });
+
+  it("gives up on a missing name or several matches", () => {
+    expect(refNamed(`${after}\n  button "Run" [e43]`, 'button "Run"')).toBeNull();
+    expect(refNamed(after, 'button "Stop"')).toBeNull();
   });
 });
