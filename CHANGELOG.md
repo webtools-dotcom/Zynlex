@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-11-18
+
+### Fixed
+
+- Updating while an AI agent had ZYNLEX connected stopped with "Error
+  opening file for writing: ...\zynlex-mcp.exe", because the agent's
+  `zynlex-mcp.exe` was still running. The installer now stops the copy in the
+  install folder first, and the agent reconnects on its next call. Uninstalling
+  does the same.
+
 ## [0.19.0] - 2026-11-18
 
 AI agents can now check a whole bug in one call, by writing a short
@@ -493,7 +503,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.19.1...HEAD
+[0.19.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.1
 [0.19.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.0
 [0.18.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.18.0
 [0.17.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.17.0
