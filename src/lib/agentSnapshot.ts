@@ -224,3 +224,14 @@ export function diffSnapshot(prev: string, next: string): string[] {
   }
   return [...removed, ...added];
 }
+
+/** Each named ref in a snapshot with what its line says before the ref: `[12, 'button "Run"']`. */
+export function refNames(snapshot: string): [number, string][] {
+  return [...snapshot.matchAll(/^\s*(\S+ ".*") \[e(\d+)\]/gm)].map((m) => [Number(m[2]), m[1]]);
+}
+
+/** The one ref whose line says `name` (see refNames); null if none or several do. */
+export function refNamed(snapshot: string, name: string): number | null {
+  const hits = refNames(snapshot).filter(([, n]) => n === name);
+  return hits.length === 1 ? hits[0][0] : null;
+}

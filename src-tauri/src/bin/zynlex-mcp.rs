@@ -29,7 +29,7 @@ fn tools() -> Value {
     // Without it an agent once passed a tab id as a ref.
     let r = json!({ "type": "string", "description": "e12, from snapshot." });
     let action = json!({ "type": "string", "enum": ["click", "hover", "drag", "type", "select", "press", "upload", "back", "forward", "accept", "dismiss"] });
-    let text = json!({ "type": "string", "description": "type: the new value. select: option value or label. press: a key (Enter, Tab, Escape, ArrowDown…). accept: prompt() reply." });
+    let text = json!({ "type": "string", "description": "type: the new value. select: option value or label. press: a key (Enter, Escape, a letter…) or a shortcut (Control+a). accept: prompt() reply." });
     let files =
         json!({ "type": "array", "items": { "type": "string" }, "description": "Absolute paths." });
     let b = json!({ "type": "boolean" });
