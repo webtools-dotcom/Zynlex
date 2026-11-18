@@ -60,18 +60,22 @@ needs fewer turns wins even when its replies are the same size.
 ### Fresh set, 8 tasks (2026-11-17)
 
 `results/fresh-2026-11-17.jsonl`, 3 repeats, every tool the same day.
-`zynlex` is main at `0ffb7b2`, blind to these bugs. `zynlex-fixed` is the
-same with the fixes its runs pointed to (`fix/script-gaps`): a script's
+`zynlex` is main at `0ffb7b2`, blind to these bugs. `zynlex-0.19` is the
+0.19.0 build, with the fixes its runs pointed to (`zynlex-round2` is the
+round before the last one, kept for the record): a script's
 `goto` to another site opens its own tab (the old one reused the active tab,
 so the 375 px emulation from a `mobile` run leaked into later runs), `type()`
 sends one input event per key (so `evsearch`'s keystroke race reproduces),
 `goto` reaches another `#route` of the open page, and `boundingBox`,
 `elementHandle`, `context().cookies()`, `waitForResponse`, single-key
-`press` and XPath selectors exist. Those were made with these bugs in view.
+`press` and XPath selectors exist, and `setViewportSize` before `goto` sizes
+the script's own tab (the last round: it had sized the old tab, so phone-only
+bugs didn't show). Those were made with these bugs in view.
 
 | Tool | Fixed | Tokens | Turns | Browser calls | Cost per task | Total cost |
 |---|---|---|---|---|---|---|
-| ZYNLEX, fixed | 24/24 | 170k | 8.5 | 3 | $0.170 | $4.07 |
+| ZYNLEX 0.19 | 24/24 | 176k | 8 | 2 | $0.167 | $4.01 |
+| ZYNLEX, round 2 | 24/24 | 170k | 8.5 | 3 | $0.170 | $4.07 |
 | ZYNLEX, blind | 24/24 | 222k | 11.5 | 5.5 | $0.210 | $5.05 |
 | OpenCode Browse 0.1.1 | 24/24 | 290k | 13.5 | 7.5 | $0.232 | $5.56 |
 | Playwright MCP 0.0.85 | 24/24 | 511k | 19.5 | 14.5 | $0.384 | $9.22 |
@@ -80,19 +84,23 @@ sends one input event per key (so `evsearch`'s keystroke race reproduces),
 
 Median tokens per bug:
 
-| Task | ZYNLEX, fixed | ZYNLEX, blind | Browse | Playwright MCP | agent-browser | DevTools MCP |
+| Task | ZYNLEX 0.19 | ZYNLEX, blind | Browse | Playwright MCP | agent-browser | DevTools MCP |
 |---|---|---|---|---|---|---|
-| `evsearch` | 153k | 329k | 330k | 414k | 459k | 704k |
-| `details` | 128k | 186k | 154k | 540k | 418k | 327k |
-| `price` | 197k | 252k | 294k | 479k | 371k | 472k |
-| `seats` | 170k | 169k | 334k | 1,097k | 584k | 695k |
-| `comments` | 128k | 128k | 263k | 598k | 757k | 462k |
-| `cancel` | 155k | 257k | 318k | 467k | 691k | 637k |
-| `settings` | 205k | 180k | 336k | 499k | 644k | 552k |
-| `mobile` | 224k | 317k | 216k | 440k | 512k | 761k |
+| `evsearch` | 131k | 329k | 330k | 414k | 459k | 704k |
+| `details` | 129k | 186k | 154k | 540k | 418k | 327k |
+| `price` | 250k | 252k | 294k | 479k | 371k | 472k |
+| `seats` | 212k | 169k | 334k | 1,097k | 584k | 695k |
+| `comments` | 169k | 128k | 263k | 598k | 757k | 462k |
+| `cancel` | 156k | 257k | 318k | 467k | 691k | 637k |
+| `settings` | 211k | 180k | 336k | 499k | 644k | 552k |
+| `mobile` | 176k | 317k | 216k | 440k | 512k | 761k |
 
 Blind ZYNLEX was cheapest on six of eight bugs (Browse won `details` and
-`mobile`); fixed ZYNLEX on seven, with `mobile` within 4% of Browse. The one
+`mobile`); ZYNLEX 0.19 on all eight. Round 2 had lost `mobile` (224k vs 216k):
+its agents set the phone size on the old tab, or in separate calls. Bugs
+vary run to run by how much code the agent reads, so the ZYNLEX columns trade
+places on single bugs (blind was lower on `seats`, `comments` and `settings`);
+its browser calls didn't go up. The one
 failure is DevTools MCP's first `evsearch` run.
 
 ### Tuned set, 6 tasks (2026-10-31 to 11-01)
