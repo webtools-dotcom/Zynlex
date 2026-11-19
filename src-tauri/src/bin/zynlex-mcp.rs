@@ -11,7 +11,13 @@ use std::cell::RefCell;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
 use std::rc::Rc;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
+
+/// `--open`: when ZYNLEX isn't running, start it (the zynlex.exe next to this
+/// file) instead of telling the agent to ask the developer. Off unless the
+/// developer added it to the agent's config (Settings → AI agents).
+static OPEN_APP: OnceLock<bool> = OnceLock::new();
 
 /// Keep in sync with `PIPE_NAME` in src/agent.rs.
 const PIPE: &str = r"\\.\pipe\zynlex-agent";
@@ -164,6 +170,45 @@ struct Pipe {
 
 impl Pipe {
     fn connect(client: &str) -> Result<Pipe, String> {
+        match Self::try_connect(client) {
+            Err(e) if e.is_empty() && *OPEN_APP.get().unwrap_or(&false) => Self::open_app(client),
+            Err(e) if e.is_empty() => Err(
+                "ZYNLEX isn't running. Ask the user to open it (or to add --open to zynlex-mcp in your MCP config, so it opens ZYNLEX itself).".into(),
+            ),
+            r => r,
+        }
+    }
+
+    /// Starts the zynlex.exe beside this server and waits for its agent pipe.
+    fn open_app(client: &str) -> Result<Pipe, String> {
+        let app = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("zynlex.exe")))
+            .filter(|p| p.exists())
+            .ok_or("ZYNLEX isn't running, and there's no zynlex.exe next to zynlex-mcp to open. Ask the user to open it.")?;
+        // Its own window and nothing of ours: stdin/stdout are the agent's MCP
+        // stream, and an app that inherited them would hold the agent's pipes
+        // open after this server exits (its client then waits for nothing).
+        keep_stdio_to_ourselves();
+        std::process::Command::new(&app)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("Couldn't open ZYNLEX ({e}). Ask the user to open it."))?;
+        let until = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(250));
+            match Self::try_connect(client) {
+                Err(e) if e.is_empty() => continue,
+                r => return r,
+            }
+        }
+        Err("Opened ZYNLEX, but it didn't answer within 30s. Ask the user to check it.".into())
+    }
+
+    /// One attempt; an empty error means no pipe at all (ZYNLEX isn't running).
+    fn try_connect(client: &str) -> Result<Pipe, String> {
         for _ in 0..40 {
             match OpenOptions::new().read(true).write(true).open(PIPE) {
                 Ok(f) => {
@@ -184,7 +229,7 @@ impl Pipe {
                 Err(_) => break,
             }
         }
-        Err("ZYNLEX isn't running. Ask the user to open it.".into())
+        Err(String::new())
     }
 
     fn send(&mut self, msg: &Value) -> io::Result<()> {
@@ -203,6 +248,24 @@ impl Pipe {
             v["ok"].as_bool().unwrap_or(false),
             v["text"].as_str().unwrap_or_default().to_string(),
         ))
+    }
+}
+
+/// Marks this process's stdin/stdout/stderr not inheritable, so a process it
+/// starts (ZYNLEX, for `--open`) doesn't get the agent's pipes.
+fn keep_stdio_to_ourselves() {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::{
+        SetHandleInformation, HANDLE, HANDLE_FLAGS, HANDLE_FLAG_INHERIT,
+    };
+    let handles = [
+        io::stdin().as_raw_handle(),
+        io::stdout().as_raw_handle(),
+        io::stderr().as_raw_handle(),
+    ];
+    for h in handles {
+        // SAFETY: our own std handles, open for the life of the process; only the inherit flag changes.
+        let _ = unsafe { SetHandleInformation(HANDLE(h), HANDLE_FLAG_INHERIT.0, HANDLE_FLAGS(0)) };
     }
 }
 
@@ -362,6 +425,7 @@ fn handle(msg: &Value, pipe: &mut Option<Pipe>, client: &mut String) -> Option<V
 }
 
 fn main() {
+    let _ = OPEN_APP.set(std::env::args().skip(1).any(|a| a == "--open"));
     let mut pipe = None;
     let mut client = String::from("agent");
     let mut out = io::stdout().lock();
