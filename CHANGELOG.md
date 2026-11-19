@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-11-19
+
+### Changed
+
+- ZYNLEX now opens for an AI agent by default: when the agent needs it and
+  it's closed, it's started instead of the agent stopping to ask you. To have
+  the agent ask instead, untick the box in Settings → AI agents and use the
+  setup it shows (it adds `--no-open`). Setups that use `--open` keep working.
+
+### Fixed
+
+- The Claude Code setup command with `--open` failed in PowerShell: PowerShell
+  dropped the `--` in it, and Claude Code read `--open` as one of its own
+  options. The command no longer needs either.
+
 ## [0.20.0] - 2026-11-19
 
 When an AI agent's script fails part-way, it now knows what already happened,
@@ -556,7 +571,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.20.1
 [0.20.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.20.0
 [0.19.2]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.2
 [0.19.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.1
