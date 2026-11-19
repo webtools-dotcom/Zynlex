@@ -534,16 +534,69 @@ describe("agent tools", () => {
         "e99 is hidden (visibility: hidden)",
       );
       fake(null);
+      // In a batch, a later step's ref is checked just before that step (an
+      // earlier one may reveal its element): the first step runs, the second
+      // is refused with why, and the reply says what was done.
+      const answer = hooks.answer;
+      hooks.answer = (method, p) =>
+        method === "DOM.focus" || method === "Input.dispatchKeyEvent"
+          ? {}
+          : method === "Runtime.evaluate" &&
+              !(p as { expression?: string }).expression?.includes("isConnected")
+            ? { result: { value: { ready: "complete", quietMs: 900 } } }
+            : answer?.(method, p);
       await expect(
         runAgentTool("act", {
           steps: [
-            { action: "click", ref: "e12" },
+            { action: "press", ref: "e12", text: "Enter" },
             { action: "click", ref: "e99" },
           ],
         }),
-      ).rejects.toThrow(/^Stale ref e99: that element is gone\. Current page:/);
-      // Checked before anything touched the page, the good first step included.
+      ).rejects.toThrow(
+        /Pressed Enter in button "Save" \[e12\]\nStep 2 \(click\) failed: Stale ref e99: that element is gone/,
+      );
       expect(clicked()).toBe(false);
+    });
+
+    it("lets a later step use an element an earlier step revealed", async () => {
+      fake(null);
+      await runAgentTool("snapshot", {});
+      const focused: unknown[] = [];
+      const answer = hooks.answer;
+      hooks.answer = (method, p) => {
+        if (method === "DOM.focus") {
+          focused.push((p as { backendNodeId?: number }).backendNodeId);
+          // Step 1 shows a tab whose button, e30, wasn't on the page before.
+          hooks.ax = [
+            {
+              nodeId: "1",
+              role: { value: "RootWebArea" },
+              name: { value: "App" },
+              childIds: ["2", "3"],
+            },
+            ...(hooks.ax ?? []).filter((n) => (n as { nodeId: string }).nodeId !== "1"),
+            {
+              nodeId: "3",
+              role: { value: "button" },
+              name: { value: "Export" },
+              childIds: [],
+              backendDOMNodeId: 30,
+            },
+          ];
+          return {};
+        }
+        if (method === "Input.dispatchKeyEvent") return {};
+        if (method === "Runtime.evaluate")
+          return { result: { value: { ready: "complete", quietMs: 900 } } };
+        return answer?.(method, p);
+      };
+      await runAgentTool("act", {
+        steps: [
+          { action: "press", ref: "e12", text: "Enter" },
+          { action: "press", ref: "e30", text: "Enter" },
+        ],
+      });
+      expect(focused).toEqual([12, 30]);
     });
 
     it("uses the one element with the same role and name when the page redrew", async () => {
@@ -591,11 +644,13 @@ describe("agent tools", () => {
       await runAgentTool("snapshot", {});
       await runAgentTool("act", { action: "press", ref: "e12", text: "Enter" }).catch(() => {});
       expect(focused).toEqual([40, 60]);
-      // Two of them: not ours to guess.
+      // Two of them: not ours to guess, and the reply says so instead of "gone".
       redraw([50, 51]);
       await expect(
         runAgentTool("act", { action: "press", ref: "e60", text: "Enter" }),
-      ).rejects.toThrow(/e60/);
+      ).rejects.toThrow(
+        /^e60 was redrawn, and the page now has 2 elements like button "Save" \(e50, e51\), so it isn't clear which one you meant\./,
+      );
       expect(focused).toEqual([40, 60]);
     });
 

@@ -114,7 +114,7 @@ call to find out.
 | `check` | Settles, then new errors + failed requests since the last report, grouped (see [Error grouping](#error-grouping)); `reload` reloads first; `vitals` adds LCP, CLS, INP and long tasks (see [WebSockets and vitals](#websockets-and-vitals)) | Built |
 | `errors` | Every error and failed request on the current page, plus any from earlier page loads not yet shown, grouped; `level` adds `warning`, `info` or `log` (each includes the levels above it; newest 50 log/info lines) | Built |
 | `snapshot` | Interactive elements with refs; `full` adds text; `within` roots at one ref; `unchanged` when nothing changed | Built |
-| `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` / `upload` on a ref with real input, `back` / `forward` in history (localhost entries only), or `steps`: up to 10 of them in one call, settling between steps and stopping at the first that fails; then the consequences (including any tab it opened) | Built (hover, drag, back/forward, upload untested on Windows) |
+| `act` | `click` / `hover` / `drag` (`ref` onto `to`) / `type` / `select` / `press` / `upload` on a ref with real input, `back` / `forward` in history (localhost entries only), or `steps`: up to 10 of them in one call, settling between steps and stopping at the first that fails (each step's refs are checked just before it, so a step can use an element an earlier one revealed, such as a button on a tab it opened); then the consequences (including any tab it opened) | Built (hover, drag, back/forward, upload untested on Windows) |
 | `network` | Requests (assets hidden unless `all`) and WebSockets; `failed`, `match`; `id` for headers + body, or a socket's frames | Built |
 | `screenshot` | Visible area, one element (`ref`) or the whole page (`full`) to `%TEMP%\zynlex-agent`, returns the path. A page that scrolls inside its own container (Streamlit, dashboards) has that container grown for a `full` shot, then put back | Built (`ref`, `full` untested on Windows) |
 | `viewport` | Device presets or width×height, touch, mobile UA; `reset` | Built |
@@ -473,8 +473,11 @@ it's used. Every ref's role and name an agent has been shown is kept
 (`button "Run"`); when its element is gone and exactly one element on the
 page now has that role and name, the action goes to it, and the reply starts
 with `e9 was redrawn; used button "Run" [e32], the only element like it now.`
-Several matches, none, an unnamed element, or one that's only hidden are
-refused as before. Between the steps of a batch, the same goes for a step an
+Several matches (the reply names them: `e12 was redrawn, and the page now has 2
+elements like button "Save" (e40, e41)…`), none, an unnamed element, or one
+that's only hidden are refused as before. Step lines name an element without
+its old `value=`. Screenshot replies add `Image pixels are page pixels × 1.25.`
+when the display is scaled. Between the steps of a batch, the same goes for a step an
 earlier step redrew.
 
 Before anything touches the page, every ref an `act` names (both refs of a
@@ -1059,6 +1062,13 @@ noise, not the skill's text, and five repeats can't resolve an effect this
 small. The tool descriptions and the server's `instructions` already teach the
 loop; the skill stays as an optional extra (see Setup). 21 control runs were
 re-run after the account's usage limit cut them off mid-run.
+
+### Opening ZYNLEX for the agent
+
+`zynlex-mcp --open` starts the `zynlex.exe` next to it when an agent calls a
+tool and ZYNLEX isn't running, then waits up to 30 s for it. Without the flag
+the agent is told to ask the developer (and that the flag exists). It's off
+by default; Settings → AI agents has a checkbox that adds it to the snippet.
 
 ### Other agents (2026-11-02)
 

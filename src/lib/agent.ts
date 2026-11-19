@@ -1498,6 +1498,8 @@ async function knownRefs(
   const why = await hiddenWhy(tab.id, missing);
   if (why && why !== "gone") throw hiddenError(missing, why);
   const page = await showPage(tab, seen.compact);
+  const several = severalLike(tab, missing);
+  if (several) throw new Error(`${several} Current page:\n${page}`);
   throw new Error(
     why === "gone"
       ? `Stale ref e${missing}: that element is gone. Current page:\n${page}`
@@ -1539,20 +1541,24 @@ async function actTool(args: Args): Promise<string> {
     snapshots.set(view(tab), await takePage(tab.id));
   }
   // A paused page (dialog) can't be read; its steps are answers anyway.
+  // Only the first step's refs are checked now: a later step's element may
+  // only appear once an earlier one ran (click a tab, then a button on it),
+  // so each is checked just before its step.
+  const refsOf = (s: Step) => [s.ref, s.to].filter((r): r is number => r != null);
   const { seen: before, moved } = dialogs.has(tab.id)
     ? { seen: snapshots.get(view(tab)), moved: new Map<number, number>() }
-    : await knownRefs(
-        tab,
-        steps.flatMap((s) => [s.ref, s.to]).filter((r): r is number => r != null),
-      );
+    : await knownRefs(tab, refsOf(steps[0]));
   // The latest look at the page names refs best: a step may have redrawn it.
+  // Without its value, which is the one from before the step ("Typed "hi"
+  // into textbox "Note" value=""" read as if the typing hadn't happened).
   const labelOf = (r: number | null) =>
     r == null
       ? ""
       : ([snapshots.get(view(tab))?.full, before?.full]
           .map((t) => t?.split("\n").find((l) => l.includes(`[e${r}]`)))
           .find(Boolean)
-          ?.trim() ?? `e${r}`);
+          ?.trim()
+          .replace(/ value="(?:[^"\\]|\\.)*"/, "") ?? `e${r}`);
   const swap = (r: number | null) => (r == null ? r : (moved.get(r) ?? r));
   const notes = [...moved].map(
     ([was, now]) => `e${was} was redrawn; used ${labelOf(now)}, the only element like it now.`,
@@ -1573,6 +1579,14 @@ async function actTool(args: Args): Promise<string> {
       if (!dialogs.has(tab.id)) await settle(tab.id);
     }
     try {
+      if (i > 0 && !dialogs.has(tab.id) && refsOf(st).length) {
+        const later = await knownRefs(tab, refsOf(st));
+        for (const [was, now] of later.moved) {
+          notes.push(`e${was} was redrawn by an earlier step; used ${labelOf(now)}.`);
+        }
+        st.ref = st.ref == null ? null : (later.moved.get(st.ref) ?? st.ref);
+        st.to = st.to == null ? null : (later.moved.get(st.to) ?? st.to);
+      }
       did.push(await doStep(tab, st, labelOf));
     } catch (err) {
       // An earlier step redrew the page: the element it now has with the
@@ -1584,8 +1598,11 @@ async function actTool(args: Args): Promise<string> {
         did.push(await doStep(tab, st, labelOf));
         continue;
       }
-      if (!batch) throw err;
-      const msg = err instanceof Error ? err.message : String(err);
+      let msg = err instanceof Error ? err.message : String(err);
+      // "Gone" undersells it when the redraw made several of it.
+      const several = msg.startsWith("Stale ref") ? severalLike(tab, st.ref) : null;
+      if (several) msg = msg.replace(/^Stale ref e\d+: that element is gone\./, several);
+      if (!batch) throw several ? new Error(msg) : err;
       const page = await consequences(tab, urlBefore, mark).catch(() => []);
       throw new Error(
         [...notes, ...did, `Step ${i + 1} (${st.action}) failed: ${msg}`, ...page].join("\n"),
@@ -1593,6 +1610,22 @@ async function actTool(args: Args): Promise<string> {
     }
   }
   return [...notes, ...did, ...(await consequences(tab, urlBefore, mark))].join("\n");
+}
+
+/**
+ * For a ref whose element the page redrew into several with the same role and
+ * name: why none was picked, and their refs. Null if that isn't the case.
+ */
+function severalLike(tab: AgentTab, ref: number | null): string | null {
+  const name = ref == null ? undefined : shownNames.get(view(tab))?.get(ref);
+  const seen = snapshots.get(view(tab));
+  if (name == null || !seen) return null;
+  const twins = refNames(seen.full)
+    .filter(([, n]) => n === name)
+    .map(([r]) => `e${r}`);
+  return twins.length > 1
+    ? `e${ref} was redrawn, and the page now has ${twins.length} elements like ${name} (${twins.join(", ")}), so it isn't clear which one you meant. Nothing was done: use one of their refs.`
+    : null;
 }
 
 /**
@@ -1955,7 +1988,8 @@ async function screenshotTool(args: Args): Promise<string> {
     expression: `document.querySelectorAll("zynlex-agent-mark").forEach((m) => m.remove())`,
   }).catch(() => {});
   if (args.ref == null && !args.full) {
-    return `${header(tab)}\nSaved ${await captureScreenshot(tab.id, "agent")}`;
+    const path = await captureScreenshot(tab.id, "agent");
+    return `${header(tab)}\nSaved ${path}${await pixelScale(tab.id)}`;
   }
   if (args.ref == null) {
     // An app that scrolls inside its own container (Streamlit, dashboards)
@@ -1968,7 +2002,8 @@ async function screenshotTool(args: Args): Promise<string> {
     const inner = typeof grown?.result.value === "string" ? grown.result.value : "";
     try {
       const path = await captureScreenshot(tab.id, "agent-full");
-      return `${header(tab)}\nSaved ${path} (whole page${inner ? `, with all of ${inner}, which scrolls on its own` : ""})`;
+      const whole = inner ? `, with all of ${inner}, which scrolls on its own` : "";
+      return `${header(tab)}\nSaved ${path} (whole page${whole})${await pixelScale(tab.id)}`;
     } finally {
       if (inner) {
         await tabCdp(tab.id, "Runtime.evaluate", {
@@ -1995,7 +2030,21 @@ async function screenshotTool(args: Args): Promise<string> {
   }
   if (!clip) throw new Error(`e${ref} has no box on screen (hidden or zero-size).`);
   const path = await captureScreenshot(tab.id, "agent", clip);
-  return `${header(tab)}\nSaved ${path} (e${ref}, ${clip.width}×${clip.height})`;
+  return `${header(tab)}\nSaved ${path} (e${ref}, ${clip.width}×${clip.height})${await pixelScale(tab.id)}`;
+}
+
+/**
+ * " Image pixels are page pixels × 1.25." when the display is scaled, or "":
+ * screenshots are in device pixels, and an agent measuring a layout from one
+ * otherwise reads every size 25% too big.
+ */
+async function pixelScale(tabId: string): Promise<string> {
+  const r = await tabCdp<Evaluated>(tabId, "Runtime.evaluate", {
+    expression: "devicePixelRatio",
+    returnByValue: true,
+  }).catch(() => null);
+  const dpr = Number(r?.result.value);
+  return dpr && dpr !== 1 ? ` Image pixels are page pixels × ${Math.round(dpr * 100) / 100}.` : "";
 }
 
 /** Longest `eval` result returned. */
