@@ -14,9 +14,10 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-/// `--open`: when ZYNLEX isn't running, start it (the zynlex.exe next to this
-/// file) instead of telling the agent to ask the developer. Off unless the
-/// developer added it to the agent's config (Settings → AI agents).
+/// When ZYNLEX isn't running, start it (the zynlex.exe next to this file)
+/// instead of telling the agent to ask the developer. On unless the agent's
+/// config passes `--no-open`. (`--open`, the switch before 0.20.1, is accepted
+/// and changes nothing.)
 static OPEN_APP: OnceLock<bool> = OnceLock::new();
 
 /// Keep in sync with `PIPE_NAME` in src/agent.rs.
@@ -171,9 +172,9 @@ struct Pipe {
 impl Pipe {
     fn connect(client: &str) -> Result<Pipe, String> {
         match Self::try_connect(client) {
-            Err(e) if e.is_empty() && *OPEN_APP.get().unwrap_or(&false) => Self::open_app(client),
+            Err(e) if e.is_empty() && *OPEN_APP.get().unwrap_or(&true) => Self::open_app(client),
             Err(e) if e.is_empty() => Err(
-                "ZYNLEX isn't running. Ask the user to open it (or to add --open to zynlex-mcp in your MCP config, so it opens ZYNLEX itself).".into(),
+                "ZYNLEX isn't running. Ask the user to open it (zynlex-mcp runs with --no-open, so it doesn't open ZYNLEX itself).".into(),
             ),
             r => r,
         }
@@ -252,7 +253,7 @@ impl Pipe {
 }
 
 /// Marks this process's stdin/stdout/stderr not inheritable, so a process it
-/// starts (ZYNLEX, for `--open`) doesn't get the agent's pipes.
+/// starts (ZYNLEX, when it isn't running) doesn't get the agent's pipes.
 fn keep_stdio_to_ourselves() {
     use std::os::windows::io::AsRawHandle;
     use windows::Win32::Foundation::{
@@ -424,8 +425,13 @@ fn handle(msg: &Value, pipe: &mut Option<Pipe>, client: &mut String) -> Option<V
     Some(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
 }
 
+/// Whether to start ZYNLEX when it isn't running: yes, unless `--no-open`.
+fn opens_app(args: impl IntoIterator<Item = String>) -> bool {
+    !args.into_iter().any(|a| a == "--no-open")
+}
+
 fn main() {
-    let _ = OPEN_APP.set(std::env::args().skip(1).any(|a| a == "--open"));
+    let _ = OPEN_APP.set(opens_app(std::env::args().skip(1)));
     let mut pipe = None;
     let mut client = String::from("agent");
     let mut out = io::stdout().lock();
@@ -449,7 +455,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{handle, run_script, script_in, Host};
+    use super::{handle, opens_app, run_script, script_in, Host};
     use serde_json::{json, Value};
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -528,6 +534,15 @@ mod tests {
             "{text}"
         );
         assert!(!text.contains("Sent before"), "no writes, no line: {text}");
+    }
+
+    /// ZYNLEX opens for the agent unless the config says --no-open (--open is the old switch).
+    #[test]
+    fn opens_zynlex_unless_told_not_to() {
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(opens_app(args(&[])));
+        assert!(opens_app(args(&["--open"])));
+        assert!(!opens_app(args(&["--no-open"])));
     }
 
     /// Success replies don't change (the benchmark's tokens are spent there).

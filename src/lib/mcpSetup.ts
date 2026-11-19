@@ -1,7 +1,7 @@
 /**
  * Per-agent setup for connecting an AI coding agent to ZYNLEX's MCP server
- * (zynlex-mcp.exe, a stdio server; `--open` makes it start ZYNLEX when it
- * isn't running, instead of telling the agent to ask). Shown in Settings → AI
+ * (zynlex-mcp.exe, a stdio server; it starts ZYNLEX when an agent needs it and
+ * it isn't running, unless given `--no-open`). Shown in Settings → AI
  * agents. The Claude Code, Codex, Antigravity and OpenCode formats are the
  * ones the agent tests ran with (docs/agent-interface.md, "Other agents").
  */
@@ -20,21 +20,30 @@ export const MCP_AGENTS = [
 
 export type McpAgentId = (typeof MCP_AGENTS)[number]["id"];
 
-/** The snippet to paste and where it goes; `open` adds `--open` (start ZYNLEX when it's closed). */
+/**
+ * The snippet to paste and where it goes. With `open` false, `--no-open`: the
+ * agent asks the developer to open ZYNLEX instead of zynlex-mcp starting it.
+ */
 export function mcpSetup(
   agent: McpAgentId,
   exe: string,
-  open = false,
+  open = true,
 ): { snippet: string; where: string } {
-  const args = open ? ["--open"] : [];
+  const args = open ? [] : ["--no-open"];
   // `mcpServers` JSON, the shape most MCP clients read.
   const serversJson = () =>
     JSON.stringify({ mcpServers: { zynlex: { command: exe, args } } }, null, 2);
   switch (agent) {
     case "claude":
       return {
-        snippet: `claude mcp add zynlex -- "${exe}"${open ? " --open" : ""}`,
-        where: "Run once in a terminal. Every Claude Code project then has the zynlex tools.",
+        // No "--" when there's no argument: PowerShell drops it on the way into
+        // npm's claude.ps1, and Claude Code then reads the argument as its own.
+        snippet: open
+          ? `claude mcp add zynlex "${exe}"`
+          : `claude mcp add zynlex -- "${exe}" --no-open`,
+        where: open
+          ? "Run once in a terminal. Every Claude Code project then has the zynlex tools."
+          : "Run once in a Command Prompt (cmd): PowerShell can drop the --. Every Claude Code project then has the zynlex tools.",
       };
     case "codex":
       return {

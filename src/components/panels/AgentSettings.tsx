@@ -12,7 +12,7 @@ export function AgentSettings() {
   // undefined: still asking; null: zynlex-mcp.exe isn't next to the app.
   const [exe, setExe] = useState<string | null | undefined>(undefined);
   const [agent, setAgent] = useState<McpAgentId>("claude");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const { copiedLabel, copy } = useCopy();
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export function AgentSettings() {
       </div>
       <label
         className="flex items-center gap-1.5 mt-2 text-xs text-[var(--color-text-muted)]"
-        title="Without it, an agent that finds ZYNLEX closed stops and asks you to open it."
+        title="Unticked, an agent that finds ZYNLEX closed stops and asks you to open it."
       >
         <input type="checkbox" checked={open} onChange={(e) => setOpen(e.target.checked)} />
         Open ZYNLEX when the agent needs it and it's closed

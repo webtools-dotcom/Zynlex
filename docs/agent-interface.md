@@ -1065,10 +1065,16 @@ re-run after the account's usage limit cut them off mid-run.
 
 ### Opening ZYNLEX for the agent
 
-`zynlex-mcp --open` starts the `zynlex.exe` next to it when an agent calls a
-tool and ZYNLEX isn't running, then waits up to 30 s for it. Without the flag
-the agent is told to ask the developer (and that the flag exists). It's off
-by default; Settings → AI agents has a checkbox that adds it to the snippet.
+`zynlex-mcp` starts the `zynlex.exe` next to it when an agent calls a tool and
+ZYNLEX isn't running, then waits up to 30 s for it (since 0.20.1; before, only
+with `--open`, which is still accepted). It marks its own stdin/stdout not
+inheritable first, so ZYNLEX doesn't hold the agent's pipes open. With
+`--no-open` the agent is told to ask the developer instead; unticking the
+checkbox in Settings → AI agents adds it to the snippet.
+
+The Claude Code snippet has no `--` unless there's an argument after the
+path: in PowerShell, `claude` is npm's `claude.ps1`, and PowerShell drops a
+`--` on its way into a script, so Claude Code read `--open` as its own option.
 
 ### Other agents (2026-11-02)
 

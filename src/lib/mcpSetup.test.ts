@@ -4,8 +4,8 @@ import { MCP_AGENTS, mcpSetup } from "./mcpSetup";
 const exe = String.raw`C:\Users\Me\AppData\Local\ZYNLEX\zynlex-mcp.exe`;
 
 describe("mcpSetup", () => {
-  it("quotes the path for a shell command", () => {
-    expect(mcpSetup("claude", exe).snippet).toBe(`claude mcp add zynlex -- "${exe}"`);
+  it("quotes the path for a shell command, with no -- (PowerShell drops it)", () => {
+    expect(mcpSetup("claude", exe).snippet).toBe(`claude mcp add zynlex "${exe}"`);
   });
 
   it("keeps backslashes in Codex's TOML literal string", () => {
@@ -20,19 +20,21 @@ describe("mcpSetup", () => {
     expect(JSON.parse(mcpSetup("opencode", exe).snippet).mcp.zynlex.command).toEqual([exe]);
   });
 
-  it("adds --open in each format when asked, and nothing otherwise", () => {
-    expect(mcpSetup("claude", exe, true).snippet).toBe(`claude mcp add zynlex -- "${exe}" --open`);
-    expect(mcpSetup("codex", exe, true).snippet).toContain('args = ["--open"]');
+  it("adds --no-open in each format when opening is off, and nothing otherwise", () => {
+    expect(mcpSetup("claude", exe, false).snippet).toBe(
+      `claude mcp add zynlex -- "${exe}" --no-open`,
+    );
+    expect(mcpSetup("codex", exe, false).snippet).toContain('args = ["--no-open"]');
     expect(mcpSetup("codex", exe).snippet).toContain("args = []");
     for (const agent of ["antigravity", "cursor", "other"] as const) {
-      expect(JSON.parse(mcpSetup(agent, exe, true).snippet).mcpServers.zynlex.args).toEqual([
-        "--open",
+      expect(JSON.parse(mcpSetup(agent, exe, false).snippet).mcpServers.zynlex.args).toEqual([
+        "--no-open",
       ]);
       expect(JSON.parse(mcpSetup(agent, exe).snippet).mcpServers.zynlex.args).toEqual([]);
     }
-    expect(JSON.parse(mcpSetup("opencode", exe, true).snippet).mcp.zynlex.command).toEqual([
+    expect(JSON.parse(mcpSetup("opencode", exe, false).snippet).mcp.zynlex.command).toEqual([
       exe,
-      "--open",
+      "--no-open",
     ]);
   });
 
