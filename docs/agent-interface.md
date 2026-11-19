@@ -313,7 +313,7 @@ Each `page.*` call becomes one call to a `page` tool that agents aren't shown
   input and settle;
 - `eval` runs an expression with the selector engine bound as `__zq`;
 - `goto`, `reload`, `settle`, `dialog` (answer), `state` (url, title, open
-  dialog), `cookies`, `responses`/`body` (the network log) and `problems` (new errors, and the developer's flags as a field).
+  dialog), `cookies`, `responses`/`body` (the network log), `writes`, `size`/`unsize` and `problems` (new errors, and the developer's flags as a field).
 
 Selectors are resolved in the page by `src/lib/agentQuery.ts`: CSS,
 `text=`, `:has-text()`, `role=…[name=…]`, `label=`, `nth=`, `has-text=` and
@@ -336,6 +336,16 @@ reproduce. `page.context().cookies()` reads the tab's own URL's cookies.
 `waitForResponse`/`waitForRequest` watch the tab's network log (they yield once,
 so `Promise.all([page.waitForResponse(…), page.click(…)])` works). Selectors
 also take XPath (`xpath=…`, `//…`, `..` for the parent).
+
+A script that fails part-way says what already took effect, so a rerun
+doesn't repeat it blind: `Done before it failed: goto /cart, clicked "#add" ×2,
+filled "#name".` (the last 8 actions; never the text typed), then
+`Sent before it failed: POST /api/bookings 201; a rerun sends these again.`
+(requests other than GET, HEAD and OPTIONS, from a list in the network store
+that a page load doesn't clear; at most 5, mocked ones marked). A successful
+script's reply is unchanged. Rerunning resets the page (`goto` reloads), not
+what the server, cookies or storage kept. A size `setViewportSize` set comes
+off the tab when the script ends, failed or not.
 
 Why: on the held-out benchmark (2026-11-17), OpenCode Browse's `execute` tool
 (the same idea over a Chrome extension) used fewer tokens than `act` on four

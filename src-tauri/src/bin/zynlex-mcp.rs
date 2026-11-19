@@ -244,22 +244,20 @@ fn run_script(pipe: &mut Option<Pipe>, client: &str, args: &Value) -> (bool, Str
         );
     }
     let shared = Rc::new(RefCell::new(pipe.take()));
-    let result = script_in(
-        shared.clone(),
-        client,
-        code,
-        args["tab"].as_str().unwrap_or(""),
-    );
+    let relay_pipe = shared.clone();
+    let client = client.to_string();
+    let host: Host = Rc::new(RefCell::new(move |tool: &str, args: &Value| {
+        relay(&mut relay_pipe.borrow_mut(), &client, tool, args)
+    }));
+    let result = script_in(host, code, args["tab"].as_str().unwrap_or(""));
     *pipe = shared.borrow_mut().take();
     result
 }
 
-fn script_in(
-    pipe: Rc<RefCell<Option<Pipe>>>,
-    client: &str,
-    code: &str,
-    tab: &str,
-) -> (bool, String) {
+/// What a script's `__host` calls: a ZYNLEX tool by name, answered as (ok, text).
+type Host = Rc<RefCell<dyn FnMut(&str, &Value) -> (bool, String)>>;
+
+fn script_in(host_fn: Host, code: &str, tab: &str) -> (bool, String) {
     let deadline = Instant::now() + SCRIPT_LIMIT;
     let Ok(rt) = Runtime::new() else {
         return (false, "Couldn't start the script engine.".into());
@@ -269,7 +267,6 @@ fn script_in(
     let Ok(ctx) = Context::full(&rt) else {
         return (false, "Couldn't start the script engine.".into());
     };
-    let client = client.to_string();
     ctx.with(|ctx| {
         let g = ctx.globals();
         let host = Function::new(ctx.clone(), move |tool: String, args: String| -> String {
@@ -279,7 +276,7 @@ fn script_in(
                 (false, "A script can't start another script.".to_string())
             } else {
                 let args = serde_json::from_str(&args).unwrap_or(json!({}));
-                relay(&mut pipe.borrow_mut(), &client, &tool, &args)
+                (host_fn.borrow_mut())(&tool, &args)
             };
             json!({ "ok": ok, "text": text }).to_string()
         });
@@ -388,8 +385,114 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{handle, run_script};
-    use serde_json::json;
+    use super::{handle, run_script, script_in, Host};
+    use serde_json::{json, Value};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// A script against a fake ZYNLEX: `page` answers by op; every call is logged.
+    fn on_fake_page(code: &str, writes: usize) -> (bool, String, Vec<String>) {
+        let log = Rc::new(RefCell::new(Vec::<String>::new()));
+        let seen = log.clone();
+        let host: Host = Rc::new(RefCell::new(move |tool: &str, args: &Value| {
+            let op = args["op"].as_str().unwrap_or("").to_string();
+            seen.borrow_mut().push(if args.get("since").is_some() {
+                format!("{op} since")
+            } else {
+                op.clone()
+            });
+            if tool != "page" {
+                return (true, String::new());
+            }
+            match op.as_str() {
+                "writes" if args.get("since").is_none() => (true, r#"{"last":10}"#.into()),
+                "writes" => {
+                    let list: Vec<Value> = (0..writes)
+                        .map(|i| json!({ "method": "POST", "url": format!("http://localhost:5173/api/b{i}"), "status": 201, "mocked": false }))
+                        .collect();
+                    (
+                        true,
+                        json!({ "last": 10 + writes, "list": list }).to_string(),
+                    )
+                }
+                "act" if args["selector"] == "#fail" => {
+                    (false, "No element matches \"#fail\" after waiting.".into())
+                }
+                "goto" => (
+                    true,
+                    r#"{"url":"http://localhost:5173/cart","unsettled":null,"dialog":null}"#.into(),
+                ),
+                "problems" => (true, r#"{"lines":[]}"#.into()),
+                _ => (true, r#"{"dialog":null}"#.into()),
+            }
+        }));
+        let (ok, text) = script_in(host, code, "");
+        let calls = log.borrow().clone();
+        (ok, text, calls)
+    }
+
+    /// A failed script says what already took effect, and what a rerun would send again.
+    #[test]
+    fn failure_lists_what_ran_and_what_was_sent() {
+        let (ok, text, _) = on_fake_page(
+            "await page.goto('http://localhost:5173/cart'); await page.click('#a'); await page.click('#a'); await page.fill('#b', 'hunter2'); await page.click('#fail');",
+            7,
+        );
+        assert!(!ok);
+        let lines: Vec<&str> = text.lines().collect();
+        assert!(
+            lines[0].starts_with("Script failed at line 1: Error: No element matches"),
+            "{text}"
+        );
+        assert_eq!(
+            lines[1],
+            r##"Done before it failed: goto /cart, clicked "#a" ×2, filled "#b"."##
+        );
+        assert_eq!(
+            lines[2],
+            "Sent before it failed: POST /api/b0 201, POST /api/b1 201, POST /api/b2 201, POST /api/b3 201, POST /api/b4 201 (+2 more); a rerun sends these again."
+        );
+        assert!(!text.contains("hunter2"), "typed text never shows: {text}");
+
+        // A long run keeps the last 8.
+        let clicks: String = (0..12)
+            .map(|i| format!("await page.click('#s{i}'); "))
+            .collect();
+        let (_, text, _) = on_fake_page(&format!("{clicks} await page.click('#fail');"), 0);
+        assert!(
+            text.contains(r##"Done before it failed: (4 earlier) clicked "#s4","##),
+            "{text}"
+        );
+        assert!(!text.contains("Sent before"), "no writes, no line: {text}");
+    }
+
+    /// Success replies don't change (the benchmark's tokens are spent there).
+    #[test]
+    fn success_reply_is_unchanged() {
+        let (ok, text, calls) = on_fake_page(
+            "await page.goto('http://localhost:5173/cart'); await page.click('#a'); return 1;",
+            3,
+        );
+        assert!(ok);
+        assert_eq!(text, "1\nNo new errors or failed requests.");
+        assert!(!calls.contains(&"writes since".to_string()), "{calls:?}");
+        assert!(!calls.contains(&"unsize".to_string()), "{calls:?}");
+    }
+
+    /// A phone size the script set comes off when it ends, failed or not.
+    #[test]
+    fn script_size_comes_off_at_the_end() {
+        let code = "await page.setViewportSize({ width: 375, height: 700 }); await page.goto('http://localhost:5173/'); await page.click('#fail');";
+        let (_, _, calls) = on_fake_page(code, 0);
+        let size = calls.iter().position(|c| c == "size").expect("size sent");
+        let goto = calls.iter().position(|c| c == "goto").unwrap();
+        assert!(goto < size, "the size waits for goto: {calls:?}");
+        assert_eq!(
+            calls.last().map(String::as_str),
+            Some("unsize"),
+            "{calls:?}"
+        );
+    }
 
     /// Scripts that never reach a page, so no test talks to a running ZYNLEX.
     #[test]
