@@ -82,6 +82,50 @@ bugs didn't show). Those were made with these bugs in view.
 | agent-browser 0.43.0 | 24/24 | 541k | 21.5 | 15 | $0.354 | $8.49 |
 | Chrome DevTools MCP 1.13.0 | 23/24 | 565k | 19 | 14 | $0.382 | $9.16 |
 
+All 24 runs, not just the middle one: total input tokens, the cheapest and
+dearest run, and time (wall clock, from Claude Code starting to the agent
+stopping):
+
+| Tool | Tokens, all runs | Cheapest run | Dearest run | Time per run (median) | Time, all runs |
+|---|---|---|---|---|---|
+| ZYNLEX 0.19 | 4.35M | 128k | 272k | 42 s | 18.6 min |
+| ZYNLEX, round 2 | 4.49M | 128k | 383k | 46 s | 20.2 min |
+| ZYNLEX, blind | 6.16M | 128k | 900k | 57 s | 25.2 min |
+| OpenCode Browse 0.1.1 | 6.69M | 129k | 598k | 55 s | 24.4 min |
+| Playwright MCP 0.0.85 | 14.84M | 379k | 1,239k | 66 s | 29.4 min |
+| agent-browser 0.43.0 | 13.98M | 328k | 1,035k | 132 s | 55.6 min |
+| Chrome DevTools MCP 1.13.0 | 14.63M | 293k | 1,446k | 61 s | 26.3 min |
+
+Per bug, every tool fixed all 3 runs, except DevTools MCP on `evsearch`
+(2 of 3). Median time per bug, in seconds:
+
+| Task | ZYNLEX 0.19 | ZYNLEX, blind | Browse | Playwright MCP | agent-browser | DevTools MCP |
+|---|---|---|---|---|---|---|
+| `evsearch` | 38 | 86 | 76 | 61 | 131 | 66 |
+| `details` | 27 | 33 | 31 | 64 | 120 | 35 |
+| `price` | 51 | 58 | 50 | 65 | 79 | 47 |
+| `seats` | 49 | 46 | 82 | 112 | 162 | 73 |
+| `comments` | 36 | 31 | 56 | 70 | 181 | 44 |
+| `cancel` | 42 | 94 | 65 | 58 | 165 | 68 |
+| `settings` | 61 | 56 | 68 | 72 | 132 | 60 |
+| `mobile` | 42 | 59 | 50 | 62 | 98 | 78 |
+
+What "tokens" counts: every input token of the whole Claude Code run, every
+turn (cache reads and writes included), so the system prompt, each tool's
+instructions and tool list, and every retry or failed call inside the run are
+in it. Output tokens are in the results file, not these tables. A run that
+didn't fix its bug stays in the medians and totals (DevTools MCP's failed
+`evsearch` run is its dearest, 1.45M).
+
+How this round was run, and what the next one changes: the tools ran one
+after another (all of ZYNLEX's runs, then Playwright MCP's, and so on), not
+interleaved. The other tools start a clean browser per run; ZYNLEX's runs
+shared one app, each on its own host and origin (so separate storage), and
+that sharing is how the `mobile` run's viewport leaked into later runs before
+the fix. The next round freezes ZYNLEX before it starts, uses bugs it hasn't
+seen, interleaves the tools in random order, and closes the app's tabs and
+emulation between runs.
+
 Median tokens per bug:
 
 | Task | ZYNLEX 0.19 | ZYNLEX, blind | Browse | Playwright MCP | agent-browser | DevTools MCP |
