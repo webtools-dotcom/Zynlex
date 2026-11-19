@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-19
+
+When an AI agent's script fails part-way, it now knows what already happened,
+and an agent can open ZYNLEX itself when you allow it.
+
+### Added
+
+- **A failed script says what already took effect.** Besides the error, the
+  reply lists the page actions that ran (never the text typed) and the
+  requests that can change something on a server (POST, PUT, DELETE...) it
+  sent, which a rerun would send again. A successful script's reply is
+  unchanged.
+- **ZYNLEX can open itself for an agent.** Tick "Open ZYNLEX when the agent
+  needs it and it's closed" in Settings → AI agents and use the setup it shows:
+  when the agent calls a tool and ZYNLEX isn't running, it's started, instead
+  of the agent stopping to ask you. Off by default.
+- In one batch of steps, a later step can use an element an earlier step
+  revealed, such as a button on a tab the first step opened.
+
+### Changed
+
+- When a redrawn page has several elements like the one the agent meant, the
+  reply says so and names them, instead of saying the element is gone.
+- Step replies no longer show a field's value from before the step.
+- Screenshot replies say how image pixels relate to page pixels when Windows
+  display scaling is on (for example 125%).
+
+### Fixed
+
+- A phone size set by an agent's script stayed on the tab after the script,
+  so the next run was at phone size too. It's now removed when the script
+  ends.
+
 ## [0.19.2] - 2026-11-18
 
 Fixes for apps like Streamlit, from an agent that tested one through ZYNLEX.
@@ -523,7 +556,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.19.2...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.20.0
 [0.19.2]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.2
 [0.19.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.1
 [0.19.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.0
