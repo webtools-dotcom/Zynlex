@@ -864,12 +864,60 @@ describe("agent tools", () => {
       expect(actsOnPage("page", { op: "responses" })).toBe(false);
     });
 
+    it("keeps a failed script's writes across page loads, in scope only", async () => {
+      const net = useNetworkStore.getState();
+      useNetworkStore.setState({ writes: [] });
+      const mark = JSON.parse(await runAgentTool("page", { op: "writes" })).last;
+      net.addEntry({ ...row("net-20", 201, "http://localhost:5173/api/bookings"), method: "POST" });
+      net.addEntry({ ...row("net-21", 200, "http://localhost:5173/api/events"), method: "GET" });
+      net.addEntry({
+        ...row("net-22", 204, "https://mail.example.com/x"),
+        method: "DELETE",
+        tabId: "zzzzzzzz-9",
+      });
+      // The page loads again: the tab's log is cleared, its writes are not.
+      net.clearTab("aaaaaaaa-1");
+      const r = JSON.parse(await runAgentTool("page", { op: "writes", since: mark }));
+      expect(r.list).toEqual([
+        { method: "POST", url: "http://localhost:5173/api/bookings", status: 201, mocked: false },
+      ]);
+      // It needs no tab.
+      useTabsStore.setState({ tabs: {} });
+      expect(JSON.parse(await runAgentTool("page", { op: "writes" })).last).toBe(22);
+    });
+
+    it("takes a script's phone size off its tab when the script ends", async () => {
+      listenForAgents();
+      hooks.answer = (method, p) =>
+        method === "Runtime.evaluate"
+          ? (p as { expression?: string }).expression === "navigator.userAgent"
+            ? { result: { value: "UA" } }
+            : { result: { value: { ready: "complete", quietMs: 900 } } }
+          : {};
+      const sized = await runAgentTool("page", { op: "size", width: 375, height: 700 });
+      expect(JSON.parse(sized)).toEqual({});
+      hooks.cdp.length = 0;
+      expect(await runAgentTool("page", { op: "unsize" })).toBe("{}");
+      expect(hooks.cdp).toEqual([
+        "Emulation.setUserAgentOverride",
+        "Emulation.setTouchEmulationEnabled",
+        "Emulation.clearDeviceMetricsOverride",
+      ]);
+      // Only once: the size is gone.
+      hooks.cdp.length = 0;
+      await runAgentTool("page", { op: "unsize" });
+      expect(hooks.cdp).toEqual([]);
+      hooks.answer = null;
+    });
+
     it("counts its actions as acting on the page for Pause, not its reads", () => {
       expect(actsOnPage("page", { op: "act" })).toBe(true);
       expect(actsOnPage("page", { op: "goto" })).toBe(true);
       expect(actsOnPage("page", { op: "state" })).toBe(false);
       expect(actsOnPage("page", { op: "problems" })).toBe(false);
       expect(actsOnPage("page", { op: "cookies" })).toBe(false);
+      expect(actsOnPage("page", { op: "writes" })).toBe(false);
+      expect(actsOnPage("page", { op: "unsize" })).toBe(false);
     });
   });
 

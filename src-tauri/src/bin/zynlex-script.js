@@ -11,6 +11,16 @@ const __notes = [];
 const __handlers = [];
 // Whether the script touched a page: only then does the reply end with its errors.
 let __used = false;
+// What the script did to the page, and the newest write before its first page
+// call: a failure reply lists both, so a rerun knows what already took effect.
+const __done = [];
+let __writesFrom = null;
+let __sized = false;
+const __did = (s) => {
+  const last = __done[__done.length - 1];
+  if (last && last.s === s) last.n++;
+  else __done.push({ s, n: 1 });
+};
 const FIND_WAIT = 10000;
 
 const __call = (tool, args) => {
@@ -27,9 +37,17 @@ let __size = null;
 const __applySize = () => {
   const s = __size;
   __size = null;
-  if (s) __call("viewport", __withTab({ width: s.width, height: s.height }));
+  if (!s) return;
+  __op("size", { width: s.width, height: s.height });
+  __sized = true;
 };
 const __op = (op, args) => {
+  if (__writesFrom === null) {
+    __writesFrom = -1;
+    try {
+      __writesFrom = JSON.parse(__call("page", { op: "writes" })).last;
+    } catch {}
+  }
   if (__size && op !== "goto") __applySize();
   __used = true;
   const text = __call("page", __withTab(Object.assign({}, args, { op })));
@@ -84,11 +102,29 @@ async function __dialogs(r) {
       __notes.push(`Dismissed ${d.type} "${d.message}" (no page.on("dialog") handler).`);
     }
     r = __op("dialog", answer);
+    __did(`${answer.accept ? "accepted" : "dismissed"} ${d.type} ${__q(String(d.message).slice(0, 40))}`);
   }
 }
 
+const __VERBS = { click: "clicked", hover: "hovered", type: "filled", insert: "typed into", select: "selected in" };
+/** A locator as a failure reply names it: the selector's last 40 characters, and its index. */
+const __target = (loc) => {
+  const s = loc._sel.length > 40 ? `…${loc._sel.slice(-39)}` : loc._sel;
+  return __q(s) + (loc._nth == null ? "" : `[${loc._nth}]`);
+};
+/** "clicked "#add"": what was done, never the text typed (it costs tokens and may be a password). */
+const __actLabel = (action, loc, text) =>
+  action === "press"
+    ? `pressed ${text}${loc ? ` in ${__target(loc)}` : ""}`
+    : action === "back" || action === "forward"
+      ? `went ${action}`
+      : loc
+        ? `${__VERBS[action] ?? action} ${__target(loc)}`
+        : "typed text";
+
 async function __act(action, loc, text, delay) {
   const r = __op("act", { action, selector: loc ? loc._sel : null, nth: loc ? loc._nth : null, text, delay });
+  __did(__actLabel(action, loc, text));
   await __dialogs(r);
 }
 
@@ -449,13 +485,16 @@ function __frame(prefix, info = {}) {
 const page = Object.assign(__scope(""), {
   async goto(url) {
     const r = __op("goto", { url });
+    __did(`goto ${String(r.url || url).replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, "") || "/"}`);
     __went = true;
     __applySize();
     await __dialogs(r);
     return { ok: () => true, status: () => 200, url: () => r.url };
   },
   async reload() {
-    await __dialogs(__op("reload"));
+    const r = __op("reload");
+    __did("reloaded");
+    await __dialogs(r);
   },
   async goBack() {
     await __act("back", null);
@@ -587,6 +626,7 @@ function __report(err, value) {
     const what = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
     const m = /at <anonymous> \(eval_script:(\d+):\d+\)/.exec(String(err && err.stack));
     out.push(`Script failed${m ? ` at line ${Number(m[1]) - 1}` : ""}: ${what}`);
+    out.push(...__trail());
   }
   else out.push(value === undefined ? "Done (nothing returned)." : cut(__show(value), 4000));
   if (__logs.length) out.push("Log:", cut(__logs.join("\n"), 2000));
@@ -599,5 +639,52 @@ function __report(err, value) {
       out.push(`(Couldn't read the page's errors: ${e.message})`);
     }
   }
+  // A size the script set comes off when it ends, so the next run (or the
+  // developer) doesn't find the tab still at phone size.
+  if (__sized) {
+    try {
+      __call("page", __withTab({ op: "unsize" }));
+    } catch {}
+  }
   return JSON.stringify({ ok: !err, text: out.join("\n") });
+}
+
+/** "a, b ×2, c": repeats folded, at most `max` kept, the rest counted (`more` names where they were). */
+function __fold(items, max, more) {
+  const runs = [];
+  for (const s of items) {
+    const last = runs[runs.length - 1];
+    if (last && last.s === s.s) last.n += s.n;
+    else runs.push({ s: s.s, n: s.n });
+  }
+  const shown = more === "earlier" ? runs.slice(-max) : runs.slice(0, max);
+  const list = shown.map((r) => (r.n > 1 ? `${r.s} ×${r.n}` : r.s)).join(", ");
+  const rest = runs.length - shown.length;
+  if (!rest) return list;
+  return more === "earlier" ? `(${rest} earlier) ${list}` : `${list} (+${rest} more)`;
+}
+
+/**
+ * A failed script's trail: the page actions that ran before it failed, and the
+ * requests that can change a server (POST, PUT, DELETE...) it sent, which a
+ * rerun sends again. Nothing on a success: that reply stays as it was.
+ */
+function __trail() {
+  const lines = [];
+  if (__done.length) lines.push(`Done before it failed: ${__fold(__done, 8, "earlier")}.`);
+  else if (__used) lines.push("Nothing was done on the page before it failed.");
+  if (typeof __writesFrom === "number" && __writesFrom >= 0) {
+    try {
+      const list = JSON.parse(__call("page", { op: "writes", since: __writesFrom })).list;
+      if (list.length) {
+        const path = (u) => String(u).replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, "") || "/";
+        const items = list.map((w) => ({
+          s: `${w.method} ${path(w.url)} ${w.status}${w.mocked ? " (mocked)" : ""}`,
+          n: 1,
+        }));
+        lines.push(`Sent before it failed: ${__fold(items, 5, "more")}; a rerun sends these again.`);
+      }
+    } catch {}
+  }
+  return lines;
 }

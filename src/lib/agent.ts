@@ -1609,6 +1609,22 @@ function redrawn(tab: AgentTab, ref: number | null, err: unknown): number | null
   return now === ref ? null : now;
 }
 
+/**
+ * A failed script's "Sent before it failed" line: without `since`, the mark
+ * (the newest write's number); with it, the writes after it on tabs in scope.
+ */
+function pageWrites(args: Args): string {
+  const { writes } = useNetworkStore.getState();
+  const last = writes[writes.length - 1]?.n ?? 0;
+  if (typeof args.since !== "number") return JSON.stringify({ last });
+  const since = args.since;
+  const tabs = new Set(scopedTabs().map((t) => t.id));
+  const list = writes
+    .filter((w) => w.n > since && tabs.has(w.tabId))
+    .map(({ method, url, status, mocked }) => ({ method, url, status, mocked }));
+  return JSON.stringify({ last, list });
+}
+
 /** The URL `open` was asked for, scheme added; empty if none was given. */
 function openUrl(args: Args): string {
   const raw = typeof args.url === "string" ? args.url.trim() : "";
@@ -1790,7 +1806,24 @@ async function networkTool(args: Args): Promise<string> {
  * the device's user agent. The page lays out at that size inside the tab, so
  * the developer sees it too. `reset` clears all of it.
  */
-async function viewportTool(args: Args): Promise<string> {
+/** Ends a tab's device emulation: user agent, touch, then (as when applying) the size last. */
+async function unemulate(tabId: string): Promise<void> {
+  const current = emulated.get(tabId);
+  if (!current) return;
+  await tabCdp(tabId, "Emulation.setUserAgentOverride", { userAgent: current.originalUa });
+  await tabCdp(tabId, "Emulation.setTouchEmulationEnabled", { enabled: false });
+  await tabCdp(tabId, "Emulation.clearDeviceMetricsOverride");
+  emulated.delete(tabId);
+}
+
+/**
+ * Per agent, the tabs its scripts sized with setViewportSize. The size comes
+ * off when the script ends, so a later run (or the developer) doesn't find
+ * the tab still at phone size.
+ */
+const scriptSized = new Map<number, Set<string>>();
+
+async function viewportTool(args: Args, quiet = false): Promise<string> {
   const tab = tabOf(args);
   await showTab(tab);
   const urlBefore = (useTabsStore.getState().tabs[tab.id] ?? tab).url;
@@ -1799,11 +1832,7 @@ async function viewportTool(args: Args): Promise<string> {
 
   if (device.toLowerCase() === "reset") {
     if (!current) return `${header(tab)}\nNot emulating a device; nothing to reset.`;
-    // Same order as applying: the size change comes last.
-    await tabCdp(tab.id, "Emulation.setUserAgentOverride", { userAgent: current.originalUa });
-    await tabCdp(tab.id, "Emulation.setTouchEmulationEnabled", { enabled: false });
-    await tabCdp(tab.id, "Emulation.clearDeviceMetricsOverride");
-    emulated.delete(tab.id);
+    await unemulate(tab.id);
     return [`Back to the normal window size.`, ...(await consequences(tab, urlBefore))].join("\n");
   }
 
@@ -1858,6 +1887,8 @@ async function viewportTool(args: Args): Promise<string> {
   // overflows (see docs/architecture.md, Viewport emulation).
   await tabCdp(tab.id, "Emulation.setPageScaleFactor", { pageScaleFactor: 1 });
   emulated.set(tab.id, { ...preset, originalUa });
+  // A script's setViewportSize wants the size, not a report of the page.
+  if (quiet) return "";
   const ua = preset.userAgent
     ? " Its user agent applies to requests from now on; reload (check reload=true) if the server sniffs it."
     : "";
@@ -2156,6 +2187,15 @@ const PAGE_NO_TARGET = ["press", "insert", "back", "forward"];
  * script's `page.on("dialog")` handler (or its default, dismiss) to answer.
  */
 async function pageTool(args: Args): Promise<string> {
+  // Needs no tab: the writes sent since a mark, on tabs in scope.
+  if (args.op === "writes") return pageWrites(args);
+  // The script ended: the sizes it set come off its tabs.
+  if (args.op === "unsize") {
+    const sized = scriptSized.get(clientOf(args));
+    scriptSized.delete(clientOf(args));
+    for (const id of sized ?? []) await unemulate(id).catch(() => {});
+    return "{}";
+  }
   // A script's page.goto(url) to another site than the active tab's (or with
   // no tab open) gets a tab of its own: never the developer's tab of some
   // other app, nor a tab an earlier agent left emulating a phone.
@@ -2235,6 +2275,13 @@ async function pageTool(args: Args): Promise<string> {
         headers[key] = key in headers ? `${headers[key]}\n${v}` : v;
       }
       return out({ value: n.body, headers });
+    }
+    case "size": {
+      // setViewportSize(): a viewport call whose page report the script doesn't want.
+      await viewportTool({ ...args, tab: tab.id, device: undefined }, true);
+      const mine = scriptSized.get(clientOf(args)) ?? new Set<string>();
+      scriptSized.set(clientOf(args), mine.add(tab.id));
+      return out({});
     }
     case "cookies": {
       // context().cookies(): the tab's own URL's cookies (httpOnly ones too), nothing wider.

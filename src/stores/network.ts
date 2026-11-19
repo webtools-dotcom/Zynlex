@@ -59,6 +59,12 @@ export interface SocketLog {
 interface NetworkStore {
   entriesByTab: Record<string, NetworkLogEntry[]>;
   socketsByTab: Record<string, SocketLog[]>;
+  /**
+   * The newest requests that can change something on a server (not GET, HEAD
+   * or OPTIONS), across page loads: a page load clears the tab's log, and a
+   * script that failed after a navigation still has to say what it sent.
+   */
+  writes: NetworkWrite[];
   /** While paused, incoming entries are dropped — capture keeps running. */
   paused: boolean;
   /** When true, a page load does not clear the tab's log. */
@@ -72,6 +78,19 @@ interface NetworkStore {
 }
 
 const MAX_ENTRIES_PER_TAB = 500;
+const MAX_WRITES = 50;
+
+/** One request in `writes`; `n` is the number in its entry's `net-N` id. */
+export interface NetworkWrite {
+  n: number;
+  tabId: string;
+  method: string;
+  url: string;
+  status: number;
+  mocked: boolean;
+}
+
+const READS = new Set(["GET", "HEAD", "OPTIONS"]);
 /** Sockets kept per tab (oldest dropped) and frames kept per socket. */
 const MAX_SOCKETS = 20;
 export const MAX_FRAMES = 50;
@@ -144,6 +163,7 @@ export async function withBody(
 export const useNetworkStore = create<NetworkStore>()((set) => ({
   entriesByTab: {},
   socketsByTab: {},
+  writes: [],
   paused: false,
   preserveLog: false,
   setPaused: (paused) => {
@@ -157,11 +177,22 @@ export const useNetworkStore = create<NetworkStore>()((set) => ({
       if (s.paused) return s;
       const tab = s.entriesByTab[entry.tabId] ?? [];
       const next = [...tab, entry].slice(-MAX_ENTRIES_PER_TAB);
+      const write: NetworkWrite = {
+        n: Number(entry.id.slice(4)) || 0,
+        tabId: entry.tabId,
+        method: entry.method,
+        url: entry.url,
+        status: entry.statusCode,
+        mocked: !!entry.mocked,
+      };
       return {
         entriesByTab: {
           ...s.entriesByTab,
           [entry.tabId]: next,
         },
+        ...(READS.has(entry.method.toUpperCase())
+          ? {}
+          : { writes: [...s.writes, write].slice(-MAX_WRITES) }),
       };
     }),
   addSocketEvent: (e) =>
