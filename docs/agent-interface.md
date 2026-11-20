@@ -328,6 +328,8 @@ so the next try is right instead of a snapshot. `frameLocator()`,
 `locator.contentFrame()` and `page.frames()` reach same-origin iframes (a `frame`
 step into the iframe's document). `reload`, and `goto` to the page the tab is
 already on, reload past the cache: after an edit, the old script must not run.
+A script without `goto` runs on the tab as it is, so a half-filled form or
+state kept in memory survives; the tool description tells agents so.
 `goto` with no tab open, or to another site than the active tab's, opens a
 tab of its own: a script never takes over the developer's tab of another app
 (nor a tab an earlier agent left emulating a phone). `type()` sends one input

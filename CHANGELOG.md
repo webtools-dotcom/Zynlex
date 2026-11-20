@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The `script` tool's description now tells agents that `goto` to the page
+  already open reloads it past the cache, and that a script without `goto`
+  keeps the page as it is (a half-filled form, state kept in memory).
+
 ## [0.20.1] - 2026-11-19
 
 ### Changed
