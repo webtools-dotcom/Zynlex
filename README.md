@@ -114,6 +114,8 @@ After each code change the agent calls `check`, which waits for the page to sett
 
 Both, for different jobs. Keep Playwright for CI.
 
+The full comparison, with the film and every bug's numbers: [ZYNLEX vs Playwright MCP](https://webtools-dotcom.github.io/Zynlex/zynlex-vs-playwright-mcp.html).
+
 | | ZYNLEX | Playwright MCP |
 |---|---|---|
 | Where the agent works | Your open browser, in front of you | A browser it launches, or your Chrome through an extension |

@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZYNLEX vs Playwright MCP: a browser MCP benchmark for Claude Code</title>
+<meta name="description" content="ZYNLEX and Playwright MCP fixed the same 24 bug runs with Claude Code. ZYNLEX used 176k tokens per bug, Playwright MCP 511k. The film, the per-bug numbers, why the gap exists, and when Playwright MCP is still the better choice.">
+<link rel="canonical" href="https://webtools-dotcom.github.io/Zynlex/zynlex-vs-playwright-mcp.html">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="theme-color" content="#0b0b0a">
+
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="ZYNLEX">
+<meta property="og:title" content="ZYNLEX vs Playwright MCP: the same bugs, 66% fewer tokens">
+<meta property="og:description" content="Claude Code fixed the same bugs with each browser MCP. The data, the film, and when to use which.">
+<meta property="og:url" content="https://webtools-dotcom.github.io/Zynlex/zynlex-vs-playwright-mcp.html">
+<meta property="og:image" content="https://webtools-dotcom.github.io/Zynlex/assets/race-poster.jpg">
+<meta property="og:image:width" content="1920">
+<meta property="og:image:height" content="1080">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="preload" href="fonts/jetbrains-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/space-grotesk-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Is ZYNLEX an alternative to Playwright MCP?",
+      "acceptedAnswer": { "@type": "Answer", "text": "For testing your own localhost app with a coding agent on Windows, yes. Both fixed all 24 bug runs in our benchmark; ZYNLEX used 176k input tokens per bug against Playwright MCP's 511k. For CI, headless runs, macOS or Linux, or Firefox and WebKit, keep Playwright MCP." } },
+    { "@type": "Question", "name": "Which browser MCP uses the fewest tokens with Claude Code?",
+      "acceptedAnswer": { "@type": "Answer", "text": "In our fresh benchmark (8 new bugs, 3 runs each, Claude Code with Sonnet, every tool the same day) the medians were: ZYNLEX 176k, OpenCode Browse 290k, Playwright MCP 511k, agent-browser 541k, Chrome DevTools MCP 565k. The harness and every result row are public." } },
+    { "@type": "Question", "name": "Why does Playwright MCP use more tokens?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Mostly turns. Claude Code re-sends its whole context every turn, so a run of 19.5 turns costs far more than one of 8, even when each reply is small. With Playwright MCP agents usually take one action per call; with ZYNLEX they write one script that opens the page, does every step and returns what they need to see." } },
+    { "@type": "Question", "name": "How do I add ZYNLEX to Claude Code?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Install ZYNLEX for Windows, then run: claude mcp add zynlex zynlex-mcp. ZYNLEX opens itself when the agent needs it." } }
+  ]
+}
+</script>
+
+<style>
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 500; font-display: swap; src: url(fonts/jetbrains-mono-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-weight: 500; font-display: swap; src: url(fonts/space-grotesk-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-weight: 700; font-display: swap; src: url(fonts/space-grotesk-latin-700-normal.woff2) format("woff2"); }
+/* Same tokens as index.html (the app's "Warm Ivory"). */
+:root {
+  --base: #0b0b0a; --surface: #100f0d; --elevated: #17150f; --border: #26251f; --border-subtle: #1c1b16;
+  --text: #e8e6e0; --text-2: #b8b6ae; --muted: #8a887f; --disabled: #57564e; --accent: #dcd3c4; --win: #ff5a00;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --display: "Space Grotesk", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--base); color: var(--text); font: 15px/1.65 var(--mono); }
+a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { color: #fff; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+code { font-family: var(--mono); color: var(--text); }
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 32px; } }
+.eyebrow { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); }
+header { border-bottom: 1px solid var(--border-subtle); }
+header .wrap { display: flex; align-items: center; gap: 20px; height: 56px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 500; letter-spacing: .14em; font-size: 13px; }
+.brand img { width: 22px; height: 22px; }
+header nav { margin-left: auto; display: flex; gap: 20px; font-size: 13px; }
+header nav a { color: var(--muted); text-decoration: none; }
+header nav a:hover { color: var(--text); }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(34px, 6vw, 60px); line-height: 1.04; letter-spacing: -.03em; margin: 16px 0 20px; }
+h2 { font-family: var(--display); font-weight: 700; font-size: clamp(24px, 3.6vw, 34px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 16px; }
+.hero { padding: 64px 0 24px; }
+.lede { color: var(--text-2); max-width: 62ch; margin: 0; }
+section { padding: 64px 0; border-top: 1px solid var(--border-subtle); }
+section p, section li { color: var(--text-2); max-width: 68ch; }
+.film { display: block; width: 100%; height: auto; margin-top: 32px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.cap { font-size: 13px; color: var(--muted); margin-top: 10px; }
+.nums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden; margin-top: 32px; }
+@media (min-width: 820px) { .nums { grid-template-columns: repeat(4, 1fr); } }
+.num { background: var(--base); padding: 22px 20px; }
+.num b { display: block; font-family: var(--display); font-weight: 700; font-size: clamp(26px, 3.6vw, 38px); letter-spacing: -.03em; line-height: 1; }
+.num span { display: block; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.scroll { overflow-x: auto; margin-top: 20px; border: 1px solid var(--border); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+th.n { text-align: right; }
+td.win { color: var(--win); font-weight: 500; }
+.two { display: grid; gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: 10px; overflow: hidden; margin-top: 24px; }
+@media (min-width: 820px) { .two { grid-template-columns: 1fr 1fr; } }
+.two div { background: var(--base); padding: 22px; }
+.two b { display: block; font-weight: 500; margin-bottom: 8px; }
+.two ul { margin: 0; padding-left: 18px; font-size: 13px; }
+.two li { margin: 4px 0; color: var(--text-2); }
+pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 13px; color: var(--text-2); }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.btn { display: inline-flex; align-items: center; padding: 12px 18px; border-radius: 6px; font: 500 14px var(--mono); text-decoration: none; border: 1px solid var(--border); color: var(--text); background: var(--elevated); }
+.btn:hover { border-color: var(--accent); color: var(--text); }
+.btn.primary { background: var(--accent); color: var(--base); border-color: var(--accent); }
+.btn.primary:hover { background: #efe8da; color: var(--base); }
+footer { border-top: 1px solid var(--border-subtle); padding: 32px 0 48px; font-size: 12px; color: var(--muted); }
+footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="./"><img src="assets/logo.png" alt="" width="22" height="22">ZYNLEX</a>
+    <nav>
+      <a href="./">Home</a>
+      <a href="https://github.com/webtools-dotcom/Zynlex/tree/main/benchmark">Benchmark</a>
+      <a href="https://github.com/webtools-dotcom/Zynlex">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div class="eyebrow">Browser MCP comparison · Claude Code</div>
+    <h1>ZYNLEX vs Playwright MCP</h1>
+    <p class="lede">Both give a coding agent a browser to check its work. We gave Claude Code the same bugs with each one, three runs per bug. Both fixed every run. ZYNLEX did it with about a third of the tokens.</p>
+
+    <div class="nums">
+      <div class="num"><b>176k</b><span>tokens per bug with ZYNLEX</span></div>
+      <div class="num"><b>511k</b><span>tokens per bug with Playwright MCP</span></div>
+      <div class="num"><b>$0.165</b><span>per bug, vs $0.347</span></div>
+      <div class="num"><b>2</b><span>browser calls per bug, vs 14.5</span></div>
+    </div>
+    <p class="cap">Medians over 8 bugs × 3 runs, Claude Code (Sonnet), 24/24 fixed by both. ZYNLEX before the fixes these runs led to: 222k tokens, $0.186, 5.5 browser calls. <a href="https://github.com/webtools-dotcom/Zynlex/tree/main/benchmark">Harness and every result row</a>.</p>
+
+    <video class="film" controls preload="metadata" playsinline poster="assets/race-poster.jpg" width="1920" height="1080" aria-label="The race: the same bug fixed by Claude Code with ZYNLEX and with Playwright MCP, from real benchmark logs at 2x speed. ZYNLEX: 2 browser calls, 170k tokens. Playwright MCP: 20 browser calls, 598k tokens.">
+      <source src="assets/zynlex-race.mp4" type="video/mp4">
+      <a href="assets/zynlex-race.mp4">Watch the film (MP4)</a>
+    </video>
+    <p class="cap">The film: one bug, two real runs from the benchmark logs, played side by side at 2×.</p>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2>One bug, step by step</h2>
+      <p>The bug, as the agent got it: <em>“Posting a comment on an event clears the box, but my comment never shows up.”</em> The cause was the same in both runs: the page posted to <code>/comment</code>, the server only knew <code>/comments</code>. These are the middle runs of three for each tool.</p>
+      <div class="scroll"><table>
+        <tr><th></th><th>ZYNLEX</th><th>Playwright MCP</th></tr>
+        <tr><td>Read the code</td><td>Glob, Read <code>api.py</code>, Glob, Read <code>app.js</code></td><td>Glob, Read <code>api.py</code> and <code>app.js</code></td></tr>
+        <tr><td>See the bug</td><td>1 <code>script</code> call: open the event, type a comment, post it, read the list</td><td><code>browser_navigate</code>, <code>browser_find</code>, <code>browser_type</code>, <code>browser_click</code></td></tr>
+        <tr><td>Fix</td><td>Edit <code>app.js</code></td><td>Edit <code>app.js</code></td></tr>
+        <tr><td>Check the fix</td><td>The same script again: the comment shows</td><td>The same four steps. The page still ran the old <code>app.js</code>, so the post failed again. The agent checked the console, grepped, opened <code>app.js</code> by URL, evaluated, reloaded, and did the four steps a third time.</td></tr>
+        <tr><td>Browser calls</td><td class="win">2</td><td>20</td></tr>
+        <tr><td>Turns</td><td class="win">8</td><td>26</td></tr>
+        <tr><td>Input tokens</td><td class="win">169,712</td><td>598,255</td></tr>
+        <tr><td>Cost</td><td class="win">$0.155</td><td>$0.366</td></tr>
+      </table></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Every bug</h2>
+      <p>Median input tokens per bug, three runs each. “ZYNLEX” is the 0.19 build, made with these bugs in view; “ZYNLEX, blind” is the build before it, which had never seen them. Lower is better.</p>
+      <div class="scroll"><table>
+        <tr><th>Bug</th><th class="n">ZYNLEX</th><th class="n">ZYNLEX, blind</th><th class="n">Playwright MCP</th></tr>
+        <tr><td>search shows unrelated events</td><td class="n win">131k</td><td class="n">329k</td><td class="n">414k</td></tr>
+        <tr><td>wrong event page opens</td><td class="n win">129k</td><td class="n">186k</td><td class="n">540k</td></tr>
+        <tr><td>wrong ticket price</td><td class="n win">250k</td><td class="n">252k</td><td class="n">479k</td></tr>
+        <tr><td>overbooking allowed</td><td class="n">212k</td><td class="n win">169k</td><td class="n">1,097k</td></tr>
+        <tr><td>comment never shows up</td><td class="n">169k</td><td class="n win">128k</td><td class="n">598k</td></tr>
+        <tr><td>cancel booking does nothing</td><td class="n win">156k</td><td class="n">257k</td><td class="n">467k</td></tr>
+        <tr><td>settings lost on reload</td><td class="n">211k</td><td class="n win">180k</td><td class="n">499k</td></tr>
+        <tr><td>phone-size filters broken</td><td class="n win">176k</td><td class="n">317k</td><td class="n">440k</td></tr>
+        <tr><td><b>Median, all 24 runs</b></td><td class="n win"><b>176k</b></td><td class="n"><b>222k</b></td><td class="n"><b>511k</b></td></tr>
+      </table></div>
+      <p class="cap">Same day, same laptop, same model. The other tools in the round: OpenCode Browse 290k, agent-browser 541k, Chrome DevTools MCP 565k.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Why the gap</h2>
+      <p><b>Turns cost more than replies.</b> Claude Code sends its whole conversation again on every turn, so most of a run’s tokens are the same context re-read. A run of 8 turns is cheap; a run of 20 isn’t, even when each browser reply is short.</p>
+      <p><b>One script instead of one action per call.</b> ZYNLEX’s <code>script</code> tool takes a few lines of Playwright-style code: open the page, do every step, return just what the agent needs to see. Playwright MCP can run code too, but in these runs agents stepped through it one action at a time, as its tool list invites.</p>
+      <pre>await page.goto('http://run9313.localhost:9313/#/event/2');
+await page.waitForTimeout(500);
+await page.fill('#comment-text', 'Testing comment bug');
+const [resp] = await Promise.all([
+  page.waitForResponse(r => r.url().includes('/comment')),
+  page.click('#post-comment'),
+]);
+const status = resp.status();
+const url = resp.url();
+await page.waitForTimeout(300);
+const comments = await page.locator('#comments li').allTextContents();
+return { status, url, comments };</pre>
+      <p class="cap">The agent’s first call in the comments run, as it sent it. It returned the 404 and the URL it went to, which is the bug.</p>
+      <p><b>The same window, every time.</b> ZYNLEX runs in the window you have open, and the agent’s script can be run again unchanged after a fix. You can watch every step, flag an element with <code>Ctrl+Shift+E</code> and it reaches the agent as a note, or pause it and take over.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Which one to use</h2>
+      <div class="two">
+        <div>
+          <b>ZYNLEX</b>
+          <ul>
+            <li>You’re on Windows 10 or 11, building a web app on localhost</li>
+            <li>You want to see what the agent does, point at bugs and take over</li>
+            <li>Token cost matters: about a third of Playwright MCP’s here</li>
+            <li>You also want a dev browser: network log, mocks without a proxy, device sizes, an API client</li>
+          </ul>
+        </div>
+        <div>
+          <b>Playwright MCP</b>
+          <ul>
+            <li>You’re on macOS or Linux</li>
+            <li>The agent runs in CI or headless, with no one watching</li>
+            <li>You need Firefox or WebKit, not just Chromium</li>
+            <li>You want Microsoft’s project and the wider Playwright ecosystem</li>
+          </ul>
+        </div>
+      </div>
+      <div class="scroll"><table>
+        <tr><th></th><th>ZYNLEX</th><th>Playwright MCP</th></tr>
+        <tr><td>Where it runs</td><td>Windows 10 / 11</td><td>Windows, macOS, Linux</td></tr>
+        <tr><td>Browser</td><td>The ZYNLEX window you have open (WebView2, Chromium)</td><td>A browser it launches (Chromium, Firefox or WebKit, headed or headless), or your Chrome through an extension</td></tr>
+        <tr><td>Agents reach</td><td>localhost and staging you allow</td><td>Any site</td></tr>
+        <tr><td>Point at an element for the agent</td><td>Yes, <code>Ctrl+Shift+E</code> in the page you’re using</td><td>Partly: annotate in its own dashboard</td></tr>
+        <tr><td>Set up in Claude Code</td><td><code>claude mcp add zynlex zynlex-mcp</code></td><td><code>claude mcp add playwright npx @playwright/mcp@latest</code></td></tr>
+        <tr><td>Price</td><td>Free, Apache-2.0</td><td>Free, Apache-2.0</td></tr>
+      </table></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>How we measured, and the limits</h2>
+      <p>Each run starts a fresh copy of a small web app with one planted bug. Headless Claude Code (<code>claude -p</code>, Sonnet) gets the bug report, file tools and exactly one browser tool. A separate grader checks the fix in Edge and marks it pass or fail. Tokens are every input token of the run, cache reads included.</p>
+      <ul>
+        <li>Our harness, our bugs, one machine, one model. That’s why everything is public to rerun.</li>
+        <li>ZYNLEX ran in a real window, the others headless, so time isn’t a fair comparison; tokens and cost are.</li>
+        <li>The 176k build was made with these bugs in view. The blind build, 222k, hadn’t seen them.</li>
+        <li>Playwright MCP 0.0.85, ZYNLEX 0.19 (blind: main at <code>0ffb7b2</code>), 2026-11-17.</li>
+      </ul>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/webtools-dotcom/Zynlex/releases/latest">Download ZYNLEX for Windows</a>
+        <a class="btn" href="https://github.com/webtools-dotcom/Zynlex/tree/main/benchmark">Read the benchmark</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">ZYNLEX · Apache-2.0 · <a href="./">Home</a> · <a href="https://github.com/webtools-dotcom/Zynlex">GitHub</a> · no cookies, no analytics on this page</div>
+</footer>
+</body>
+</html>
