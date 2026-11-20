@@ -15,9 +15,9 @@ It costs the agent less than Playwright MCP, and it's a developer's browser in i
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-blue)](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
-<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-features.mp4"><img src=".github/assets/agent.gif" alt="One real take with Claude Code and ZYNLEX 0.18: the developer flags the broken Export button with Ctrl+Shift+E; Claude Code's first look at the page starts with that flag; the agent's click shows in the page as an outline and an 'agent: click' label before it happens; Exported 6 orders appears, and the Agent Activity panel lists what the agent did." width="880" /></a>
+<a href="https://webtools-dotcom.github.io/Zynlex/assets/zynlex-race.mp4"><img src=".github/assets/agent.gif" alt="The same bug fixed twice by Claude Code, from real benchmark logs played at 2x: with ZYNLEX it takes 2 browser calls, 34 s and 170k tokens; with Playwright MCP the page keeps the old app.js after the fix and it takes 20 browser calls, 66 s and 598k tokens." width="880" /></a>
 
-<sub>One real take with Claude Code, zoomed and sped up only where marked · [Watch the full film with sound (56 s)](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-features.mp4)</sub>
+<sub>The same bug, the same agent, two browsers: real benchmark logs, 2× speed · [Watch the full film with sound (77 s)](https://webtools-dotcom.github.io/Zynlex/assets/zynlex-race.mp4)</sub>
 
 ### [Download for Windows →](https://github.com/webtools-dotcom/Zynlex/releases/latest)
 
