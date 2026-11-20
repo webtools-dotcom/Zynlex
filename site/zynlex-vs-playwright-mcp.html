@@ -58,17 +58,18 @@ a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness:
 a:hover { color: #fff; }
 :focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 code { font-family: var(--mono); color: var(--text); }
-.wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
 @media (min-width: 720px) { .wrap { padding: 0 32px; } }
 .eyebrow { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
 .muted { color: var(--muted); }
-header { border-bottom: 1px solid var(--border-subtle); }
+header { position: sticky; top: 0; z-index: 10; background: rgba(11,11,10,.86); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-subtle); }
 header .wrap { display: flex; align-items: center; gap: 20px; height: 56px; }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 500; letter-spacing: .14em; font-size: 13px; }
 .brand img { width: 22px; height: 22px; }
 header nav { margin-left: auto; display: flex; gap: 20px; font-size: 13px; }
 header nav a { color: var(--muted); text-decoration: none; }
-header nav a:hover { color: var(--text); }
+header nav a:hover, header nav a[aria-current] { color: var(--text); }
+@media (max-width: 560px) { header nav a.opt { display: none; } }
 h1 { font-family: var(--display); font-weight: 700; font-size: clamp(34px, 6vw, 60px); line-height: 1.04; letter-spacing: -.03em; margin: 16px 0 20px; }
 h2 { font-family: var(--display); font-weight: 700; font-size: clamp(24px, 3.6vw, 34px); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 16px; }
 .hero { padding: 64px 0 24px; }
@@ -103,6 +104,7 @@ pre { background: var(--surface); border: 1px solid var(--border); border-radius
 .btn.primary { background: var(--accent); color: var(--base); border-color: var(--accent); }
 .btn.primary:hover { background: #efe8da; color: var(--base); }
 footer { border-top: 1px solid var(--border-subtle); padding: 32px 0 48px; font-size: 12px; color: var(--muted); }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
 footer a { color: var(--muted); }
 </style>
 </head>
@@ -112,8 +114,11 @@ footer a { color: var(--muted); }
   <div class="wrap">
     <a class="brand" href="./"><img src="assets/logo.png" alt="" width="22" height="22">ZYNLEX</a>
     <nav>
-      <a href="./">Home</a>
-      <a href="https://github.com/webtools-dotcom/Zynlex/tree/main/benchmark">Benchmark</a>
+      <a class="opt" href="./#agents">AI agents</a>
+      <a class="opt" href="./#features">Features</a>
+      <a class="opt" href="./#workflows">Workflows</a>
+      <a href="zynlex-vs-playwright-mcp.html" aria-current="page">Benchmark</a>
+      <a class="opt" href="./#faq">FAQ</a>
       <a href="https://github.com/webtools-dotcom/Zynlex">GitHub</a>
     </nav>
   </div>
@@ -121,7 +126,7 @@ footer a { color: var(--muted); }
 
 <main>
   <div class="wrap hero">
-    <div class="eyebrow">Browser MCP comparison · Claude Code</div>
+    <div class="eyebrow">Benchmark · browser MCPs for Claude Code</div>
     <h1>ZYNLEX vs Playwright MCP</h1>
     <p class="lede">Both give a coding agent a browser to check its work. We gave Claude Code the same bugs with each one, three runs per bug. Both fixed every run. ZYNLEX did it with about a third of the tokens.</p>
 
@@ -254,7 +259,10 @@ return { status, url, comments };</pre>
 </main>
 
 <footer>
-  <div class="wrap">ZYNLEX · Apache-2.0 · <a href="./">Home</a> · <a href="https://github.com/webtools-dotcom/Zynlex">GitHub</a> · no cookies, no analytics on this page</div>
+  <div class="wrap">
+    <span>ZYNLEX · Apache-2.0 · built with Tauri, React and Rust</span>
+    <span><a href="zynlex-vs-playwright-mcp.html">ZYNLEX vs Playwright MCP</a> · <a href="https://github.com/webtools-dotcom/Zynlex/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/webtools-dotcom/Zynlex/issues">Issues</a> · <a href="https://github.com/webtools-dotcom/Zynlex/blob/main/CODE_SIGNING_POLICY.md">Code signing policy</a> · no cookies, no analytics on this page</span>
+  </div>
 </footer>
 </body>
 </html>
