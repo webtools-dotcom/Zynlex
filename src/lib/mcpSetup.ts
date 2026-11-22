@@ -76,7 +76,7 @@ export function mcpSetup(
     case "other":
       return {
         snippet: serversJson(),
-        where: `Any MCP client: a stdio server, this command, ${open ? "with --open" : "no arguments"}.`,
+        where: `Any MCP client: a stdio server, this command, ${open ? "no arguments" : "with --no-open"}.`,
       };
   }
 }

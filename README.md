@@ -66,7 +66,7 @@ Developer flagged e15 button "Apply": does nothing on mobile
 
 ## Cheaper, too
 
-Each action already returns what changed on the page and any new errors, so the agent rarely needs a second look. Steps it already knows (type, then press Enter; click Delete, then accept the confirm) go in a single call. Claude Code re-sends its whole context on every turn, so fewer turns means fewer tokens.
+The agent can do a whole check in one `script` call: open the page, do the steps, return just what it needs to see. Claude Code re-sends its whole context on every turn, so fewer turns means fewer tokens. Step by step, each `act` already returns what changed on the page and any new errors, and steps it already knows (type, then press Enter) go in a single call.
 
 The latest run (2026-11-17): eight new bugs in a new app, written by an agent told nothing about any browser tool, then Claude Code (Sonnet) fixing each one three times with each tool, all the same day.
 
@@ -83,32 +83,39 @@ ZYNLEX was cheapest before we touched it, too. Reading its runs then showed wher
 
 ## What a session looks like
 
-Real replies from the v0.17.0 release, word for word. The agent calls `open` with `http://localhost:7720/`:
+Real calls and replies from the benchmark run behind the numbers above (the comment bug in the film), word for word. The agent has read the code, then sends one `script`:
+
+```js
+await page.goto('http://run9313.localhost:9313/#/event/2');
+await page.waitForTimeout(500);
+await page.fill('#comment-text', 'Testing comment bug');
+const [resp] = await Promise.all([
+  page.waitForResponse(r => r.url().includes('/comment')),
+  page.click('#post-comment'),
+]);
+const status = resp.status();
+const url = resp.url();
+await page.waitForTimeout(300);
+const comments = await page.locator('#comments li').allTextContents();
+return { status, url, comments };
+```
+
+ZYNLEX replies:
 
 ```
-http://localhost:7720/ "Tasks" [dfc7d5cc]
-Page:
-h1 "Tasks"
-textbox "New task" [e2] value=""
-button "Add" [e6]
-combobox "Sort" [e3] value="Oldest" collapsed
-  option "Oldest" [e22] selected
-  option "Newest" [e25]
-button "Load tasks" [e8]
+{"status":404,"url":"http://run9313.localhost:9313/api/events/2/comment","comments":["AnnaI'll bring snacks!"]}
+1 failed requests:
+  net-286 POST 404 /api/events/2/comment
+```
+
+That's the bug: the page posts to `/comment`, the server only has `/comments`. The agent fixes one line in `app.js` and runs the script again (waiting for the POST to `/comments` this time). `goto` to the page that's already open reloads it past the cache, so the fixed code is what runs:
+
+```
+{"status":201,"comments":["AnnaI'll bring snacks!","YouTesting comment bug"],"boxValue":""}
 No new errors or failed requests.
 ```
 
-Then one `act` with two steps, typing into `e2` and pressing Enter in it:
-
-```
-Typed "Release check" into textbox "New task" [e2] value=""
-Pressed Enter in textbox "New task" [e2] value=""
-Page changes:
-+ "Release check"
-No new errors or failed requests.
-```
-
-After each code change the agent calls `check`, which waits for the page to settle and lists only what's new.
+Two browser calls for the whole bug. On a page it doesn't know yet, the agent uses `snapshot` and `act` instead, one step at a time, and after a code change `check` waits for the page to settle and lists only what's new.
 
 ## ZYNLEX or Playwright MCP?
 

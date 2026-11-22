@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already open reloads it past the cache, and that a script without `goto`
   keeps the page as it is (a half-filled form, state kept in memory).
 
+### Fixed
+
+- Settings → AI agents told "Other MCP client" users to run the server with
+  `--open`, the switch from before 0.20.1. It now says no arguments are needed
+  (or `--no-open` when opening is off).
+
 ## [0.20.1] - 2026-11-19
 
 ### Changed

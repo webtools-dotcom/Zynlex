@@ -36,6 +36,8 @@ describe("mcpSetup", () => {
       exe,
       "--no-open",
     ]);
+    expect(mcpSetup("other", exe).where).toContain("no arguments");
+    expect(mcpSetup("other", exe, false).where).toContain("--no-open");
   });
 
   it("covers every listed agent with a snippet and a place to put it", () => {
