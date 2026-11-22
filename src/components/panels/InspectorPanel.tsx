@@ -112,7 +112,7 @@ function MetaSubTab() {
       // best-effort, since some servers reject HEAD entirely.
       let sizeKB: number | undefined;
       try {
-        const resp = await apiFetch({ method: "HEAD", url, headers: {} });
+        const resp = await apiFetch({ method: "HEAD", url, headers: [] });
         const ct = resp.headers.find(([k]) => k.toLowerCase() === "content-type")?.[1];
         if (ct && !ct.startsWith("image/")) {
           setDiagResult({ status: "error", message: `Not an image (${ct})` });

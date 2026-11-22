@@ -33,7 +33,14 @@ export function hostOf(url: string, fallback = ""): string {
 /** A local dev server: localhost, *.localhost, or a loopback address. */
 export function isLoopbackUrl(url: string): boolean {
   const h = hostOf(url);
-  return h === "localhost" || h.endsWith(".localhost") || h === "[::1]" || h.startsWith("127.");
+  // A loopback *address*, not any name starting "127." — 127.evil.com is a public host.
+  // URL() already normalises short forms (http://127.1 → 127.0.0.1).
+  return (
+    h === "localhost" ||
+    h.endsWith(".localhost") ||
+    h === "[::1]" ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)
+  );
 }
 
 /** Host (with port, if any) minus scheme and "www." — a placeholder title

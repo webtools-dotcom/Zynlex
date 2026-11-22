@@ -13,6 +13,7 @@ import { getLiveWorkspaceTabIds } from "@/lib/workspaceTabs";
 import type { useWebviewBridge } from "@/hooks/useWebviewBridge";
 import { openTab, closeTab } from "@/lib/tabActions";
 import { fitMenuOnScreen } from "@/lib/utils";
+import { useUIStore } from "@/stores/ui";
 
 type BridgeType = ReturnType<typeof useWebviewBridge>;
 
@@ -43,6 +44,13 @@ export function TabContextMenu({ tabId, workspaceId, x, y, onClose, bridge }: Ta
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, [onClose]);
+
+  // Hides the page while open: the menu can overlap the content area, and the
+  // page webview would paint over that part of it.
+  useEffect(() => {
+    useUIStore.getState().chromeMenuOpened();
+    return () => useUIStore.getState().chromeMenuClosed();
+  }, []);
 
   // Escape to close
   useEffect(() => {

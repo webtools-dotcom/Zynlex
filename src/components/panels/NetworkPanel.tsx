@@ -486,14 +486,16 @@ export function NetworkPanel() {
         </div>
       </div>
 
-      {/* Search + method/status/type filters */}
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-[var(--color-border)]">
+      {/* Search + method/status/type filters. The search box takes its own row:
+          sharing one with three selects squeezed it to ~14px at the default
+          sidebar width. */}
+      <div className="flex flex-wrap items-center gap-1 px-2 py-1 border-b border-[var(--color-border)]">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter URL"
           aria-label="Filter by URL"
-          className="flex-1 min-w-0 text-micro bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border border-[var(--color-border)] focus:border-[var(--color-accent)] px-1.5 py-0.5"
+          className="basis-full min-w-0 text-micro bg-[var(--color-elevated)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] rounded outline-none border border-[var(--color-border)] focus:border-[var(--color-accent)] px-1.5 py-0.5"
         />
         <select
           value={methodFilter}
@@ -549,7 +551,7 @@ export function NetworkPanel() {
       </div>
 
       {/* Filter Chips */}
-      <div className="flex gap-1 px-2 py-1 border-b border-[var(--color-border)]">
+      <div className="flex flex-wrap gap-1 px-2 py-1 border-b border-[var(--color-border)]">
         {FILTERS.map((f) => {
           let count = entries.length;
           if (f.id === "errors") count = errorCount;
@@ -562,10 +564,11 @@ export function NetworkPanel() {
                 setFilter(f.id);
                 setSelectedId(null);
               }}
-              className={`text-xs px-2.5 py-0.5 rounded-full transition-colors ${
+              aria-pressed={filter === f.id}
+              className={`text-xs px-2.5 py-0.5 rounded-full whitespace-nowrap transition-colors ${
                 filter === f.id
                   ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
-                  : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)]"
               }`}
             >
               {f.label}
@@ -577,10 +580,10 @@ export function NetworkPanel() {
 
       {/* Header + rows share one horizontal scroll region so columns stay aligned
           even when the panel is narrower than GRID_MIN_WIDTH. */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden flex flex-col min-h-0">
+      <div className="@container flex-1 overflow-x-auto overflow-y-hidden flex flex-col min-h-0">
         <div
           style={{ gridTemplateColumns: GRID_COLS, minWidth: GRID_MIN_WIDTH }}
-          className="grid items-center gap-1.5 px-2 h-6 text-micro font-medium text-[var(--color-text-disabled)] uppercase tracking-[0.09em] border-b border-[var(--color-border)] shrink-0"
+          className="grid items-center gap-1.5 px-2 h-6 text-micro font-medium text-[var(--color-text-muted)] uppercase tracking-[0.09em] border-b border-[var(--color-border)] shrink-0"
         >
           <span>Method</span>
           <span className="text-right">Status</span>
@@ -598,7 +601,9 @@ export function NetworkPanel() {
           className="flex-1 overflow-y-auto"
         >
           {filtered.length === 0 ? (
-            <div className="text-micro text-[var(--color-text-muted)] px-3 py-4 italic">
+            // Pinned to the visible width (100cqw of the scroller above), so the
+            // message wraps instead of running off under the wide grid.
+            <div className="sticky left-0 w-[100cqw] text-micro text-[var(--color-text-muted)] px-3 py-4 italic">
               {entries.length > 0 ? (
                 "No requests match the current filter."
               ) : (

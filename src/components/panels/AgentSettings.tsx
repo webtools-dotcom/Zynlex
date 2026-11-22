@@ -67,7 +67,7 @@ export function AgentSettings() {
         Open ZYNLEX when the agent needs it and it's closed
       </label>
       <pre
-        className="mt-2 p-2 text-xs font-mono border rounded whitespace-pre-wrap break-all select-text text-[var(--color-text-primary)]"
+        className="mt-2 p-2 text-xs font-mono border rounded whitespace-pre overflow-x-auto select-text text-[var(--color-text-primary)]"
         style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
       >
         {snippet}

@@ -77,6 +77,7 @@ interface WorkspacesStore {
 
   createWorkspace: (name: string, color?: string, icon?: string) => string;
   deleteWorkspace: (id: string) => void;
+  renameWorkspace: (id: string, name: string) => void;
   setActiveWorkspace: (id: string) => void;
   addTabToWorkspace: (wsId: string, tabId: string) => void;
   removeTabFromWorkspace: (wsId: string, tabId: string) => void;
@@ -117,6 +118,14 @@ export const useWorkspacesStore = create<WorkspacesStore>()(
           if (s.activeWorkspaceId === id) {
             s.activeWorkspaceId = s.workspaceOrder[0];
           }
+        });
+      },
+
+      renameWorkspace: (id, name) => {
+        const clean = name.trim().slice(0, 40);
+        if (!clean) return;
+        set((s) => {
+          if (s.workspaces[id]) s.workspaces[id].name = clean;
         });
       },
 

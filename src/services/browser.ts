@@ -192,7 +192,8 @@ export async function webviewStopFind(tabId: string): Promise<void> {
 interface ApiFetchRequest {
   method: string;
   url: string;
-  headers: Record<string, string>;
+  /** A list, not a map, so a header can be sent more than once. */
+  headers: [string, string][];
   body?: string;
 }
 

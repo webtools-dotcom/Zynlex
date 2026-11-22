@@ -42,7 +42,7 @@ export function ConsolePanel() {
   }, [entries, filter, search]);
 
   const chip = (active: boolean) =>
-    `px-1.5 py-0.5 rounded ${
+    `px-1.5 py-0.5 rounded whitespace-nowrap ${
       active
         ? "bg-[var(--color-accent-dim)] text-[var(--color-text-primary)]"
         : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-hover)]"
@@ -77,12 +77,13 @@ export function ConsolePanel() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-[var(--color-border)] text-micro">
+      <div className="flex flex-wrap items-center gap-1 px-2 py-1 border-b border-[var(--color-border)] text-micro">
         {FILTERS.map((f) => (
           <button
             key={f.id}
             type="button"
             onClick={() => setFilter(f.id)}
+            aria-pressed={filter === f.id}
             className={chip(filter === f.id)}
           >
             {f.label}
@@ -94,6 +95,7 @@ export function ConsolePanel() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter messages"
+          aria-label="Filter messages"
           className="w-full px-2 py-0.5 text-xs border rounded text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)] outline-none focus:border-[var(--color-accent)]"
           style={{ background: "var(--color-elevated)", borderColor: "var(--color-border)" }}
         />

@@ -118,6 +118,7 @@ export function Base64Tool() {
       {/* Input textarea */}
       <textarea
         rows={4}
+        aria-label="Input"
         value={input}
         onChange={(e) => setInput(e.target.value)}
         className="w-full resize-none font-mono text-sm p-2 rounded border outline-none"
@@ -145,6 +146,7 @@ export function Base64Tool() {
       ) : (
         <textarea
           rows={4}
+          aria-label="Output"
           readOnly
           value={output}
           className="w-full resize-none font-mono text-sm p-2 rounded border outline-none"
