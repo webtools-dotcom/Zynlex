@@ -7,17 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-11-22
+
+### Added
+
+- Workspaces can be renamed: right-click a workspace → Rename.
+
 ### Changed
 
 - The `script` tool's description now tells agents that `goto` to the page
   already open reloads it past the cache, and that a script without `goto`
   keeps the page as it is (a half-filled form, state kept in memory).
+- The sidebar's tools wrap onto rows instead of scrolling sideways; at the
+  default width a scroll strip hid 9 of the 15.
+- The sidebar resize handle is easier to grab (8 px instead of 4).
+- The API Tester can send the same header more than once.
 
 ### Fixed
 
 - Settings → AI agents told "Other MCP client" users to run the server with
   `--open`, the switch from before 0.20.1. It now says no arguments are needed
   (or `--no-open` when opening is off).
+- An AI agent restricted to localhost could open any host whose name starts
+  with `127.` (such as `127.example.com`). Only real loopback addresses count
+  as local now.
+- The tab right-click menu was half hidden behind the page, so Pin Tab, Close
+  Tab and Close Other Tabs couldn't be clicked. The page now steps aside while
+  a tab or workspace menu is open.
+- A background tab being put to sleep could close just as you switched to it,
+  leaving it blank.
+- The Network panel's URL filter was squeezed to a sliver at the default
+  sidebar width, and its "recording started" note ran off the side.
+- Console and Network filter labels no longer wrap mid-word.
+- The Settings scan-interval slider used a stray blue instead of the accent
+  colour; the home page search box showed two focus borders; the AI agent
+  setup command broke in the middle of its path.
+- Accessibility: dim labels are easier to read, and Settings switches, the
+  slider and the Base64 boxes now have names for screen readers.
 
 ## [0.20.1] - 2026-11-19
 
@@ -583,7 +609,8 @@ other people could install.
 - The network log captures fetch and XHR, not images, fonts or stylesheets.
 - JWT signatures are decoded, never verified.
 
-[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/webtools-dotcom/Zynlex/compare/v0.20.2...HEAD
+[0.20.2]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.20.2
 [0.20.1]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.20.1
 [0.20.0]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.20.0
 [0.19.2]: https://github.com/webtools-dotcom/Zynlex/releases/tag/v0.19.2
