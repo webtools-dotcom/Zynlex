@@ -70,7 +70,7 @@ The agent can do a whole check in one `script` call: open the page, do the steps
 
 The latest run (2026-11-17): eight new bugs in a new app, written by an agent told nothing about any browser tool, then Claude Code (Sonnet) fixing each one three times with each tool, all the same day.
 
-| | ZYNLEX 0.19 | ZYNLEX, before these fixes | OpenCode Browse | Playwright MCP | agent-browser | Chrome DevTools MCP |
+| | ZYNLEX | ZYNLEX, before these fixes | OpenCode Browse | Playwright MCP | agent-browser | Chrome DevTools MCP |
 |---|---|---|---|---|---|---|
 | Bugs fixed | 24/24 | 24/24 | 24/24 | 24/24 | 24/24 | 23/24 |
 | Tokens per bug (median) | **176k** | 222k | 290k | 511k | 541k | 565k |
@@ -79,7 +79,7 @@ The latest run (2026-11-17): eight new bugs in a new app, written by an agent to
 | Time per bug (median) | **42 s** | 57 s | 55 s | 66 s | 132 s | 61 s |
 | Tokens, all 24 runs | **4.35M** | 6.16M | 6.69M | 14.84M | 13.98M | 14.63M |
 
-ZYNLEX was cheapest before we touched it, too. Reading its runs then showed where agents wasted calls (a script reusing a tab still set to phone size, typing that couldn't trigger a keystroke race, Playwright methods agents expect), and fixing those took it from 222k to 176k, cheapest on all eight bugs. Those fixes were made with these bugs in view, so the column before them is the blind number. Tokens are every input token of the whole run, the agent's instructions and every retry included, and a failed run counts too. It's our own harness, on one machine, with one model family, which is why the harness, the buggy apps, the graders and every run's result are in [benchmark/](benchmark/README.md) for you to rerun.
+The ZYNLEX column was measured on 0.19.0, the build these runs led to; the next round will measure the current version. ZYNLEX was cheapest before we touched it, too. Reading its runs then showed where agents wasted calls (a script reusing a tab still set to phone size, typing that couldn't trigger a keystroke race, Playwright methods agents expect), and fixing those took it from 222k to 176k, cheapest on all eight bugs. Those fixes were made with these bugs in view, so the column before them is the blind number. Tokens are every input token of the whole run, the agent's instructions and every retry included, and a failed run counts too. It's our own harness, on one machine, with one model family, which is why the harness, the buggy apps, the graders and every run's result are in [benchmark/](benchmark/README.md) for you to rerun.
 
 ## What a session looks like
 
