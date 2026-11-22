@@ -139,13 +139,22 @@ The full comparison, with the film and every bug's numbers: [ZYNLEX vs Playwrigh
    claude mcp add zynlex zynlex-mcp
    ```
 
-   **Settings → AI agents** has the snippet for Codex, Cursor, Antigravity, OpenCode and any other MCP client.
+   **Settings → AI agents** has the snippet for Codex, Cursor, Antigravity, OpenCode and any other MCP client. For a client that takes a JSON config:
+
+   ```json
+   {
+     "mcpServers": {
+       "zynlex": { "command": "zynlex-mcp" }
+     }
+   }
+   ```
 3. Open your app in ZYNLEX and ask your agent to check it: *"The Add button does nothing when I press Enter. Fix it."*
 
 ### What the agent can do
 
 | Tool | What it does |
 |---|---|
+| `script` | A whole check in one call: a few lines of Playwright-style code (open the page, click, type, read) run in a sandbox, returning only what the agent asks for. The cheapest way to reproduce a bug or confirm a fix |
 | `tabs`, `open` | List your tabs and running dev servers; open or switch to one |
 | `snapshot` | The page's interactive elements, with refs to act on |
 | `act` | Click, type, select, press, hover, drag, upload, go back, answer dialogs; up to 10 steps in one call |
