@@ -109,7 +109,9 @@ export function HomePage({ onNavigate = null }: HomePageProps) {
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
-            className="flex-1 bg-transparent outline-none font-mono text-[.9375rem] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
+            // focus:shadow-none — the surrounding box already shows focus; the global
+            // input:focus ring drew a second border inside it.
+            className="flex-1 bg-transparent outline-none focus:shadow-none font-mono text-[.9375rem] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-disabled)]"
           />
           <kbd className="font-mono text-[.6875rem] text-[var(--color-text-muted)] bg-[var(--color-hover)] border border-[var(--color-border)] px-2.5 py-2 rounded-md">
             Ctrl+L

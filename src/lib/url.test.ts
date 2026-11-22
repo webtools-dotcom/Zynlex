@@ -153,4 +153,11 @@ describe("isLoopbackUrl", () => {
     expect(isLoopbackUrl("https://github.com")).toBe(false);
     expect(isLoopbackUrl("")).toBe(false);
   });
+
+  it("does not take a public host that starts with 127. for loopback", () => {
+    expect(isLoopbackUrl("http://127.evil.com/")).toBe(false);
+    expect(isLoopbackUrl("http://127.0.0.1.nip.io/")).toBe(false);
+    expect(isLoopbackUrl("http://127.1:3000/")).toBe(true);
+    expect(isLoopbackUrl("http://127.5.6.7/")).toBe(true);
+  });
 });

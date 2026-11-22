@@ -81,7 +81,7 @@ const MAX_ENTRIES_PER_TAB = 500;
 const MAX_WRITES = 50;
 
 /** One request in `writes`; `n` is the number in its entry's `net-N` id. */
-export interface NetworkWrite {
+interface NetworkWrite {
   n: number;
   tabId: string;
   method: string;

@@ -296,7 +296,9 @@ export function Sidebar() {
 
       {/* Panel icon nav */}
       <div
-        className="flex items-center gap-0.5 px-1.5 py-1 border-b flex-shrink-0 overflow-x-auto"
+        // Wraps instead of scrolling sideways: with 15 tools, a scroll strip hid
+        // more than half of them at the default sidebar width.
+        className="flex flex-wrap items-center gap-0.5 px-1.5 py-1 border-b flex-shrink-0"
         style={{ borderColor: "var(--color-border-subtle)" }}
       >
         {PANELS.map(({ id, Icon, label }) => (
@@ -305,11 +307,12 @@ export function Sidebar() {
             onClick={() => togglePanel(id)}
             title={label}
             aria-label={label}
+            aria-pressed={activePanel === id}
             className={cn(
-              "w-9 h-9 rounded-[4px] flex items-center justify-center flex-shrink-0 transition-colors",
+              "w-8 h-8 rounded-[4px] flex items-center justify-center flex-shrink-0 transition-colors",
               activePanel === id
                 ? "bg-[var(--color-accent-dim)] text-[var(--color-accent)]"
-                : "text-[var(--color-text-disabled)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-hover)]",
+                : "text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)]",
             )}
           >
             <Icon size={15} strokeWidth={1.5} />
@@ -352,7 +355,8 @@ export function Sidebar() {
             else return;
             e.preventDefault();
           }}
-          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--color-accent-dim)] focus:bg-[var(--color-accent-dim)] outline-none"
+          // 8px, not 4: one pixel past a 4px handle lands on the page webview.
+          className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-[var(--color-accent-dim)] focus:bg-[var(--color-accent-dim)] outline-none"
         />
       )}
     </div>

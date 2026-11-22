@@ -33,6 +33,10 @@ interface UIStore {
   commandPaletteOpen: boolean;
   settingsPanelOpen: boolean;
   shortcutHelpOpen: boolean;
+  /** Right-click menus open (tab, workspace). A count, not a flag, so one menu
+   * closing can't clear another's. The page webview is hidden while > 0, or it
+   * would paint over the part of the menu that overlaps the content area. */
+  chromeMenus: number;
   /**
    * Per-scope UI state is stored as the id of the scope that OWNS it, not as a
    * boolean: the feature is open iff its owner id equals the current scope id.
@@ -67,6 +71,8 @@ interface UIStore {
   toggleSettingsPanel: () => void;
   openShortcutHelp: () => void;
   closeShortcutHelp: () => void;
+  chromeMenuOpened: () => void;
+  chromeMenuClosed: () => void;
   openFind: () => void;
   closeFind: () => void;
   setFindQuery: (q: string) => void;
@@ -106,6 +112,7 @@ export const useUIStore = create<UIStore>()(
     commandPaletteOpen: false,
     settingsPanelOpen: false,
     shortcutHelpOpen: false,
+    chromeMenus: 0,
     findTabId: null,
     viewportTabId: null,
     apiTesterWsId: null,
@@ -157,6 +164,14 @@ export const useUIStore = create<UIStore>()(
     closeShortcutHelp: () =>
       set((s) => {
         s.shortcutHelpOpen = false;
+      }),
+    chromeMenuOpened: () =>
+      set((s) => {
+        s.chromeMenus += 1;
+      }),
+    chromeMenuClosed: () =>
+      set((s) => {
+        s.chromeMenus = Math.max(0, s.chromeMenus - 1);
       }),
     openFind: () =>
       set((s) => {

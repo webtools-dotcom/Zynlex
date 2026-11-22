@@ -293,13 +293,10 @@ export function ApiTester({ embedded = false, onClose }: ApiTesterProps) {
     setError(null);
     setResponse(null);
 
-    // Build the headers object, filtering out disabled rows
-    const hdrObj: Record<string, string> = {};
-    for (const h of headers) {
-      if (h.enabled && h.key.trim()) {
-        hdrObj[h.key.trim()] = h.value;
-      }
-    }
+    // Enabled rows in order; a repeated name is sent once per row.
+    const hdrObj: [string, string][] = headers
+      .filter((h) => h.enabled && h.key.trim())
+      .map((h) => [h.key.trim(), h.value]);
 
     const hasBody = body.trim().length > 0 && method !== "GET" && method !== "HEAD";
 

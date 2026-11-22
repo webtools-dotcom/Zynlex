@@ -155,7 +155,7 @@ function tracker() {
 /** Any React chrome overlay that must sit above the OS-level browser webview. */
 function isChromeOverlayOpen(): boolean {
   const ui = useUIStore.getState();
-  return ui.commandPaletteOpen || ui.shortcutHelpOpen || ui.settingsPanelOpen;
+  return ui.commandPaletteOpen || ui.shortcutHelpOpen || ui.settingsPanelOpen || ui.chromeMenus > 0;
 }
 
 export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement | null>) {
@@ -683,14 +683,26 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   // every site used to fire `saveTabState(id).catch(…)` and then destroy the
   // webview on the next line, so there was never a webview left to read from.
   const discardWebviewRef = useRef<(tabId: string) => Promise<void>>(async () => {});
+  // Tabs with a discard in flight: the 5 s cap timer could otherwise pick the
+  // same tab again while its (up to 2 s) state capture is still running.
+  const discardingRef = useRef<Set<string>>(new Set());
   discardWebviewRef.current = async (tabId: string) => {
-    await captureTabState(tabId);
+    if (discardingRef.current.has(tabId)) return;
+    discardingRef.current.add(tabId);
     try {
-      await closeTabWebview(tabId);
-      useTabsStore.getState().discardTab(tabId);
-      createdTabsRef.current.delete(tabId);
-    } catch {
-      // Leave it in createdTabsRef: the webview may still be alive.
+      await captureTabState(tabId);
+      // The user may have switched to this tab during the capture. Closing it now
+      // would leave the active tab blank (the switch already showed this webview).
+      if (getActiveTabId() === tabId) return;
+      try {
+        await closeTabWebview(tabId);
+        useTabsStore.getState().discardTab(tabId);
+        createdTabsRef.current.delete(tabId);
+      } catch {
+        // Leave it in createdTabsRef: the webview may still be alive.
+      }
+    } finally {
+      discardingRef.current.delete(tabId);
     }
   };
 
@@ -1049,10 +1061,12 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const shortcutHelpOpen = useUIStore((s) => s.shortcutHelpOpen);
   const settingsPanelOpen = useUIStore((s) => s.settingsPanelOpen);
+  const chromeMenuOpen = useUIStore((s) => s.chromeMenus > 0);
   const apiTesterOpen = useApiTesterOpen();
   useEffect(() => {
     if (!IS_TAURI) return;
-    const overlayOpen = commandPaletteOpen || shortcutHelpOpen || settingsPanelOpen;
+    const overlayOpen =
+      commandPaletteOpen || shortcutHelpOpen || settingsPanelOpen || chromeMenuOpen;
     const wsState = useWorkspacesStore.getState();
     const ws = wsState.workspaces[wsState.activeWorkspaceId];
     const tab = getLiveWorkspaceActiveTab(ws, useTabsStore.getState().tabs);
@@ -1067,7 +1081,14 @@ export function useWebviewBridge(contentAreaRef: React.RefObject<HTMLDivElement 
       const timer = setTimeout(() => ensureWebviewVisible(), 50);
       return () => clearTimeout(timer);
     }
-  }, [commandPaletteOpen, shortcutHelpOpen, settingsPanelOpen, activeTabId, ensureWebviewVisible]);
+  }, [
+    commandPaletteOpen,
+    shortcutHelpOpen,
+    settingsPanelOpen,
+    chromeMenuOpen,
+    activeTabId,
+    ensureWebviewVisible,
+  ]);
 
   // ── Sync bounds when overlay panel opens/closes/resizes ──────────
   useEffect(() => {

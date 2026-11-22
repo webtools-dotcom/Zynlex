@@ -33,7 +33,8 @@ fn client() -> &'static reqwest::Client {
 pub struct ApiFetchRequest {
     pub method: String,
     pub url: String,
-    pub headers: std::collections::HashMap<String, String>,
+    /// A list, not a map, so a header can be sent more than once.
+    pub headers: Vec<(String, String)>,
     pub body: Option<String>,
 }
 

@@ -912,10 +912,13 @@ fn is_loopback(url: &str) -> bool {
     else {
         return false;
     };
+    // A loopback *address*, not any name starting "127." (127.evil.com is public).
     host == "localhost"
         || host.ends_with(".localhost")
         || host == "[::1]"
-        || host.starts_with("127.")
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Whether a page load should have CDP's Network domain on: a localhost page
@@ -1010,6 +1013,8 @@ mod tests {
         for url in [
             "https://www.youtube.com/",
             "http://localhost.evil.com/",
+            "http://127.evil.com/",
+            "http://127.0.0.1.nip.io/",
             "https://staging.example.com/",
             "about:blank",
             "not a url",

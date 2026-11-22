@@ -86,11 +86,21 @@ function SearchEngineButton({
   );
 }
 
-function CompactToggle({ value, onToggle }: { value: boolean; onToggle: () => void }) {
+function CompactToggle({
+  value,
+  onToggle,
+  label,
+}: {
+  value: boolean;
+  onToggle: () => void;
+  /** The setting's name: the visible text beside the switch isn't tied to it. */
+  label: string;
+}) {
   return (
     <button
       onClick={onToggle}
       role="switch"
+      aria-label={label}
       aria-checked={value}
       className={
         "inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent transition-colors " +
@@ -171,7 +181,11 @@ function EngineToggles() {
             Saves ~100–200 MB. Turn off if graphics driver crashes close the whole app.
           </span>
         </div>
-        <CompactToggle value={opts.inProcessGpu} onToggle={() => toggle("inProcessGpu")} />
+        <CompactToggle
+          label="GPU in main process"
+          value={opts.inProcessGpu}
+          onToggle={() => toggle("inProcessGpu")}
+        />
       </div>
       <div className="flex justify-between items-center mt-3">
         <div>
@@ -185,6 +199,7 @@ function EngineToggles() {
         </div>
         {/* The low-memory model already turns site isolation off. */}
         <CompactToggle
+          label="One process per tab"
           value={opts.tabProcessModel || opts.lowMemoryProcessModel}
           onToggle={() => !opts.lowMemoryProcessModel && toggle("tabProcessModel")}
         />
@@ -200,6 +215,7 @@ function EngineToggles() {
           </span>
         </div>
         <CompactToggle
+          label="Low-memory process model"
           value={opts.lowMemoryProcessModel}
           onToggle={() => toggle("lowMemoryProcessModel")}
         />
@@ -245,6 +261,8 @@ export function SettingsPanel() {
 
   return (
     <div
+      role="dialog"
+      aria-label="Settings"
       className="absolute top-0 right-0 w-[300px] h-full border-l z-50 overflow-y-auto p-4 zynlex-settings-panel"
       style={{
         background: "var(--color-elevated)",
@@ -296,6 +314,7 @@ export function SettingsPanel() {
           </span>
         </div>
         <CompactToggle
+          label="Compact Mode"
           value={settings.compactMode}
           onToggle={() => update({ compactMode: !settings.compactMode })}
         />
@@ -309,6 +328,7 @@ export function SettingsPanel() {
           </span>
         </div>
         <CompactToggle
+          label="Bookmark Bar"
           value={settings.bookmarkBarVisible}
           onToggle={() => update({ bookmarkBarVisible: !settings.bookmarkBarVisible })}
         />
@@ -322,6 +342,7 @@ export function SettingsPanel() {
           </span>
         </div>
         <CompactToggle
+          label="Vertical Tabs"
           value={settings.tabBarPosition === "left"}
           onToggle={() =>
             update({ tabBarPosition: settings.tabBarPosition === "left" ? "top" : "left" })
@@ -361,7 +382,8 @@ export function SettingsPanel() {
         step={5}
         value={settings.portScanInterval}
         onChange={(e) => setPortScanInterval(Number(e.target.value))}
-        className="w-full accent-blue-500"
+        aria-label="Port scan interval in seconds"
+        className="w-full accent-[var(--color-accent)]"
       />
 
       <span className="text-xs text-[var(--color-text-disabled)] block mt-1">
@@ -429,6 +451,7 @@ export function SettingsPanel() {
           </span>
         </div>
         <CompactToggle
+          label="Adapt to available memory"
           value={settings.adaptToMemory}
           onToggle={() => update({ adaptToMemory: !settings.adaptToMemory })}
         />
